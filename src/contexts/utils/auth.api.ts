@@ -89,11 +89,11 @@ export const validateToken = async (): Promise<User> => {
   console.log('🔐 Validating token with backend...', { 
     tokenExists: !!token,
     tokenLength: token.length,
-    endpoint: `${baseUrl}/v2/auth/me`
+    endpoint: `${baseUrl}/auth/me`
   });
 
   try {
-    const response = await fetch(`${baseUrl}/v2/auth/me`, {
+    const response = await fetch(`${baseUrl}/auth/me`, {
       method: 'GET',
       headers: getApiHeaders()
     });
