@@ -323,29 +323,51 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // 🔐 CRITICAL: Auto-restore session on mount
   React.useEffect(() => {
     const initializeAuth = async () => {
-      console.log('🔐 Initializing authentication...');
+      console.log('🔐 ========================================');
+      console.log('🔐 INITIALIZING AUTHENTICATION...');
+      console.log('🔐 ========================================');
+      
       const token = localStorage.getItem('access_token');
+      console.log('🔑 Token check:', {
+        tokenExists: !!token,
+        tokenLength: token?.length || 0,
+        tokenPreview: token ? `${token.substring(0, 20)}...` : 'none'
+      });
       
       if (!token) {
-        console.log('No token found, user needs to login');
+        console.log('⚠️ No token found - user needs to login');
         setIsLoading(false);
         setIsInitialized(true);
         return;
       }
       
       try {
-        console.log('Token found, validating with backend...');
+        console.log('🔍 Token found - validating with backend...');
         const userData = await validateToken();
+        console.log('📦 User data received:', {
+          id: userData.id,
+          email: userData.email,
+          role: userData.role
+        });
+        
         const mappedUser = mapUserData(userData, []);
+        console.log('👤 User mapped successfully');
         setUser(mappedUser);
-        console.log('✅ Session restored successfully!');
+        console.log('✅ ========================================');
+        console.log('✅ SESSION RESTORED SUCCESSFULLY!');
+        console.log('✅ ========================================');
       } catch (error) {
-        console.error('❌ Session restoration failed:', error);
+        console.error('❌ ========================================');
+        console.error('❌ SESSION RESTORATION FAILED!');
+        console.error('❌ Error:', error);
+        console.error('❌ ========================================');
         // Clear invalid token
         localStorage.removeItem('access_token');
+        console.log('🧹 Invalid token cleared from localStorage');
       } finally {
         setIsLoading(false);
         setIsInitialized(true);
+        console.log('🏁 Auth initialization complete');
       }
     };
     
