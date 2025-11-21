@@ -1,13 +1,14 @@
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
 
 User-agent: *
 Allow: /
-
-# Sitemap
-Sitemap: https://contentfarm.club/sitemap.xml
-
-# Disallow admin or sensitive areas (add as needed)
-# Disallow: /admin/
-# Disallow: /private/
-
-# Crawl-delay for respectful crawling
-Crawl-delay: 1
