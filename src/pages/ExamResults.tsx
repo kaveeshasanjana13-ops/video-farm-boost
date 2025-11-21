@@ -15,8 +15,14 @@ import MUITable from '@/components/ui/mui-table';
 const ExamResults = () => {
   const navigate = useNavigate();
   const {
+    instituteId,
+    classId,
+    subjectId,
     examId
   } = useParams<{
+    instituteId: string;
+    classId: string;
+    subjectId: string;
     examId: string;
   }>();
   const [examDetails, setExamDetails] = useState<{
@@ -115,7 +121,7 @@ const ExamResults = () => {
     loadExamResults(newPage);
   };
   const handleGoBack = () => {
-    navigate('/exams');
+    navigate(`/institute/${instituteId}/class/${classId}/subject/${subjectId}/exams`);
   };
   const getContextBreadcrumb = () => {
     const parts = [];

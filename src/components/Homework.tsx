@@ -250,7 +250,18 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
 
   const handleViewSubmissions = (homeworkData: any) => {
     console.log('View homework submissions:', homeworkData);
-    navigate(`/homework/${homeworkData.id}/submissions`);
+    
+    // 🛡️ SECURE: Use full hierarchical URL
+    if (!currentInstituteId || !currentClassId || !currentSubjectId) {
+      toast({
+        title: "Missing Context",
+        description: "Please select institute, class, and subject first",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    navigate(`/institute/${currentInstituteId}/class/${currentClassId}/subject/${currentSubjectId}/homework/${homeworkData.id}/submissions`);
   };
 
   const handleSubmissionSuccess = async () => {

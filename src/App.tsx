@@ -60,119 +60,107 @@ const App = () => {
               <Route path="/" element={<Index />} />
               <Route path="/dashboard" element={<Index />} />
               
-              {/* Context-Aware Institute Routes - ALL go through Index/AppContent */}
+              {/* 🛡️ HIERARCHICAL INSTITUTE ROUTES - Full Context in URL */}
               <Route path="/institutes" element={<Index />} />
-              <Route path="/institute/:instituteId/*" element={<Index />} />
-              <Route path="/institute/:instituteId/class/:classId/*" element={<Index />} />
-              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/*" element={<Index />} />
               
-              <Route path="/institutes/users" element={<Index />} />
-              <Route path="/institute-users" element={<Index />} />
-              <Route path="/institutes/classes" element={<Index />} />
-              <Route path="/verify-image" element={<Index />} />
+              {/* Institute Level */}
+              <Route path="/institute/:instituteId" element={<Index />} />
+              <Route path="/institute/:instituteId/dashboard" element={<Index />} />
+              <Route path="/institute/:instituteId/details" element={<Index />} />
+              <Route path="/institute/:instituteId/profile" element={<Index />} />
+              <Route path="/institute/:instituteId/users" element={<Index />} />
+              <Route path="/institute/:instituteId/classes" element={<Index />} />
+              <Route path="/institute/:instituteId/students" element={<Index />} />
+              <Route path="/institute/:instituteId/unverified-students" element={<Index />} />
+              <Route path="/institute/:instituteId/teachers" element={<Index />} />
+              <Route path="/institute/:instituteId/gallery" element={<Index />} />
+              <Route path="/institute/:instituteId/payments" element={<Index />} />
+              <Route path="/institute/:instituteId/verify-image" element={<Index />} />
+              <Route path="/institute/:instituteId/sms" element={<Index />} />
+              <Route path="/institute/:instituteId/sms-history" element={<Index />} />
+              <Route path="/institute/:instituteId/attendance-markers" element={<Index />} />
+              <Route path="/institute/:instituteId/institute-lectures" element={<Index />} />
+              <Route path="/institute/:instituteId/organizations" element={<Index />} />
+              
+              {/* Class Level */}
+              <Route path="/institute/:instituteId/class/:classId" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/dashboard" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/students" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subjects" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/attendance" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/my-attendance" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/daily-attendance" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/qr-attendance" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/rfid-attendance" element={<RFIDAttendance />} />
+              <Route path="/institute/:instituteId/class/:classId/mark-attendance" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/enroll-subject" element={<Index />} />
+              
+              {/* Subject Level */}
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/dashboard" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/lectures" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/live-lectures" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/homework" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/exams" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/results" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/payments" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/submissions" element={<SubjectSubmissions />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/payment-submissions" element={<SubjectPaymentSubmissions />} />
+              
+              {/* Lecture Detail */}
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/lecture/:lectureId" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/lecture/:lectureId/update" element={<UpdateLecture />} />
+              
+              {/* Homework Detail */}
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/homework/:homeworkId" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/homework/:homeworkId/update" element={<UpdateHomework />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/homework/:homeworkId/submissions" element={<HomeworkSubmissionDetails />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/homework-submissions" element={<Index />} />
+              
+              {/* Exam Detail */}
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/exam/:examId" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/exam/:examId/results" element={<ExamResults />} />
+              <Route path="/institute/:instituteId/class/:classId/subject/:subjectId/exam/:examId/create-results" element={<CreateExamResults />} />
               
               {/* Organization Routes */}
               <Route path="/organizations" element={<Index />} />
-              <Route path="/organization/:organizationId/*" element={<Index />} />
-              <Route path="/institute-organizations" element={<Index />} />
+              <Route path="/organization/:organizationId" element={<Index />} />
+              <Route path="/organization/:organizationId/dashboard" element={<Index />} />
+              <Route path="/organization/:organizationId/members" element={<Index />} />
+              <Route path="/organization/:organizationId/courses" element={<Index />} />
+              <Route path="/organization/:organizationId/lectures" element={<Index />} />
               
-              {/* User Management Routes */}
+              {/* Global User Management (SuperAdmin only) */}
               <Route path="/users" element={<Index />} />
-              <Route path="/students" element={<Index />} />
-              <Route path="/unverified-students" element={<Index />} />
-              <Route path="/enroll-class" element={<Index />} />
-              <Route path="/enroll-subject" element={<Index />} />
-              <Route path="/teachers" element={<Index />} />
-              <Route path="/parents" element={<Index />} />
-              
-              {/* Academic Routes */}
-              <Route path="/classes" element={<Index />} />
-              <Route path="/subjects" element={<Index />} />
-              <Route path="/grades" element={<Index />} />
-              <Route path="/grading" element={<Index />} />
-              <Route path="/grades-table" element={<Index />} />
-              <Route path="/create-grade" element={<Index />} />
-              <Route path="/assign-grade-classes" element={<Index />} />
-              <Route path="/view-grade-classes" element={<Index />} />
-              
-              {/* Attendance Routes */}
-              <Route path="/attendance" element={<Index />} />
-              <Route path="/my-attendance" element={<Index />} />
-              <Route path="/daily-attendance" element={<Index />} />
-              
-              <Route path="/attendance-markers" element={<Index />} />
-              <Route path="/qr-attendance" element={<Index />} />
-              <Route path="/rfid-attendance" element={<RFIDAttendance />} />
-              <Route path="/institute-mark-attendance" element={<Index />} />
-              
-              {/* Academic Content Routes */}
-              <Route path="/lectures" element={<Index />} />
-              <Route path="/institute-lectures" element={<Index />} />
-              <Route path="/live-lectures" element={<Index />} />
-              <Route path="/free-lectures" element={<Index />} />
-              <Route path="/homework" element={<Index />} />
-                <Route path="/homework/update/:homeworkId" element={<UpdateHomework />} />
-                <Route path="/lecture/update/:lectureId" element={<UpdateLecture />} />
-              <Route path="/homework-submissions" element={<Index />} />
-              <Route path="/homework-submissions/:homeworkId" element={<HomeworkSubmissions />} />
-              <Route path="/homework/:homeworkId/submissions" element={<HomeworkSubmissionDetails />} />
-              <Route path="/exams" element={<Index />} />
-          <Route path="/exams/:examId/results" element={<ExamResults />} />
-          <Route path="/exams/:examId/create-results" element={<CreateExamResults />} />
-              <Route path="/results" element={<Index />} />
-              
-              {/* Selection Routes */}
-              <Route path="/select-institute" element={<Index />} />
-              <Route path="/select-class" element={<Index />} />
-              <Route path="/select-subject" element={<Index />} />
-              <Route path="/parent-children" element={<Index />} />
               
               {/* Parent Child Routes */}
-              <Route path="/child-attendance" element={<Index />} />
-              <Route path="/child-results" element={<Index />} />
-              
-              {/* Teacher Specific Routes */}
-              <Route path="/teacher-students" element={<Index />} />
-              <Route path="/teacher-homework" element={<Index />} />
-              <Route path="/teacher-exams" element={<Index />} />
-              <Route path="/teacher-lectures" element={<Index />} />
-              
-              {/* Settings and Profile Routes */}
-              <Route path="/profile" element={<Index />} />
-              <Route path="/settings" element={<Index />} />
-              <Route path="/appearance" element={<Index />} />
-              <Route path="/institute-details" element={<Index />} />
-              <Route path="/institute-profile" element={<Index />} />
-              <Route path="/gallery" element={<Index />} />
-              <Route path="/sms" element={<Index />} />
-              <Route path="/sms-history" element={<Index />} />
+              <Route path="/my-children" element={<MyChildren />} />
+              <Route path="/child/:childId/dashboard" element={<ChildDashboard />} />
+              <Route path="/child/:childId/attendance" element={<ChildAttendancePage />} />
+              <Route path="/child/:childId/results" element={<ChildResultsPage />} />
+              <Route path="/child/:childId/transport" element={<ChildTransportPage />} />
               
               {/* Transport Routes */}
               <Route path="/transport" element={<Transport />} />
-              <Route path="/transport/:transportId/*" element={<TransportAttendance />} />
+              <Route path="/transport/:transportId" element={<TransportAttendance />} />
               <Route path="/transport/:transportId/attendance" element={<TransportAttendance />} />
               
-              {/* Child Routes */}
-              <Route path="/my-children" element={<MyChildren />} />
-              <Route path="/child/:childId/*" element={<ChildDashboard />} />
-              <Route path="/child/:childId/dashboard" element={<ChildDashboard />} />
-              <Route path="/child/:childId/results" element={<ChildResultsPage />} />
-              <Route path="/child/:childId/attendance" element={<ChildAttendancePage />} />
-              <Route path="/child/:childId/transport" element={<ChildTransportPage />} />
+              {/* Global Settings & Profile */}
+              <Route path="/profile" element={<Index />} />
+              <Route path="/settings" element={<Index />} />
+              <Route path="/appearance" element={<Index />} />
               
-              {/* Demo Routes */}
-              <Route path="/card-demo" element={<CardDemo />} />
-              
-              {/* Payment Routes */}
+              {/* Legacy Payment Routes (to be migrated to hierarchical) */}
               <Route path="/payments" element={<Payments />} />
               <Route path="/payments/create" element={<CreatePayment />} />
               <Route path="/payment-submissions/:paymentId" element={<PaymentSubmissions />} />
               <Route path="/payment-submissions" element={<PaymentSubmissionsPage />} />
               <Route path="/my-submissions" element={<MySubmissions />} />
-              <Route path="/institute-payments" element={<Index />} />
-              <Route path="/subject-payments" element={<Index />} />
-              <Route path="/subject-submissions" element={<SubjectSubmissions />} />
-              <Route path="/subject-pay-submission" element={<SubjectPaymentSubmissions />} />
+              
+              {/* Special Routes */}
+              <Route path="/card-demo" element={<CardDemo />} />
+              <Route path="/grades" element={<Index />} />
+              <Route path="/grading" element={<Index />} />
               
               {/* Catch-all route for 404 */}
               <Route path="*" element={<NotFound />} />

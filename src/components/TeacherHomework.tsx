@@ -172,7 +172,17 @@ const TeacherHomework = () => {
   };
 
   const handleViewSubmissions = (homework: TeacherHomework) => {
-    navigate(`/homework/${homework.id}/submissions`);
+    // 🛡️ SECURE: Use full hierarchical URL
+    if (!selectedInstitute?.id || !selectedClass?.id || !selectedSubject?.id) {
+      toast({
+        title: "Missing Context",
+        description: "Please select institute, class, and subject first",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    navigate(`/institute/${selectedInstitute.id}/class/${selectedClass.id}/subject/${selectedSubject.id}/homework/${homework.id}/submissions`);
   };
 
   const handleUpdateHomework = () => {
