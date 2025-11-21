@@ -79,8 +79,13 @@ const App = () => {
               <Route path="/institute/:instituteId/sms" element={<Index />} />
               <Route path="/institute/:instituteId/sms-history" element={<Index />} />
               <Route path="/institute/:instituteId/attendance-markers" element={<Index />} />
+              <Route path="/institute/:instituteId/lectures" element={<Index />} />
               <Route path="/institute/:instituteId/institute-lectures" element={<Index />} />
               <Route path="/institute/:instituteId/organizations" element={<Index />} />
+              <Route path="/institute/:instituteId/grades" element={<Index />} />
+              <Route path="/institute/:instituteId/grading" element={<Index />} />
+              <Route path="/institute/:instituteId/parents" element={<Index />} />
+              <Route path="/institute/:instituteId/settings" element={<Index />} />
               
               {/* Class Level */}
               <Route path="/institute/:instituteId/class/:classId" element={<Index />} />
@@ -94,6 +99,10 @@ const App = () => {
               <Route path="/institute/:instituteId/class/:classId/rfid-attendance" element={<RFIDAttendance />} />
               <Route path="/institute/:instituteId/class/:classId/mark-attendance" element={<Index />} />
               <Route path="/institute/:instituteId/class/:classId/enroll-subject" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/lectures" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/homework" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/exams" element={<Index />} />
+              <Route path="/institute/:instituteId/class/:classId/results" element={<Index />} />
               
               {/* Subject Level */}
               <Route path="/institute/:instituteId/class/:classId/subject/:subjectId" element={<Index />} />
