@@ -110,9 +110,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.log('Access token stored successfully');
       }
 
-      // Map user data without fetching institutes automatically
-      const mappedUser = mapUserData(data.user, []);
-      console.log('User mapped successfully:', mappedUser);
+      // Map user data and automatically fetch institutes
+      console.log('🏢 Fetching user institutes after login...');
+      const institutes = await fetchUserInstitutes(data.user.id, true);
+      const mappedUser = mapUserData(data.user, institutes);
+      console.log('✅ User logged in with', institutes.length, 'institutes');
       setUser(mappedUser);
     } catch (error) {
       console.error('Login error:', error);
@@ -350,8 +352,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           role: userData.role
         });
         
-        const mappedUser = mapUserData(userData, []);
-        console.log('👤 User mapped successfully');
+        // Automatically fetch institutes after token validation
+        console.log('🏢 Fetching user institutes after token validation...');
+        const institutes = await fetchUserInstitutes(userData.id, true);
+        const mappedUser = mapUserData(userData, institutes);
+        console.log('👤 User restored with', institutes.length, 'institutes');
         setUser(mappedUser);
         console.log('✅ ========================================');
         console.log('✅ SESSION RESTORED SUCCESSFULLY!');
