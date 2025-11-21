@@ -82,26 +82,47 @@ export const validateToken = async (): Promise<User> => {
   const token = localStorage.getItem('access_token');
 
   if (!token) {
+    console.warn('⚠️ No authentication token found in localStorage');
     throw new Error('No authentication token found');
   }
 
-  console.log('Validating token with backend...');
-
-  const response = await fetch(`${baseUrl}/auth/me`, {
-    method: 'GET',
-    headers: getApiHeaders()
+  console.log('🔐 Validating token with backend...', { 
+    tokenExists: !!token,
+    tokenLength: token.length,
+    endpoint: `${baseUrl}/v2/auth/me`
   });
 
-  if (!response.ok) {
-    // Clear invalid token
-    localStorage.removeItem('access_token');
-    console.log('Invalid token cleared from localStorage');
-    throw new Error('Token validation failed');
-  }
+  try {
+    const response = await fetch(`${baseUrl}/v2/auth/me`, {
+      method: 'GET',
+      headers: getApiHeaders()
+    });
 
-  const userData = await response.json();
-  console.log('Token validation successful');
-  return userData;
+    console.log('📡 Token validation response:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
+
+    if (!response.ok) {
+      // Clear invalid token
+      localStorage.removeItem('access_token');
+      console.error('❌ Token validation failed, token cleared');
+      throw new Error(`Token validation failed: ${response.status} ${response.statusText}`);
+    }
+
+    const userData = await response.json();
+    console.log('✅ Token validation successful, user data:', {
+      userId: userData.id,
+      email: userData.email,
+      role: userData.role
+    });
+    return userData;
+  } catch (error) {
+    console.error('❌ Token validation error:', error);
+    localStorage.removeItem('access_token');
+    throw error;
+  }
 };
 
 export const logoutUser = async (): Promise<void> => {
