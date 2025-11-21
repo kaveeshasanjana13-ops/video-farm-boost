@@ -50,7 +50,12 @@ const defaultRemarks: Record<string, string> = {
 };
 
 const CreateExamResults = () => {
-  const { examId } = useParams<{ examId: string }>();
+  const { instituteId, classId, subjectId, examId } = useParams<{ 
+    instituteId: string;
+    classId: string;
+    subjectId: string;
+    examId: string;
+  }>();
   const navigate = useNavigate();
   const { currentInstituteId, currentClassId, currentSubjectId } = useAuth();
   const { toast } = useToast();
@@ -207,7 +212,7 @@ const CreateExamResults = () => {
         description: `Results created for ${validResults.length} student(s).`
       });
 
-      navigate('/exams');
+      navigate(`/institute/${instituteId}/class/${classId}/subject/${subjectId}/exams`);
     } catch (error) {
       console.error('Error creating results:', error);
       toast({
@@ -236,7 +241,7 @@ const CreateExamResults = () => {
     <AppLayout>
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/exams')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(`/institute/${instituteId}/class/${classId}/subject/${subjectId}/exams`)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">

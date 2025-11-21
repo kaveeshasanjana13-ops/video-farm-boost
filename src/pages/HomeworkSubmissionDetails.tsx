@@ -16,7 +16,12 @@ import UploadCorrectionDialog from '@/components/forms/UploadCorrectionDialog';
 import MUITable from '@/components/ui/mui-table';
 
 const HomeworkSubmissionDetails = () => {
-  const { homeworkId } = useParams<{ homeworkId: string }>();
+  const { instituteId, classId, subjectId, homeworkId } = useParams<{ 
+    instituteId: string; 
+    classId: string; 
+    subjectId: string; 
+    homeworkId: string 
+  }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -242,7 +247,7 @@ const HomeworkSubmissionDetails = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/homework')}
+            onClick={() => navigate(`/institute/${instituteId}/class/${classId}/subject/${subjectId}/homework`)}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Homework

@@ -13,7 +13,12 @@ import { getBaseUrl, getApiHeaders } from '@/contexts/utils/auth.api';
 import AppLayout from '@/components/layout/AppLayout';
 
 const UpdateHomework = () => {
-  const { homeworkId } = useParams();
+  const { instituteId, classId, subjectId, homeworkId } = useParams<{
+    instituteId: string;
+    classId: string;
+    subjectId: string;
+    homeworkId: string;
+  }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();

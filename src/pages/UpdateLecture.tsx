@@ -13,7 +13,12 @@ import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { lectureApi } from '@/api/lecture.api';
 
 const UpdateLecture = () => {
-  const { lectureId } = useParams<{ lectureId: string }>();
+  const { instituteId, classId, subjectId, lectureId } = useParams<{ 
+    instituteId: string;
+    classId: string;
+    subjectId: string;
+    lectureId: string;
+  }>();
   const navigate = useNavigate();
   const { user } = useAuth();
   const userRole = useInstituteRole();

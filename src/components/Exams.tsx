@@ -147,7 +147,17 @@ const Exams = ({
     setSelectedExam(null);
   };
   const handleViewResults = (examData: any) => {
-    navigate(`/exams/${examData.id}/results`);
+    // 🛡️ SECURE: Use full hierarchical URL
+    if (!currentInstituteId || !currentClassId || !currentSubjectId) {
+      toast({
+        title: "Missing Context",
+        description: "Please select institute, class, and subject first",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    navigate(`/institute/${currentInstituteId}/class/${currentClassId}/subject/${currentSubjectId}/exam/${examData.id}/results`);
   };
   const handleDeleteExam = async (examData: any) => {
     console.log('Deleting exam:', examData);
@@ -229,7 +239,17 @@ const Exams = ({
   }, ...((['InstituteAdmin', 'Teacher'] as UserRole[]).includes(userRole) ? [{
     key: 'createResults',
     header: 'Create Results',
-    render: (value: any, row: any) => <Button size="sm" variant="outline" onClick={() => navigate(`/exams/${row.id}/create-results`)} className="flex items-center gap-2">
+    render: (value: any, row: any) => <Button size="sm" variant="outline" onClick={() => {
+      if (!currentInstituteId || !currentClassId || !currentSubjectId) {
+        toast({
+          title: "Missing Context",
+          description: "Please select institute, class, and subject first",
+          variant: "destructive"
+        });
+        return;
+      }
+      navigate(`/institute/${currentInstituteId}/class/${currentClassId}/subject/${currentSubjectId}/exam/${row.id}/create-results`);
+    }} className="flex items-center gap-2">
           <BarChart3 className="h-4 w-4" />
           Create
         </Button>

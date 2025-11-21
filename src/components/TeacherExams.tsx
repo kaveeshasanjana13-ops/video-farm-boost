@@ -162,7 +162,17 @@ const TeacherExams = () => {
   }, ...(['InstituteAdmin', 'Teacher'].includes(effectiveRole) ? [{
     key: 'createResults',
     header: 'Create Results',
-    render: (value: any, row: TeacherExam) => <Button size="sm" variant="outline" onClick={() => navigate(`/exams/${row.id}/create-results`)} className="flex items-center gap-2">
+    render: (value: any, row: TeacherExam) => <Button size="sm" variant="outline" onClick={() => {
+      if (!selectedInstitute?.id || !selectedClass?.id || !selectedSubject?.id) {
+        toast({
+          title: "Missing Context",
+          description: "Please select institute, class, and subject first",
+          variant: "destructive"
+        });
+        return;
+      }
+      navigate(`/institute/${selectedInstitute.id}/class/${selectedClass.id}/subject/${selectedSubject.id}/exam/${row.id}/create-results`);
+    }} className="flex items-center gap-2">
           <BarChart3 className="h-3 w-3" />
           Create
         </Button>
@@ -201,7 +211,17 @@ const TeacherExams = () => {
     setIsCreateResultsDialogOpen(true);
   };
   const handleViewResults = (exam: TeacherExam) => {
-    navigate(`/exams/${exam.id}/results`);
+    // 🛡️ SECURE: Use full hierarchical URL
+    if (!selectedInstitute?.id || !selectedClass?.id || !selectedSubject?.id) {
+      toast({
+        title: "Missing Context",
+        description: "Please select institute, class, and subject first",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    navigate(`/institute/${selectedInstitute.id}/class/${selectedClass.id}/subject/${selectedSubject.id}/exam/${exam.id}/results`);
   };
   const handleEditExam = (exam: TeacherExam) => {
     setSelectedExam(exam);
