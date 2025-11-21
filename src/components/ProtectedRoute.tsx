@@ -77,7 +77,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     selectedChild,
     selectedOrganization,
     selectedTransport,
-    isLoading 
+    isLoading,
+    isInitialized
   } = useAuth();
   
   const location = useLocation();
@@ -87,6 +88,13 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   useEffect(() => {
     const validateAccess = async () => {
       try {
+        // Wait for auth initialization to complete
+        if (!isInitialized) {
+          console.log('⏳ Waiting for auth initialization...');
+          setIsValidating(true);
+          return;
+        }
+
         console.log('🔒 Validating route access:', {
           path: location.pathname,
           user: user?.email,
@@ -106,16 +114,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
           return;
         }
 
-        // Check 2: Token validation (check if token exists)
-        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        if (!token) {
-          console.warn('❌ Access denied: No authentication token found');
-          setValidationError('Authentication token missing');
-          setIsValidating(false);
-          return;
-        }
-
-        // Check 3: Role-based access control
+        // Check 2: Role-based access control
         if (allowedRoles && allowedRoles.length > 0) {
           const userRole = user.role as UserRole;
           if (!allowedRoles.includes(userRole)) {
@@ -199,6 +198,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
     validateAccess();
   }, [
+    isInitialized,
     user, 
     selectedInstitute, 
     selectedClass, 
