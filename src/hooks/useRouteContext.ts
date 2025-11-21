@@ -53,19 +53,24 @@ export const useRouteContext = () => {
         // Load institute if URL has it and context doesn't match
         if (urlInstituteId && selectedInstitute?.id?.toString() !== urlInstituteId) {
           console.log('🏢 [RouteContext] Loading institute from URL:', urlInstituteId);
-          const institute = await cachedApiClient.get(`/institutes/${urlInstituteId}`);
-          if (institute) {
-            console.log('✅ [RouteContext] Institute loaded:', institute.name || institute.instituteName);
-            setSelectedInstitute({
-              id: institute.id || institute.instituteId,
-              name: institute.name || institute.instituteName,
-              code: institute.code,
-              description: institute.description || institute.address,
-              isActive: institute.isActive,
-              type: institute.type || institute.instituteType,
-              userRole: institute.userRole || institute.instituteUserType
-            });
+          
+          // Check if user has access to this institute from their institutes list
+          if (!user?.institutes || user.institutes.length === 0) {
+            console.warn('⚠️ [RouteContext] User has no institutes available');
+            throw new Error('No institutes available for this user');
           }
+          
+          const institute = user.institutes.find(
+            inst => inst.id?.toString() === urlInstituteId
+          );
+          
+          if (!institute) {
+            console.error('❌ [RouteContext] User does not have access to institute:', urlInstituteId);
+            throw { response: { status: 403 }, message: 'Access denied to this institute' };
+          }
+          
+          console.log('✅ [RouteContext] Institute loaded from user institutes:', institute.name);
+          setSelectedInstitute(institute);
         }
 
         // Load class if URL has it and context doesn't match
