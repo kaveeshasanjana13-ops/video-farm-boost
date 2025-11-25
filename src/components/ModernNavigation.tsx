@@ -1,8 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LogIn, Menu, X, Home, FileText, ChevronDown } from "lucide-react";
 import { useState } from "react";
 const ModernNavigation = () => {
@@ -28,12 +27,12 @@ const ModernNavigation = () => {
     href: "/refund"
   }];
 
-  return <>
+  return <TooltipProvider delayDuration={300}>
       {/* Modern Glass Navigation */}
-      <nav className="fixed top-2 left-1/2 transform -translate-x-1/2 z-50 w-[98%] max-w-7xl">
+      <nav className="fixed top-2 left-1/2 transform -translate-x-1/2 z-50 w-[98%] max-w-7xl" role="navigation" aria-label="Main navigation">
         <div className="relative">
           {/* Glass Background with Curved Design */}
-          <div className="absolute inset-0 bg-white/15 backdrop-blur-2xl rounded-3xl border border-white/30 shadow-2xl ring-1 ring-white/10"></div>
+          <div className="absolute inset-0 bg-white/15 backdrop-blur-2xl rounded-3xl border border-white/30 shadow-2xl ring-1 ring-white/10 transition-all duration-300 hover:shadow-3xl"></div>
           
           {/* Curved Accent Lines */}
           <div className="absolute top-0 left-8 right-8 h-[2px] bg-gradient-to-r from-transparent via-primary/50 to-transparent rounded-full"></div>
@@ -54,12 +53,24 @@ const ModernNavigation = () => {
 
             {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-1">
-              {mainNavItems.map(item => <Button key={item.name} variant="ghost" className="px-4 py-2 text-foreground/80 hover:text-foreground hover:bg-white/15 rounded-2xl transition-all duration-300 backdrop-blur-sm relative group" onClick={() => item.href.startsWith('#') ? document.querySelector(item.href)?.scrollIntoView({
-              behavior: 'smooth'
-            }) : window.location.href = item.href}>
-                  <span className="relative z-10">{item.name}</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-primary-dark/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </Button>)}
+              {mainNavItems.map(item => (
+                <Tooltip key={item.name}>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      className="px-4 py-2 text-foreground/80 hover:text-foreground hover:bg-white/15 rounded-2xl transition-all duration-300 backdrop-blur-sm relative group focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2" 
+                      onClick={() => item.href.startsWith('#') ? document.querySelector(item.href)?.scrollIntoView({ behavior: 'smooth' }) : window.location.href = item.href}
+                      aria-label={`Navigate to ${item.name}`}
+                    >
+                      <span className="relative z-10">{item.name}</span>
+                      <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-primary-dark/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="bg-background/95 backdrop-blur-xl border border-primary/20">
+                    <p>Go to {item.name}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
               
               {/* Legal & Support Dropdown */}
               <Popover>
@@ -80,16 +91,33 @@ const ModernNavigation = () => {
               </Popover>
 
               {/* Register Button */}
-              <Button variant="ghost" className="px-4 py-2 text-foreground/80 hover:text-foreground hover:bg-white/15 rounded-2xl transition-all duration-300 backdrop-blur-sm relative group" onClick={() => window.location.href = '/register/student'}>
-                <span className="relative z-10">Register</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/10 to-primary-dark/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="default" 
+                    className="px-6 py-2 bg-gradient-to-r from-primary to-primary-dark text-primary-foreground hover:from-primary-dark hover:to-primary rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2" 
+                    onClick={() => window.location.href = '/register/student'}
+                    aria-label="Register for SurakshaLMS"
+                  >
+                    <span className="relative z-10 font-semibold">Register Now</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-background/95 backdrop-blur-xl border border-primary/20">
+                  <p>Join SurakshaLMS today</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             {/* Mobile Menu Button */}
             <Sheet open={isOpen} onOpenChange={setIsOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden p-2 hover:bg-white/10 rounded-2xl transition-all duration-300">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="md:hidden p-2 hover:bg-white/10 rounded-2xl transition-all duration-300 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  aria-label="Open navigation menu"
+                  aria-expanded={isOpen}
+                >
                   <Menu className="h-6 w-6" />
                 </Button>
               </SheetTrigger>
@@ -155,6 +183,6 @@ const ModernNavigation = () => {
           </div>
         </div>
       </nav>
-    </>;
+    </TooltipProvider>;
 };
 export default ModernNavigation;

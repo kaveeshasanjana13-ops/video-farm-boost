@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowRight, MessageCircle, Users, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import ModernNavigation from "./ModernNavigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 import LMSCharacter from "./LMSCharacter";
 import WhiteboardSection from "./WhiteboardSection";
 import TextToVideoSections from "./TextToVideoSections";
@@ -16,9 +16,17 @@ import PartnersSection from "./PartnersSection";
 import VideoShowcaseSection from "./VideoShowcaseSection";
 const LMSHomepage = () => {
   const [isTransformed, setIsTransformed] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const { elementRef: heroRef, isVisible: heroVisible } = useIntersectionObserver();
+  
+  useEffect(() => {
+    const handleScroll = () => setScrollY(window.scrollY);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   const handleLMSClick = () => {
     setIsTransformed(true);
-    // Reset after animation completes
     setTimeout(() => setIsTransformed(false), 4000);
   };
   return <>
@@ -26,7 +34,7 @@ const LMSHomepage = () => {
       <ModernNavigation />
       
       {/* Main LMS Homepage Section */}
-      <div className="min-h-screen bg-background relative overflow-hidden pt-24">
+      <div ref={heroRef} className="min-h-screen bg-background relative overflow-hidden pt-24" style={{ transform: `translateY(${scrollY * 0.3}px)` }}>
         {/* Subtle Dotted Circles Background */}
         <div className="absolute inset-0 overflow-hidden opacity-30">
           {/* Large dotted circles */}
@@ -157,11 +165,25 @@ const LMSHomepage = () => {
           </div>
 
           {/* Mission Statement */}
-          <div className="text-center mb-8 z-10 relative">
-            <img alt="SurakshaLMS" className="h-12 sm:h-16 md:h-20 lg:h-24 w-auto mb-4 animate-fade-in mx-auto" src="/assets/logos/surakshalms-main-logo.png" />
-            <h2 style={{
-            animationDelay: '0.5s'
-          }} className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold bg-gradient-to-r from-primary-dark to-primary bg-clip-text text-transparent mb-2 animate-fade-in">One LMS. One Nation. One Future</h2>
+          <div className={`text-center mb-8 z-10 relative transition-all duration-1000 ${heroVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
+            <img 
+              alt="SurakshaLMS - Leading Learning Management System in Sri Lanka" 
+              className="h-12 sm:h-16 md:h-20 lg:h-24 w-auto mb-4 mx-auto transition-transform duration-500 hover:scale-105" 
+              src="/assets/logos/surakshalms-main-logo.png"
+              loading="eager"
+            />
+            <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold bg-gradient-to-r from-primary-dark to-primary bg-clip-text text-transparent mb-4 animate-fade-in" style={{ animationDelay: '0.3s' }}>
+              One LMS. One Nation. One Future
+            </h1>
+            <Button 
+              className="bg-gradient-to-r from-primary to-primary-dark text-primary-foreground hover:from-primary-dark hover:to-primary rounded-full px-8 py-6 text-lg font-semibold shadow-2xl hover:shadow-primary/50 transition-all duration-500 transform hover:scale-105 animate-fade-in group"
+              onClick={() => window.location.href = '/register/student'}
+              style={{ animationDelay: '0.6s' }}
+              aria-label="Get started with SurakshaLMS"
+            >
+              Get Started Today
+              <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform duration-300" />
+            </Button>
           </div>
 
         </div>
@@ -205,18 +227,18 @@ const LMSHomepage = () => {
         
 
         {/* Footer Stats */}
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-8 text-xs text-muted-foreground opacity-60">
-          <div className="text-center">
-            <div className="font-semibold text-blue-600">430</div>
-            <div>Students</div>
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-8 md:gap-12 text-xs text-muted-foreground" role="region" aria-label="Platform statistics">
+          <div className="text-center transform hover:scale-110 transition-all duration-300 cursor-default">
+            <div className="font-bold text-2xl md:text-3xl bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">430+</div>
+            <div className="mt-1 text-foreground/70">Students</div>
           </div>
-          <div className="text-center">
-            <div className="font-semibold text-blue-600">30</div>
-            <div>Teachers</div>
+          <div className="text-center transform hover:scale-110 transition-all duration-300 cursor-default">
+            <div className="font-bold text-2xl md:text-3xl bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">30+</div>
+            <div className="mt-1 text-foreground/70">Teachers</div>
           </div>
-          <div className="text-center">
-            <div className="font-semibold text-blue-600">6</div>
-            <div>Institutes</div>
+          <div className="text-center transform hover:scale-110 transition-all duration-300 cursor-default">
+            <div className="font-bold text-2xl md:text-3xl bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">6+</div>
+            <div className="mt-1 text-foreground/70">Institutes</div>
           </div>
         </div>
       </div>
