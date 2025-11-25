@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 export default {
+	darkMode: ["class"],
 	content: [
 		"./pages/**/*.{ts,tsx}",
 		"./components/**/*.{ts,tsx}",
@@ -8,9 +9,6 @@ export default {
 		"./src/**/*.{ts,tsx}",
 	],
 	prefix: "",
-	// Enforce light mode unless explicit 'dark' class is present
-	// This prevents OS-level dark scheme from applying
-	darkMode: 'class',
 	theme: {
 		container: {
 			center: true,
@@ -28,7 +26,9 @@ export default {
 				foreground: 'hsl(var(--foreground))',
 				primary: {
 					DEFAULT: 'hsl(var(--primary))',
-					foreground: 'hsl(var(--primary-foreground))'
+					foreground: 'hsl(var(--primary-foreground))',
+					light: 'hsl(var(--primary-light))',
+					dark: 'hsl(var(--primary-dark))'
 				},
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',
@@ -53,6 +53,20 @@ export default {
 				card: {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
+				},
+				success: 'hsl(var(--success))',
+				warning: 'hsl(var(--warning))',
+				info: 'hsl(var(--info))',
+				glass: {
+					DEFAULT: 'rgba(255, 255, 255, 0.1)',
+					card: 'rgba(255, 255, 255, 0.05)'
+				},
+				lms: {
+					blue: 'hsl(var(--lms-blue))',
+					'blue-light': 'hsl(var(--lms-blue-light))',
+					'blue-dark': 'hsl(var(--lms-blue-dark))',
+					glow: 'hsl(var(--lms-glow))',
+					evolution: 'hsl(var(--evolution-dark))'
 				},
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
@@ -86,11 +100,60 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'scroll-right': {
+					'0%': {
+						transform: 'translateX(100%)'
+					},
+					'100%': {
+						transform: 'translateX(-100%)'
+					}
+				},
+				'scroll-left': {
+					'0%': {
+						transform: 'translateX(-100%)'
+					},
+					'100%': {
+						transform: 'translateX(100%)'
+					}
+				},
+				'shimmer': {
+					'0%': {
+						backgroundPosition: '-200% 0'
+					},
+					'100%': {
+						backgroundPosition: '200% 0'
+					}
+				},
+				'fade-in': {
+					'0%': {
+						opacity: '0',
+						transform: 'translateY(10px)'
+					},
+					'100%': {
+						opacity: '1',
+						transform: 'translateY(0)'
+					}
+				},
+				'scale-in': {
+					'0%': {
+						transform: 'scale(0.95)',
+						opacity: '0'
+					},
+					'100%': {
+						transform: 'scale(1)',
+						opacity: '1'
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'scroll-right': 'scroll-right 30s linear infinite',
+				'scroll-left': 'scroll-left 30s linear infinite',
+				'shimmer': 'shimmer 3s ease-in-out infinite',
+				'fade-in': 'fade-in 0.5s ease-out',
+				'scale-in': 'scale-in 0.3s ease-out'
 			}
 		}
 	},
