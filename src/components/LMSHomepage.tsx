@@ -14,6 +14,7 @@ import Footer from "./Footer";
 import SmartNFCSection from "./SmartNFCSection";
 import PartnersSection from "./PartnersSection";
 import VideoShowcaseSection from "./VideoShowcaseSection";
+import ContactForm from "./ContactForm";
 const LMSHomepage = () => {
   const [isTransformed, setIsTransformed] = useState(false);
   const [scrollY, setScrollY] = useState(0);
@@ -269,6 +270,9 @@ const LMSHomepage = () => {
 
       {/* Website Preview Section */}
       <WebsitePreviewSection />
+
+      {/* Contact Form Section */}
+      <ContactForm />
 
       {/* Footer */}
       <Footer />
