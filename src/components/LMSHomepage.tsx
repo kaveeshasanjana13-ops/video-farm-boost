@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles } from "lucide-react";
 import ModernNavigation from "./ModernNavigation";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 import LMSCharacter from "./LMSCharacter";
 import WhiteboardSection from "./WhiteboardSection";
@@ -17,14 +17,7 @@ import VideoShowcaseSection from "./VideoShowcaseSection";
 import ContactForm from "./ContactForm";
 const LMSHomepage = () => {
   const [isTransformed, setIsTransformed] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
   const { elementRef: heroRef, isVisible: heroVisible } = useIntersectionObserver();
-  
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   const handleLMSClick = () => {
     setIsTransformed(true);
@@ -35,7 +28,7 @@ const LMSHomepage = () => {
       <ModernNavigation />
       
       {/* Main LMS Homepage Section */}
-      <div ref={heroRef} className="min-h-screen bg-background relative overflow-hidden pt-24" style={{ transform: `translateY(${scrollY * 0.3}px)` }}>
+      <div ref={heroRef} className="min-h-screen bg-background relative overflow-hidden pt-24">
         {/* Subtle Dotted Circles Background */}
         <div className="absolute inset-0 overflow-hidden opacity-30">
           {/* Large dotted circles */}
