@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Phone, MapPin, Send, CheckCircle2 } from "lucide-react";
+import { Mail, Phone, Send, CheckCircle2 } from "lucide-react";
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver";
 import { z } from "zod";
 
@@ -159,20 +159,6 @@ const ContactForm = () => {
                     <a href="tel:+94703300524" className="text-muted-foreground hover:text-primary transition-colors duration-300">
                       +94 70 330 0524
                     </a>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-4 group">
-                  <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors duration-300">
-                    <MapPin className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground mb-1">Address</p>
-                    <p className="text-muted-foreground">
-                      188/79 The Finans Waththa<br />
-                      Wilimbula, Henegama<br />
-                      Sri Lanka
-                    </p>
                   </div>
                 </div>
               </div>
