@@ -144,6 +144,20 @@ export default {
 						transform: 'scale(1)',
 						opacity: '1'
 					}
+				},
+				'letter-flip': {
+					'0%': {
+						transform: 'rotateX(0deg)',
+						opacity: '1'
+					},
+					'50%': {
+						transform: 'rotateX(90deg)',
+						opacity: '0'
+					},
+					'100%': {
+						transform: 'rotateX(0deg)',
+						opacity: '1'
+					}
 				}
 			},
 			animation: {
@@ -153,7 +167,8 @@ export default {
 				'scroll-left': 'scroll-left 30s linear infinite',
 				'shimmer': 'shimmer 3s ease-in-out infinite',
 				'fade-in': 'fade-in 0.5s ease-out',
-				'scale-in': 'scale-in 0.3s ease-out'
+				'scale-in': 'scale-in 0.3s ease-out',
+				'letter-flip': 'letter-flip 0.6s ease-in-out'
 			}
 		}
 	},

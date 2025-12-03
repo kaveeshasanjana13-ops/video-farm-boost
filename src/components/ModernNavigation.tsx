@@ -8,11 +8,16 @@ import { useState, useEffect } from "react";
 const ModernNavigation = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentLetter, setCurrentLetter] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
   const letters = ['L', 'O', 'T', 'E', 'C'];
   
   useEffect(() => {
     const interval = setInterval(() => {
-      setCurrentLetter((prev) => (prev + 1) % letters.length);
+      setIsAnimating(true);
+      setTimeout(() => {
+        setCurrentLetter((prev) => (prev + 1) % letters.length);
+        setIsAnimating(false);
+      }, 300);
     }, 2000);
     return () => clearInterval(interval);
   }, []);
@@ -57,7 +62,7 @@ const ModernNavigation = () => {
                 <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-primary-light/20 rounded-xl blur opacity-75"></div>
               </div>
               <span className="font-bold text-xl bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">
-                Suraksha<span className="inline-block min-w-[0.6em] text-center transition-all duration-300">{letters[currentLetter]}</span>MS
+                Suraksha<span className={`inline-block min-w-[0.65em] text-center transition-all duration-300 ${isAnimating ? 'animate-letter-flip' : ''}`}>{letters[currentLetter]}</span>MS
               </span>
             </div>
 
@@ -138,7 +143,7 @@ const ModernNavigation = () => {
                   <div className="flex items-center justify-between p-6 border-b border-white/10">
                     <div className="flex items-center gap-3">
                       <img src="/assets/logos/surakshalms-logo.png" alt="SurakshaLMS Logo" className="h-8 w-8 rounded-lg" />
-                      <span className="font-bold text-lg">Suraksha<span className="inline-block min-w-[0.6em] text-center">{letters[currentLetter]}</span>MS</span>
+                      <span className="font-bold text-lg">Suraksha<span className={`inline-block min-w-[0.65em] text-center ${isAnimating ? 'animate-letter-flip' : ''}`}>{letters[currentLetter]}</span>MS</span>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="rounded-xl">
                       <X className="h-5 w-5" />
