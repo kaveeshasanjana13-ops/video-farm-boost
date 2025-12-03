@@ -3,9 +3,19 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { LogIn, Menu, X, Home, FileText, ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
 const ModernNavigation = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [currentLetter, setCurrentLetter] = useState(0);
+  const letters = ['L', 'O', 'T', 'E', 'C'];
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentLetter((prev) => (prev + 1) % letters.length);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
   
   const mainNavItems = [{
     name: "Home",
@@ -47,7 +57,7 @@ const ModernNavigation = () => {
                 <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-primary-light/20 rounded-xl blur opacity-75"></div>
               </div>
               <span className="font-bold text-xl bg-gradient-to-r from-primary to-primary-dark bg-clip-text text-transparent">
-                SurakshaLMS
+                Suraksha<span className="inline-block min-w-[0.6em] text-center transition-all duration-300">{letters[currentLetter]}</span>MS
               </span>
             </div>
 
@@ -128,7 +138,7 @@ const ModernNavigation = () => {
                   <div className="flex items-center justify-between p-6 border-b border-white/10">
                     <div className="flex items-center gap-3">
                       <img src="/assets/logos/surakshalms-logo.png" alt="SurakshaLMS Logo" className="h-8 w-8 rounded-lg" />
-                      <span className="font-bold text-lg">SurakshaLMS</span>
+                      <span className="font-bold text-lg">Suraksha<span className="inline-block min-w-[0.6em] text-center">{letters[currentLetter]}</span>MS</span>
                     </div>
                     <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="rounded-xl">
                       <X className="h-5 w-5" />
