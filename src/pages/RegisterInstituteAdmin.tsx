@@ -58,13 +58,13 @@ const RegisterInstituteAdmin = () => {
       // Step 1: Get signed URL
       const signedUrlResponse = await generateSignedUrl(selectedImage, 'profile');
       
-      // Step 2: Upload file to signed URL
-      await uploadFileToSignedUrl(selectedImage, signedUrlResponse.data);
+      // Step 2: Upload file to S3 using POST with FormData
+      await uploadFileToSignedUrl(selectedImage, signedUrlResponse);
       
       // Step 3: Update profile image with relative path
       await updateProfileImage({
         userId: userId,
-        imageUrl: signedUrlResponse.data.relativePath
+        imageUrl: signedUrlResponse.relativePath
       });
 
       toast({
