@@ -341,20 +341,12 @@ const RegisterStudent = () => {
     setShowMotherForm(true);
   };
   const handleSkipMother = () => {
-    // Allow skipping mother only if father is completed or exists (not skipped)
-    if (fatherCompleted || fatherExists) {
-      setSkipMother(true);
-      setMotherCompleted(true);
-      setShowMotherForm(false);
-      setActiveTab("guardian");
-      setShowGuardianForm(true);
-    } else {
-      toast({
-        title: "Cannot Skip",
-        description: "You must fill father details or enter father ID before skipping mother.",
-        variant: "destructive"
-      });
-    }
+    // Allow skipping mother - mother can always be skipped
+    setSkipMother(true);
+    setMotherCompleted(true);
+    setShowMotherForm(false);
+    setActiveTab("guardian");
+    setShowGuardianForm(true);
   };
   const handleSkipGuardian = () => {
     // Guardian can be skipped if at least one parent (father or mother) is provided
@@ -1220,7 +1212,7 @@ const RegisterStudent = () => {
 
               {/* Mother Details Tab */}
               <TabsContent value="mother" className="space-y-6 mt-6">
-                {showMotherForm && !motherEditMode ? <ParentExistsForm parentType="Mother" onExistingParent={handleExistingMother} onNewParent={handleNewMother} onSkip={handleSkipMother} canSkip={fatherCompleted || fatherExists} /> : <>
+                {showMotherForm && !motherEditMode ? <ParentExistsForm parentType="Mother" onExistingParent={handleExistingMother} onNewParent={handleNewMother} onSkip={handleSkipMother} canSkip={true} /> : <>
                     <div className="space-y-6">
                       <div className="flex items-center gap-3 pb-4 border-b border-border/50">
                         <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-lg">
@@ -1681,6 +1673,7 @@ const RegisterStudent = () => {
 
                         {studentPhoneVerified && <Alert className="bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
                             <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            <AlertTitle className="text-green-600 dark:text-green-400">Phone Verified ✓</AlertTitle>
                             <AlertDescription className="text-green-600 dark:text-green-400">
                               Phone number verified: {studentPhoneForVerification}
                             </AlertDescription>
@@ -1711,7 +1704,7 @@ const RegisterStudent = () => {
                           </div>
                         </div>
 
-                        {emailOTPSent && <div className="space-y-2">
+                        {emailOTPSent && !studentEmailVerified && <div className="space-y-2">
                             <Label>Enter 6-Digit OTP</Label>
                             <div className="flex gap-2 items-center">
                               <InputOTP maxLength={6} value={emailOTP} onChange={setEmailOTP}>
@@ -1730,6 +1723,13 @@ const RegisterStudent = () => {
                               </Button>
                             </div>
                           </div>}
+                        {studentEmailVerified && <Alert className="bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
+                            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            <AlertTitle className="text-green-600 dark:text-green-400">Email Verified ✓</AlertTitle>
+                            <AlertDescription className="text-green-600 dark:text-green-400">
+                              Email verified: {studentEmailForVerification}
+                            </AlertDescription>
+                          </Alert>}
                       </CardContent>
                     </Card>
 
@@ -1959,12 +1959,13 @@ const RegisterStudent = () => {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Father Information */}
                         <div className="space-y-2">
-                          <Label htmlFor="student-fatherId">Father ID {skipFather && !studentData.studentData.fatherId && "(Optional)"}</Label>
+                          <Label htmlFor="student-fatherId">Father ID {skipFather && "(Optional)"}</Label>
                           <div className="flex gap-2">
                             <Input 
                               id="student-fatherId" 
                               value={studentData.studentData.fatherId} 
                               onChange={(e) => {
+                                // Allow typing only if skipped and no existing ID from form
                                 if (skipFather && !fatherCompleted && !fatherExists) {
                                   setStudentData({
                                     ...studentData,
@@ -1975,24 +1976,25 @@ const RegisterStudent = () => {
                                   });
                                 }
                               }}
-                              disabled={!skipFather || fatherCompleted || fatherExists || !!studentData.studentData.fatherId}
-                              className={(!skipFather || fatherCompleted || fatherExists || !!studentData.studentData.fatherId) ? "bg-muted/50 border-border/50 cursor-not-allowed opacity-75" : "bg-background/50 border-border/50"} 
+                              disabled={fatherCompleted || fatherExists}
+                              className={(fatherCompleted || fatherExists) ? "bg-muted/50 border-border/50 cursor-not-allowed opacity-75" : "bg-background/50 border-border/50"} 
                               placeholder={skipFather ? "Enter Father ID (optional)" : "Auto-filled from parent form"} 
                             />
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {skipFather && !studentData.studentData.fatherId ? "You can enter Father ID manually" : "Locked - cannot be changed"}
+                            {fatherCompleted || fatherExists ? "Locked - filled from Father section" : skipFather ? "You can enter Father ID manually" : "Will be auto-filled"}
                           </p>
                         </div>
 
                         {/* Mother Information */}
                         <div className="space-y-2">
-                          <Label htmlFor="student-motherId">Mother ID {skipMother && !studentData.studentData.motherId && "(Optional)"}</Label>
+                          <Label htmlFor="student-motherId">Mother ID {skipMother && "(Optional)"}</Label>
                           <div className="flex gap-2">
                             <Input 
                               id="student-motherId" 
                               value={studentData.studentData.motherId} 
                               onChange={(e) => {
+                                // Allow typing only if skipped and no existing ID from form
                                 if (skipMother && !motherCompleted && !motherExists) {
                                   setStudentData({
                                     ...studentData,
@@ -2003,24 +2005,25 @@ const RegisterStudent = () => {
                                   });
                                 }
                               }}
-                              disabled={!skipMother || motherCompleted || motherExists || !!studentData.studentData.motherId}
-                              className={(!skipMother || motherCompleted || motherExists || !!studentData.studentData.motherId) ? "bg-muted/50 border-border/50 cursor-not-allowed opacity-75" : "bg-background/50 border-border/50"} 
+                              disabled={motherCompleted || motherExists}
+                              className={(motherCompleted || motherExists) ? "bg-muted/50 border-border/50 cursor-not-allowed opacity-75" : "bg-background/50 border-border/50"} 
                               placeholder={skipMother ? "Enter Mother ID (optional)" : "Auto-filled from parent form"} 
                             />
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {skipMother && !studentData.studentData.motherId ? "You can enter Mother ID manually" : "Locked - cannot be changed"}
+                            {motherCompleted || motherExists ? "Locked - filled from Mother section" : skipMother ? "You can enter Mother ID manually" : "Will be auto-filled"}
                           </p>
                         </div>
 
                         {/* Guardian Information */}
                         <div className="space-y-2">
-                          <Label htmlFor="student-guardianId">Guardian ID {skipGuardian && !studentData.studentData.guardianId && "(Optional)"}</Label>
+                          <Label htmlFor="student-guardianId">Guardian ID {skipGuardian && "(Optional)"}</Label>
                           <div className="flex gap-2">
                             <Input 
                               id="student-guardianId" 
                               value={studentData.studentData.guardianId} 
                               onChange={(e) => {
+                                // Allow typing only if skipped and no existing ID from form
                                 if (skipGuardian && !guardianCompleted && !guardianExists) {
                                   setStudentData({
                                     ...studentData,
@@ -2031,13 +2034,13 @@ const RegisterStudent = () => {
                                   });
                                 }
                               }}
-                              disabled={!skipGuardian || guardianCompleted || guardianExists || !!studentData.studentData.guardianId}
-                              className={(!skipGuardian || guardianCompleted || guardianExists || !!studentData.studentData.guardianId) ? "bg-muted/50 border-border/50 cursor-not-allowed opacity-75" : "bg-background/50 border-border/50"} 
+                              disabled={guardianCompleted || guardianExists}
+                              className={(guardianCompleted || guardianExists) ? "bg-muted/50 border-border/50 cursor-not-allowed opacity-75" : "bg-background/50 border-border/50"} 
                               placeholder={skipGuardian ? "Enter Guardian ID (optional)" : "Auto-filled from parent form"} 
                             />
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {skipGuardian && !studentData.studentData.guardianId ? "You can enter Guardian ID manually" : "Locked - cannot be changed"}
+                            {guardianCompleted || guardianExists ? "Locked - filled from Guardian section" : skipGuardian ? "You can enter Guardian ID manually" : "Will be auto-filled"}
                           </p>
                         </div>
                       </div>
