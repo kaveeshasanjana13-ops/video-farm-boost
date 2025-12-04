@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Users, Mail, Phone, MapPin, Briefcase, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { LocationSelector } from "@/components/LocationSelector";
+import { SimpleLocationSelector } from "@/components/SimpleLocationSelector";
 
 const RegisterParent = () => {
   const [formData, setFormData] = useState({
@@ -252,7 +252,7 @@ const RegisterParent = () => {
                     />
                   </div>
 
-                <LocationSelector
+                <SimpleLocationSelector
                   province={formData.province}
                   district={formData.district}
                   city={formData.city}
