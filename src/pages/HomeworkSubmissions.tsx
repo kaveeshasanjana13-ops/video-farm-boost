@@ -367,8 +367,8 @@ const HomeworkSubmissions = () => {
                       Student Submissions ({submissions.length})
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="overflow-x-auto">
+                  <CardContent className="p-0" style={{ height: 'calc(100vh - 400px)', minHeight: '400px' }}>
+                    <div className="overflow-auto h-full">
                   <Table>
                     <TableHeader>
                       <TableRow>

@@ -5,43 +5,43 @@
 
 @layer base {
   :root {
-    /* Modern Slate + Indigo Theme */
-    --background: 220 14% 96%;
-    --foreground: 224 71% 4%;
+    /* Modern Slate + Blue Theme */
+    --background: 210 20% 96%;
+    --foreground: 222 47% 11%;
     
     --card: 0 0% 100%;
-    --card-foreground: 224 71% 4%;
+    --card-foreground: 222 47% 11%;
     
     --popover: 0 0% 100%;
-    --popover-foreground: 224 71% 4%;
+    --popover-foreground: 222 47% 11%;
     
-    /* Vibrant Indigo Primary */
-    --primary: 239 84% 67%;
+    /* Vibrant Blue Primary */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
     
     /* Soft Slate Secondary */
-    --secondary: 220 14% 92%;
-    --secondary-foreground: 224 71% 4%;
+    --secondary: 210 20% 92%;
+    --secondary-foreground: 222 47% 11%;
     
-    --muted: 220 14% 94%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 16% 47%;
     
-    /* Teal Accent */
-    --accent: 172 66% 50%;
+    /* Cyan Accent */
+    --accent: 199 89% 48%;
     --accent-foreground: 0 0% 100%;
     
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 239 84% 67%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
     
-    /* Chart Colors - Vibrant Palette */
-    --chart-1: 239 84% 67%;
-    --chart-2: 172 66% 50%;
+    /* Chart Colors - Blue Palette */
+    --chart-1: 217 91% 60%;
+    --chart-2: 199 89% 48%;
     --chart-3: 43 96% 56%;
-    --chart-4: 280 87% 65%;
+    --chart-4: 173 80% 40%;
     --chart-5: 12 95% 62%;
     
     /* Modern Radius */
@@ -49,13 +49,13 @@
     
     /* Sidebar - Clean Minimal */
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 224 71% 4%;
-    --sidebar-primary: 239 84% 67%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 96%;
-    --sidebar-accent-foreground: 239 84% 67%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 239 84% 67%;
+    --sidebar-accent: 210 20% 96%;
+    --sidebar-accent-foreground: 217 91% 60%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 217 91% 60%;
     
     /* Custom Status Colors */
     --success: 152 76% 48%;
@@ -66,12 +66,12 @@
     --info-foreground: 0 0% 100%;
     
     /* Premium Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(239 84% 67%), hsl(280 87% 65%));
-    --gradient-accent: linear-gradient(135deg, hsl(172 66% 50%), hsl(199 89% 48%));
+    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%), hsl(199 89% 48%));
+    --gradient-accent: linear-gradient(135deg, hsl(199 89% 48%), hsl(173 80% 40%));
     --gradient-warm: linear-gradient(135deg, hsl(12 95% 62%), hsl(43 96% 56%));
-    --gradient-mesh: radial-gradient(at 40% 20%, hsl(239 84% 67% / 0.15) 0px, transparent 50%),
-                     radial-gradient(at 80% 0%, hsl(172 66% 50% / 0.1) 0px, transparent 50%),
-                     radial-gradient(at 0% 50%, hsl(280 87% 65% / 0.1) 0px, transparent 50%);
+    --gradient-mesh: radial-gradient(at 40% 20%, hsl(217 91% 60% / 0.15) 0px, transparent 50%),
+                     radial-gradient(at 80% 0%, hsl(199 89% 48% / 0.1) 0px, transparent 50%),
+                     radial-gradient(at 0% 50%, hsl(173 80% 40% / 0.1) 0px, transparent 50%);
     
     /* Refined Shadows */
     --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.03);
@@ -80,47 +80,47 @@
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.08);
     --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.15);
-    --shadow-glow: 0 0 30px hsl(239 84% 67% / 0.2);
-    --shadow-glow-accent: 0 0 30px hsl(172 66% 50% / 0.2);
+    --shadow-glow: 0 0 30px hsl(217 91% 60% / 0.2);
+    --shadow-glow-accent: 0 0 30px hsl(199 89% 48% / 0.2);
   }
 
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 220 14% 96%;
+    --background: 222 47% 4%;
+    --foreground: 210 20% 96%;
     
-    --card: 224 71% 7%;
-    --card-foreground: 220 14% 96%;
+    --card: 222 47% 7%;
+    --card-foreground: 210 20% 96%;
     
-    --popover: 224 71% 7%;
-    --popover-foreground: 220 14% 96%;
+    --popover: 222 47% 7%;
+    --popover-foreground: 210 20% 96%;
     
-    --primary: 239 84% 67%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
     
-    --secondary: 220 14% 14%;
-    --secondary-foreground: 220 14% 96%;
+    --secondary: 215 28% 14%;
+    --secondary-foreground: 210 20% 96%;
     
-    --muted: 220 14% 14%;
-    --muted-foreground: 220 9% 60%;
+    --muted: 215 28% 14%;
+    --muted-foreground: 215 16% 60%;
     
-    --accent: 172 66% 50%;
+    --accent: 199 89% 48%;
     --accent-foreground: 0 0% 100%;
     
     --destructive: 0 63% 51%;
     --destructive-foreground: 0 0% 100%;
     
-    --border: 220 14% 14%;
-    --input: 220 14% 14%;
-    --ring: 239 84% 67%;
+    --border: 215 28% 14%;
+    --input: 215 28% 14%;
+    --ring: 217 91% 60%;
     
-    --sidebar-background: 224 71% 6%;
-    --sidebar-foreground: 220 14% 96%;
-    --sidebar-primary: 239 84% 67%;
+    --sidebar-background: 222 47% 6%;
+    --sidebar-foreground: 210 20% 96%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 12%;
-    --sidebar-accent-foreground: 239 84% 75%;
-    --sidebar-border: 220 14% 14%;
-    --sidebar-ring: 239 84% 67%;
+    --sidebar-accent: 215 28% 12%;
+    --sidebar-accent-foreground: 217 91% 70%;
+    --sidebar-border: 215 28% 14%;
+    --sidebar-ring: 217 91% 60%;
   }
 
   /* Modern Scrollbar */
@@ -414,14 +414,14 @@
 }
 
 .ReactCrop__crop-selection {
-  border: 2px dashed hsl(239 84% 67%) !important;
+  border: 2px dashed hsl(217 91% 60%) !important;
   border-radius: 8px !important;
 }
 
 .ReactCrop__drag-handle {
   width: 14px !important;
   height: 14px !important;
-  background-color: hsl(239 84% 67%) !important;
+  background-color: hsl(217 91% 60%) !important;
   border: 2px solid white !important;
   border-radius: 50% !important;
   opacity: 1 !important;

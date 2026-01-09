@@ -280,7 +280,7 @@ const PaymentSubmissions = () => {
       page: 1
     });
   };
-  return <AppLayout currentPage="subject-payments">
+  return <AppLayout currentPage={isSubjectPayment ? "subject-payments" : "institute-payments"}>
       <div className="space-y-3 sm:space-y-6 px-2 sm:px-0">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">

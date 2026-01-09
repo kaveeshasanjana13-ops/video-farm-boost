@@ -336,13 +336,6 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
     ...((instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') ? [
       {
         label: '',
-        action: (homework: any) => handleViewHomework(homework),
-        icon: <Eye className="h-4 w-4" />,
-        variant: 'outline' as const,
-        tooltip: 'View details'
-      },
-      {
-        label: '',
         action: (homework: any) => handleEditHomework(homework),
         icon: <Edit className="h-4 w-4" />,
         variant: 'outline' as const,
@@ -352,13 +345,6 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
     
     // Actions for Students
     ...(instituteRole === 'Student' ? [
-      {
-        label: '',
-        action: (homework: any) => handleViewHomework(homework),
-        icon: <Eye className="h-4 w-4" />,
-        variant: 'outline' as const,
-        tooltip: 'View details'
-      },
       {
         label: 'Submit',
         action: (homework: any) => handleSubmitHomework(homework),
@@ -557,7 +543,6 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
             }))}
             onAdd={canAdd ? () => setIsCreateDialogOpen(true) : undefined}
             onEdit={isStudent ? handleSubmitHomework : (canEdit ? handleEditHomework : undefined)}
-            onView={handleViewHomework}
             page={page}
             rowsPerPage={rowsPerPage}
             totalCount={totalCount}

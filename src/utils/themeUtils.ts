@@ -69,12 +69,12 @@ export function applyInstituteTheme(primaryColor?: string, secondaryColor?: stri
 export function resetToDefaultTheme(): void {
   const root = document.documentElement;
   
-  // Light mode defaults
-  root.style.setProperty('--primary', '221.2 83.2% 53.3%');
-  root.style.setProperty('--secondary', '210 40% 96%');
-  root.style.setProperty('--accent', '210 40% 96%');
-  root.style.setProperty('--ring', '221.2 83.2% 53.3%');
-  root.style.setProperty('--sidebar-primary', '221.2 83.2% 53.3%');
-  root.style.setProperty('--sidebar-accent', '210 40% 96%');
-  root.style.setProperty('--sidebar-ring', '221.2 83.2% 53.3%');
+  // Blue theme defaults
+  root.style.setProperty('--primary', '217 91% 60%');
+  root.style.setProperty('--secondary', '210 20% 92%');
+  root.style.setProperty('--accent', '199 89% 48%');
+  root.style.setProperty('--ring', '217 91% 60%');
+  root.style.setProperty('--sidebar-primary', '217 91% 60%');
+  root.style.setProperty('--sidebar-accent', '210 20% 96%');
+  root.style.setProperty('--sidebar-ring', '217 91% 60%');
 }

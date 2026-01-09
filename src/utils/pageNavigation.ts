@@ -141,7 +141,6 @@ export const extractPageFromUrl = (pathname: string): string => {
   // Map sub-routes to their parent pages (for sidebar highlighting only - NOT for component rendering)
   const subRouteMap: Record<string, string> = {
     'system-payments/create': 'system-payment',
-    'payment-submissions': 'system-payment',
   };
   
   // Check if path matches any sub-route pattern

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { MessageSquare, Send, Users, DollarSign, RefreshCw, Eye, Plus } from 'lucide-react';
+import { MessageSquare, Send, Users, DollarSign, RefreshCw, Eye, Plus, Lock } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useTableData } from '@/hooks/useTableData';
 import Paper from '@mui/material/Paper';
@@ -693,17 +693,19 @@ const SMS = () => {
                     <Input
                       id="subject-ids"
                       value={selectedSubjects.join(', ')}
-                      placeholder="Select subjects"
+                      placeholder="Subject selection locked"
                       disabled
+                      className="bg-muted/50"
                     />
-                    <SubjectMultiSelectDialog
-                      instituteId={currentInstituteId}
-                      userId={currentInstituteId}
-                      role={String(instituteRole || 'User')}
-                      selectedIds={selectedSubjects}
-                      onChange={setSelectedSubjects}
-                      triggerLabel="Select"
-                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      disabled 
+                      className="opacity-60 cursor-not-allowed"
+                    >
+                      <Lock className="h-4 w-4 mr-1" />
+                      Select
+                    </Button>
                   </div>
 
                   {selectedSubjects.length > 0 && (
@@ -863,8 +865,11 @@ const SMS = () => {
                       size="sm" 
                       onClick={fetchPaymentSubmissions}
                       disabled={loadingPayments}
+                      className="gap-2"
                     >
                       <RefreshCw className={`h-4 w-4 ${loadingPayments ? 'animate-spin' : ''}`} />
+                      <span className="hidden sm:inline">{loadingPayments ? 'Loading...' : 'Load Data'}</span>
+                      <span className="sm:hidden">{loadingPayments ? 'Loading' : 'Load'}</span>
                     </Button>
                   </div>
                 </div>
@@ -872,8 +877,8 @@ const SMS = () => {
                 {loadingPayments ? (
                   <p className="text-muted-foreground">Loading payment submissions...</p>
                 ) : (
-                  <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-                    <TableContainer sx={{ maxHeight: 440 }}>
+                  <Paper sx={{ width: '100%', overflow: 'hidden', height: 'calc(100vh - 400px)' }}>
+                    <TableContainer sx={{ height: 'calc(100% - 56px)' }}>
                       <Table stickyHeader aria-label="payment submissions table">
                         <TableHead>
                           <TableRow>
