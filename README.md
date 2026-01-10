@@ -1,40 +1,22 @@
-# Suraksha LMS - Learning Management System
+# Welcome to your Lovable project
 
-Modern learning management system for educational institutes providing comprehensive student management, attendance tracking, exam management, and more.
+## Project info
 
-## 🚀 Production URL
+**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
 
-**Live Site**: https://lms.suraksha.lk
+## How can I edit this code?
 
-## 📋 System Analysis & Documentation
+There are several ways of editing your application.
 
-> ⚠️ **IMPORTANT:** This project has undergone a comprehensive system analysis. Please review the documentation before making changes.
+**Use Lovable**
 
-### 📚 Complete Documentation Suite:
+Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
 
-| Document | Purpose | Audience | Priority |
-|----------|---------|----------|----------|
-| **[📖 DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)** | Start here - Overview of all documents | Everyone | ⭐⭐⭐⭐⭐ |
-| **[🎯 EXECUTIVE_SUMMARY.md](./EXECUTIVE_SUMMARY.md)** | High-level overview with ROI | Executives, Managers | ⭐⭐⭐⭐⭐ |
-| **[📊 SYSTEM_ANALYSIS.md](./SYSTEM_ANALYSIS.md)** | Complete technical analysis | Tech Leads, Architects | ⭐⭐⭐⭐⭐ |
-| **[⚡ ISSUES_SUMMARY.md](./ISSUES_SUMMARY.md)** | Quick reference of all issues | All Team Members | ⭐⭐⭐⭐⭐ |
-| **[🔧 BUG_FIXES_EXAMPLES.md](./BUG_FIXES_EXAMPLES.md)** | Code examples and fixes | Developers | ⭐⭐⭐⭐ |
-| **[✅ IMPLEMENTATION_CHECKLIST.md](./IMPLEMENTATION_CHECKLIST.md)** | 8-week implementation plan | Dev Team, PMs | ⭐⭐⭐⭐ |
-| **[🔐 ROLE_MIGRATION_GUIDE.md](./ROLE_MIGRATION_GUIDE.md)** | Fix role authorization | Developers | ⭐⭐⭐⭐⭐ |
-| **[📄 README_PAGINATION_ENHANCEMENTS.md](./README_PAGINATION_ENHANCEMENTS.md)** | Pagination status | Developers | ⭐⭐⭐ |
+Changes made via Lovable will be committed automatically to this repo.
 
-### 🚨 Critical Issues (Fix Immediately):
-1. **30+ files** need role migration - [ROLE_MIGRATION_GUIDE.md](./ROLE_MIGRATION_GUIDE.md)
-2. **Security vulnerabilities** in token storage - [SYSTEM_ANALYSIS.md](./SYSTEM_ANALYSIS.md#2-security-vulnerabilities)
-3. **100+ console.log** statements in production - [BUG_FIXES_EXAMPLES.md](./BUG_FIXES_EXAMPLES.md#2-security-bug---exposed-tokens)
-4. **No error boundaries** - App crashes not handled
-5. **Incomplete pagination** - Performance issues with large data
+**Use your preferred IDE**
 
-**📊 Progress:** 0% Critical Issues | 27% Pagination | 100% Documentation
-
----
-
-## 🛠️ Development Setup
+If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
 
 The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
@@ -78,22 +60,14 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
-## 🚀 Deployment
+## How can I deploy this project?
 
-### Production Build
+Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
 
-```bash
-npm run build
-```
+## Can I connect a custom domain to my Lovable project?
 
-### Deploy to Production
+Yes, you can!
 
-The application is deployed at **https://lms.suraksha.lk**
+To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
-### Custom Domain Setup
-
-This application is configured for the domain **lms.suraksha.lk** with proper SEO and meta tags.
-
-## 📝 Environment Variables
-
-Create a `.env` file based on `.env.example` and configure your Supabase credentials for production.
+Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
