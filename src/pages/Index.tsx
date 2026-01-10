@@ -56,38 +56,38 @@ const Index = () => {
       {/* Scroll Progress */}
       <ScrollProgress />
 
-      {/* Hero Section - First slide */}
-      <section className="sticky top-0 z-[1]">
+      {/* Hero Section */}
+      <section className="relative">
         <HeroSection />
       </section>
 
-      {/* Horizontal Gallery - Second slide */}
-      <section id="work" className="sticky top-0 z-[2] bg-background">
+      {/* Horizontal Gallery */}
+      <section id="work" className="relative bg-background">
         <HorizontalGallery />
       </section>
 
-      {/* Video Section - Third slide */}
-      <section id="video" className="sticky top-0 z-[3] bg-background">
+      {/* Video Section */}
+      <section id="video" className="relative bg-background">
         <ShowreelSection />
       </section>
 
-      {/* Portfolio Grid - Fourth slide */}
-      <section className="sticky top-0 z-[4] bg-background">
+      {/* Portfolio Grid */}
+      <section className="relative bg-background">
         <PortfolioGrid />
       </section>
 
-      {/* About Section - Fifth slide */}
-      <section id="about" className="sticky top-0 z-[5] bg-background">
+      {/* About Section */}
+      <section id="about" className="relative bg-background">
         <AboutSection />
       </section>
 
-      {/* Contact Section - Sixth slide */}
-      <section id="contact" className="sticky top-0 z-[6] bg-background">
+      {/* Contact Section */}
+      <section id="contact" className="relative bg-background">
         <ContactSection />
       </section>
 
-      {/* Footer - Last slide - relative to break sticky chain */}
-      <section className="relative z-[8] bg-background">
+      {/* Footer */}
+      <section className="relative bg-background">
         <Footer />
       </section>
     </div>
