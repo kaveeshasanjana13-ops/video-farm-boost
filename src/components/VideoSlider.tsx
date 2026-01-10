@@ -81,8 +81,8 @@ const VideoSlider = () => {
 
   return (
     <div className="w-full max-w-5xl mx-auto">
-      {/* Always-visible YouTube player (no placeholder) */}
-      <div className="relative w-full aspect-video overflow-hidden rounded-lg bg-card border border-border">
+      {/* Always-visible YouTube player */}
+      <div className="relative w-full aspect-video overflow-hidden rounded-xl bg-card border border-border shadow-2xl shadow-background/50">
         <iframe
           key={`${activeVideo.id}-${autoplay ? 'play' : 'pause'}`}
           src={iframeSrc}
@@ -99,7 +99,7 @@ const VideoSlider = () => {
             className="absolute inset-0 z-10 flex items-center justify-center bg-background/20 backdrop-blur-[1px] transition-colors hover:bg-background/10"
             aria-label={`Play ${activeVideo.title}`}
           >
-            <span className="flex items-center gap-3 rounded-full border border-primary/60 bg-background/30 px-6 py-3 text-primary">
+            <span className="flex items-center gap-3 rounded-full border border-primary/60 bg-background/30 px-6 py-3 text-primary backdrop-blur-sm">
               <Play className="h-5 w-5" />
               <span className="text-sm font-body uppercase tracking-[0.25em]">Play</span>
             </span>
@@ -107,57 +107,91 @@ const VideoSlider = () => {
         )}
       </div>
 
-      {/* Compact thumbnail strip */}
-      <div className="mt-6">
-        <div className="flex items-center justify-center gap-3 md:gap-4 px-4">
+      {/* 3D Carousel thumbnails - overlapping the video */}
+      <div className="-mt-12 md:-mt-16 relative z-20">
+        <div className="relative flex items-center justify-center h-[140px] md:h-[180px]">
           {videos.map((video, index) => {
             const isActive = activeIndex === index;
+            const isPrev = (activeIndex - 1 + videos.length) % videos.length === index;
+            const isNext = (activeIndex + 1) % videos.length === index;
+            const isPrev2 = (activeIndex - 2 + videos.length) % videos.length === index;
+            const isNext2 = (activeIndex + 2) % videos.length === index;
+
+            let transform = 'scale(0.5) translateX(0)';
+            let zIndex = 1;
+            let opacity = 0;
+
+            if (isActive) {
+              transform = 'scale(1) translateX(0)';
+              zIndex = 10;
+              opacity = 1;
+            } else if (isPrev) {
+              transform = 'scale(0.75) translateX(-85%)';
+              zIndex = 5;
+              opacity = 0.7;
+            } else if (isNext) {
+              transform = 'scale(0.75) translateX(85%)';
+              zIndex = 5;
+              opacity = 0.7;
+            } else if (isPrev2) {
+              transform = 'scale(0.55) translateX(-160%)';
+              zIndex = 2;
+              opacity = 0.35;
+            } else if (isNext2) {
+              transform = 'scale(0.55) translateX(160%)';
+              zIndex = 2;
+              opacity = 0.35;
+            }
 
             return (
               <button
                 key={video.id}
                 type="button"
-                className={`relative flex-shrink-0 w-[100px] md:w-[140px] aspect-video cursor-pointer transition-all duration-400 ease-out rounded-md overflow-hidden border-2 ${
-                  isActive
-                    ? 'border-primary scale-105 shadow-lg shadow-primary/20'
-                    : 'border-border/50 opacity-60 hover:opacity-90 hover:border-primary/40'
+                className={`absolute w-[55%] md:w-[45%] aspect-video cursor-pointer transition-all duration-500 ease-out text-left rounded-lg overflow-hidden ${
+                  isActive 
+                    ? 'shadow-2xl shadow-primary/30 ring-2 ring-primary/60' 
+                    : 'shadow-lg shadow-background/50'
                 }`}
+                style={{ transform, zIndex, opacity }}
                 onClick={() => setActiveIndex(index)}
                 aria-label={`Select ${video.title}`}
               >
-                <img
-                  src={video.thumbnail}
-                  alt={`${video.title} thumbnail`}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                />
-                <div className={`absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent transition-opacity duration-300 ${
-                  isActive ? 'opacity-100' : 'opacity-70'
-                }`} />
-                
-                {isActive && (
-                  <div className="absolute bottom-1 left-1 right-1">
-                    <span className="text-[9px] md:text-[10px] text-primary uppercase tracking-wider font-body line-clamp-1">
-                      {video.category}
-                    </span>
-                  </div>
-                )}
+                <div className="relative h-full w-full overflow-hidden group">
+                  <img
+                    src={video.thumbnail}
+                    alt={`${video.title} thumbnail`}
+                    className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+
+                  {isActive && (
+                    <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4">
+                      <span className="text-primary text-[10px] md:text-xs uppercase tracking-[0.2em] font-body mb-0.5 block">
+                        {video.category}
+                      </span>
+                      <h3 className="text-sm md:text-base font-display text-foreground line-clamp-1">
+                        {video.title}
+                      </h3>
+                    </div>
+                  )}
+                </div>
               </button>
             );
           })}
         </div>
 
-        {/* Minimal dots indicator */}
+        {/* Premium dots indicator */}
         <div className="flex justify-center gap-2 mt-4">
           {videos.map((_, index) => (
             <button
               key={index}
               type="button"
               onClick={() => setActiveIndex(index)}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
+              className={`rounded-full transition-all duration-300 ${
                 activeIndex === index
-                  ? 'bg-primary w-6'
-                  : 'bg-muted-foreground/20 hover:bg-muted-foreground/40 w-1.5'
+                  ? 'bg-gradient-to-r from-primary to-primary/70 w-6 h-1.5 shadow-sm shadow-primary/40'
+                  : 'bg-muted-foreground/20 hover:bg-muted-foreground/40 w-1.5 h-1.5'
               }`}
               aria-label={`Go to video ${index + 1}`}
             />
