@@ -58,7 +58,7 @@ const HorizontalGallery = () => {
       </div>
 
       {/* Horizontal Scrollable Gallery */}
-      <div ref={triggerRef} className="flex-1 overflow-x-auto overflow-y-hidden pb-12">
+      <div ref={triggerRef} className="flex-1 overflow-x-auto overflow-y-hidden pb-12 hide-scrollbar">
         <div
           ref={containerRef}
           className="flex items-stretch h-full gap-6 md:gap-8 px-6 md:px-12 lg:px-24"
