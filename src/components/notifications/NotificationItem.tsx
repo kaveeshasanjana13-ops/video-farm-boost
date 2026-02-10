@@ -145,6 +145,19 @@ export const NotificationItem: React.FC<NotificationItemProps> = ({
             From: {notification.senderName}
           </p>
         )}
+
+        {/* Notification Image */}
+        {notification.imageUrl && (
+          <div className="mt-2 rounded-lg overflow-hidden">
+            <img 
+              src={notification.imageUrl} 
+              alt="" 
+              className="w-full h-24 sm:h-32 object-cover rounded-lg"
+              loading="lazy"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
