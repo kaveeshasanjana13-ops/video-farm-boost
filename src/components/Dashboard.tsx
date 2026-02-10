@@ -1,45 +1,12 @@
 import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
-import ClassSelector from './ClassSelector';
-import SubjectSelector from './SubjectSelector';
 import SubjectDashboard from '@/pages/SubjectDashboard';
-
-import Lectures from './Lectures';
-import Results from './Results';
-import DataTable from './ui/data-table';
-import AdminFilters from './AdminFilters';
 import ParentChildrenSelector from './ParentChildrenSelector';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, BookOpen, Calendar, TrendingUp, Award, Clock } from 'lucide-react';
+import { Users } from 'lucide-react';
 import UnderMaintenance from './UnderMaintenance';
-
-// Mock dashboard data
-const mockStats = [{
-  title: 'Total Students',
-  value: '1,234',
-  icon: Users,
-  change: '+12%',
-  changeType: 'positive'
-}, {
-  title: 'Active Classes',
-  value: '24',
-  icon: BookOpen,
-  change: '+3',
-  changeType: 'positive'
-}, {
-  title: 'Today\'s Attendance',
-  value: '87%',
-  icon: Calendar,
-  change: '+5%',
-  changeType: 'positive'
-}, {
-  title: 'Average Performance',
-  value: '82%',
-  icon: Award,
-  change: '-2%',
-  changeType: 'negative'
-}];
+import MobileDashboard from './MobileDashboard';
+import { useIsMobile } from '@/hooks/use-mobile';
 const Dashboard = () => {
   const {
     user,
@@ -50,7 +17,8 @@ const Dashboard = () => {
     isViewingAsParent
   } = useAuth();
 
-  const userRole = useInstituteRole(); // CRITICAL: Use institute-specific role
+  const userRole = useInstituteRole();
+  const isMobile = useIsMobile();
   console.log('🎯 Dashboard - Institute Role:', userRole, 'from instituteUserType:', selectedInstitute?.userRole, 'isViewingAsParent:', isViewingAsParent);
 
   // Parent viewing child's subject dashboard - show view-only banner
@@ -100,12 +68,14 @@ const Dashboard = () => {
     );
   }
 
-  // For Attendance Markers, show Under Maintenance
+  // For Attendance Markers on mobile, show mobile dashboard
   if (userRole === 'AttendanceMarker') {
+    if (isMobile) return <MobileDashboard />;
     return <UnderMaintenance title="Attendance Marker Dashboard" description="Dashboard features are under maintenance. Use the sidebar to navigate to attendance features." />;
   }
 
-  // All other dashboards show Under Maintenance
+  // All other dashboards - show mobile dashboard on mobile, under maintenance on desktop
+  if (isMobile) return <MobileDashboard />;
   return <UnderMaintenance title="Dashboard Under Maintenance" description="We're working on improving the dashboard experience. Please check back later or use the sidebar to navigate to other features." />;
 };
 export default Dashboard;
