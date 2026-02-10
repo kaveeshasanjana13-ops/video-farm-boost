@@ -355,7 +355,7 @@ const Profile = () => {
               </div>
             </div>
             <div className="text-center sm:text-left flex-1">
-              <h1 className="text-2xl font-bold text-foreground">{formData.name || 'Welcome'}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground break-words">{formData.nameWithInitials || formData.name || 'Welcome'}</h1>
               <p className="text-muted-foreground text-sm mt-1">{formData.email}</p>
               <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start">
                 <Badge variant="secondary" className="text-xs">
