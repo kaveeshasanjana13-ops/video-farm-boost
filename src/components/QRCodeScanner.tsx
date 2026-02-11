@@ -13,6 +13,7 @@ import { attendanceDuplicateChecker } from '@/utils/attendanceDuplicateCheck';
 import { ArrowLeft, Camera, QrCode, UserCheck, CheckCircle, MapPin, Monitor, Users, X, RefreshCw } from 'lucide-react';
 import jsQR from 'jsqr';
 import { getAttendanceUrl, getBaseUrl } from '@/contexts/utils/auth.api';
+import { Capacitor } from '@capacitor/core';
 
 interface MarkAttendanceRequest {
   instituteId: string;
@@ -90,38 +91,44 @@ const QRCodeScanner = () => {
     setLocationLoading(true);
     console.log('Fetching location...');
     
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          console.log('GPS coordinates:', { latitude, longitude });
-          
-          try {
-            const address = await reverseGeocode(latitude, longitude);
-            setLocation({ latitude, longitude, address });
-            console.log('Location set:', { latitude, longitude, address });
-          } catch (error) {
-            console.log('Reverse geocoding failed, using coordinates');
-            const address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
-            setLocation({ latitude, longitude, address });
-          }
-          setLocationLoading(false);
-        },
-        (error) => {
-          console.log('Location access error (optional):', error);
-          // Location is optional for attendance; continue without it
-          setLocation(null);
-          setLocationLoading(false);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000
-        }
-      );
-    } else {
-      console.log('Geolocation not supported');
+    try {
+      let latitude: number, longitude: number;
+      
+      if (Capacitor.isNativePlatform()) {
+        const { Geolocation } = await import('@capacitor/geolocation');
+        await Geolocation.requestPermissions();
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+        latitude = pos.coords.latitude;
+        longitude = pos.coords.longitude;
+      } else if (navigator.geolocation) {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000
+          });
+        });
+        latitude = pos.coords.latitude;
+        longitude = pos.coords.longitude;
+      } else {
+        console.log('Geolocation not supported');
+        setLocation(null);
+        setLocationLoading(false);
+        return;
+      }
+      
+      console.log('GPS coordinates:', { latitude, longitude });
+      try {
+        const address = await reverseGeocode(latitude, longitude);
+        setLocation({ latitude, longitude, address });
+      } catch {
+        const address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+        setLocation({ latitude, longitude, address });
+      }
+    } catch (error) {
+      console.log('Location access error (optional):', error);
       setLocation(null);
+    } finally {
       setLocationLoading(false);
     }
   };

@@ -12,6 +12,7 @@ import { childAttendanceApi } from '@/api/childAttendance.api';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 import { buildAttendanceAddress } from '@/utils/attendanceAddress';
 import { AttendanceStatus, ALL_ATTENDANCE_STATUSES, ATTENDANCE_STATUS_CONFIG } from '@/types/attendance.types';
+import { Capacitor } from '@capacitor/core';
 
 interface LastAttendance {
   instituteCardId: string;
@@ -55,28 +56,38 @@ const InstituteMarkAttendance = () => {
 
   // Get user location
   useEffect(() => {
-    const getLocation = () => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const { latitude, longitude } = position.coords;
-            try {
-              const response = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-              );
-              const data = await response.json();
-              setLocation(data.display_name || 'Unknown Location');
-            } catch (error) {
-              console.error('Error fetching address:', error);
-              setLocation('Location detected');
-            }
-          },
-          (error) => {
-            console.error('Error getting location:', error);
-            setLocation('Gate Scanner - Main Entrance');
-          }
-        );
-      } else {
+    const getLocation = async () => {
+      try {
+        let latitude: number, longitude: number;
+        
+        if (Capacitor.isNativePlatform()) {
+          const { Geolocation } = await import('@capacitor/geolocation');
+          await Geolocation.requestPermissions();
+          const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+          latitude = pos.coords.latitude;
+          longitude = pos.coords.longitude;
+        } else if (navigator.geolocation) {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject);
+          });
+          latitude = pos.coords.latitude;
+          longitude = pos.coords.longitude;
+        } else {
+          setLocation('Gate Scanner - Main Entrance');
+          return;
+        }
+        
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+          );
+          const data = await response.json();
+          setLocation(data.display_name || 'Unknown Location');
+        } catch {
+          setLocation('Location detected');
+        }
+      } catch (error) {
+        console.error('Error getting location:', error);
         setLocation('Gate Scanner - Main Entrance');
       }
     };
