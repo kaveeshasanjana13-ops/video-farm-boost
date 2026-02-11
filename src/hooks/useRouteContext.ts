@@ -164,7 +164,10 @@ export const useRouteContext = () => {
       return;
     }
 
+    setIsValidating(true); // Start validation
+    
     const syncContextFromUrl = async () => {
+      try {
       // Sync URL params to context
       const urlInstituteIdLocal = urlInstituteId;
       const urlClassIdLocal = urlClassId;
@@ -333,8 +336,12 @@ export const useRouteContext = () => {
           });
       }
 
-      // Done validating
-      setIsValidating(false);
+      } catch (error) {
+        console.error('Error in syncContextFromUrl:', error);
+      } finally {
+        // Always mark validation as complete
+        setIsValidating(false);
+      }
     };
 
     syncContextFromUrl();
