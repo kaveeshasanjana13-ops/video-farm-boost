@@ -189,10 +189,8 @@ export const tokenStorageService = {
     if (isNativePlatform()) {
       await secureStorage.set(KEYS.REFRESH_TOKEN, token);
     } else {
-      const rememberMe = localStorage.getItem(KEYS.REMEMBER_ME);
-      if (rememberMe === 'true') {
-        localStorage.setItem(KEYS.REFRESH_TOKEN, token);
-      }
+      // Always store refresh token on web — httpOnly cookies don't work cross-origin
+      localStorage.setItem(KEYS.REFRESH_TOKEN, token);
     }
   },
 

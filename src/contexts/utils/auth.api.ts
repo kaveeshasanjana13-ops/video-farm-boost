@@ -183,27 +183,20 @@ export const refreshAccessToken = async (): Promise<ApiUserResponse> => {
           })
         });
       } else {
-        // Web: try cookie-based refresh first
+        // Web: Always include refresh_token in body.
+        // httpOnly cookies don't work cross-origin (preview domain ≠ API domain),
+        // so we must send the stored token explicitly.
+        const storedRefreshToken = await tokenStorageService.getRefreshToken();
+        if (!storedRefreshToken) {
+          throw new Error('No refresh token available');
+        }
+        
         response = await fetch(`${baseUrl}/v2/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
+          body: JSON.stringify({ refresh_token: storedRefreshToken })
         });
-
-        // If cookie-based refresh fails, try stored refresh token as fallback
-        if (!response.ok) {
-          console.log('🔁 Cookie-based refresh failed, trying stored refresh token...');
-          const storedRefreshToken = await tokenStorageService.getRefreshToken();
-          if (storedRefreshToken) {
-            response = await fetch(`${baseUrl}/v2/auth/refresh`, {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ refresh_token: storedRefreshToken })
-            });
-          }
-        }
       }
 
       if (!response.ok) {
