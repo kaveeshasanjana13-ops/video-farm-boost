@@ -724,9 +724,9 @@ const Login = ({
 
                 {/* First Time Login Link */}
                 {useApiLogin && <div className="text-center pt-1">
-                    <span className="text-xs md:text-sm text-muted-foreground">First time? </span>
+                    <span className="text-xs md:text-sm text-muted-foreground">Registered by your institute? </span>
                     <Button type="button" variant="link" onClick={() => setShowFirstLoginV2(true)} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto">
-                      Set up your account
+                      Activate your account
                     </Button>
                   </div>}
               </form>}

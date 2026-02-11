@@ -799,9 +799,9 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-lg md:text-xl font-bold">First Time Login</h1>
+            <h1 className="text-lg md:text-xl font-bold">Activate Your Account</h1>
             <p className="text-xs text-muted-foreground">
-              {step === 'identifier' && 'Enter your phone, email, or student ID'}
+              {step === 'identifier' && 'Enter your registered phone, email, or student ID'}
               {step === 'verify-otp' && `Verify your ${otpChannel === 'phone' ? 'phone' : 'email'}`}
               {step === 'additional-verify' && `Verify your ${additionalType}`}
               {step === 'complete-profile' && 'Complete your profile'}
@@ -842,7 +842,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                   {identifierType === 'id' && <Hash className="h-6 w-6 text-primary" />}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Enter the phone number, email, or student ID your institute registered you with.
+                  Enter the phone, email, or ID that your institute used when they registered you.
                 </p>
               </div>
 
@@ -879,9 +879,9 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                   disabled={!identifier.trim() || isLoading}
                 >
                   {isLoading ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending OTP...</>
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending verification code...</>
                   ) : (
-                    'Continue'
+                    'Send Verification Code'
                   )}
                 </Button>
               </form>
@@ -1212,9 +1212,9 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
               disabled={!canSubmit}
             >
               {isLoading ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Completing Registration...</>
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Activating account...</>
               ) : (
-                'Complete Registration'
+                'Activate Account'
               )}
             </Button>
           </form>
