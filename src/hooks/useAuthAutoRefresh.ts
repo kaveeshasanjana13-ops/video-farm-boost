@@ -43,17 +43,20 @@ export function useAuthAutoRefresh(enabled: boolean) {
 
     const expiry = await tokenStorageService.getTokenExpiry();
     const now = Date.now();
+    const isMobile = Capacitor.isNativePlatform();
 
-    // If we don't know expiry, fall back to a periodic refresh.
+    // If we don't know expiry, use aggressive fallback for mobile (5 min) vs web (10 min).
     if (!expiry) {
+      const fallbackInterval = isMobile ? 5 * 60 * 1000 : 10 * 60 * 1000;
       timeoutRef.current = window.setTimeout(() => {
-        void refreshNow('fallback');
-      }, 10 * 60 * 1000);
+        void refreshNow('fallback').finally(() => void scheduleNext());
+      }, fallbackInterval);
       return;
     }
 
-    // Refresh 60s before expiry.
-    const refreshAt = expiry - 60_000;
+    // Refresh 2 minutes before expiry on mobile, 60s on web
+    const bufferMs = isMobile ? 2 * 60 * 1000 : 60_000;
+    const refreshAt = expiry - bufferMs;
 
     if (now >= refreshAt) {
       await refreshNow('due');
@@ -73,13 +76,12 @@ export function useAuthAutoRefresh(enabled: boolean) {
     if (!enabled) return;
 
     const expiry = await tokenStorageService.getTokenExpiry();
-    if (!expiry) {
-      void scheduleNext();
-      return;
-    }
-
     const now = Date.now();
-    if (now >= expiry - 60_000) {
+    const isMobile = Capacitor.isNativePlatform();
+    const bufferMs = isMobile ? 2 * 60 * 1000 : 60_000;
+
+    if (!expiry || now >= expiry - bufferMs) {
+      // Token expired or near-expiry — refresh immediately
       await refreshNow('resume/focus');
     }
 

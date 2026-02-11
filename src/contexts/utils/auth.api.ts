@@ -126,7 +126,8 @@ export const loginUser = async (credentials: LoginCredentials): Promise<ApiRespo
 
   // Store token expiry
   if (data.expires_in) {
-    const expiryTimestamp = Date.now() + (data.expires_in * 1000);
+    const expiryMs = parseExpiresIn(data.expires_in);
+    const expiryTimestamp = Date.now() + expiryMs;
     await tokenStorageService.setTokenExpiry(expiryTimestamp);
   }
 
@@ -220,7 +221,8 @@ export const refreshAccessToken = async (): Promise<ApiUserResponse> => {
 
       // Update token expiry
       if (data.expires_in) {
-        const expiryTimestamp = Date.now() + (data.expires_in * 1000);
+        const expiryMs = parseExpiresIn(data.expires_in);
+        const expiryTimestamp = Date.now() + expiryMs;
         await tokenStorageService.setTokenExpiry(expiryTimestamp);
       }
 
@@ -261,11 +263,13 @@ export const validateToken = async (): Promise<ApiUserResponse> => {
 
   // If token is expired or near-expiry, refresh first
   const expiry = await tokenStorageService.getTokenExpiry();
-  if (token && expiry && Date.now() >= (expiry - 60_000)) {
+  const bufferMs = isMobile ? 2 * 60 * 1000 : 60_000;
+  if (token && expiry && Date.now() >= (expiry - bufferMs)) {
     return await refreshAccessToken();
   }
 
-  // If no access token in memory, try refresh (cookie-based on web)
+  // If no access token in memory, try refresh
+  // On mobile cold-start: memory is empty but refresh token is in secure storage
   if (!token) {
     try {
       return await refreshAccessToken();
@@ -430,3 +434,34 @@ export const getAccessToken = (): string | null => {
 
 // Re-export
 export { isNativePlatform, tokenStorageService };
+
+// ============= HELPERS: PARSE EXPIRES_IN =============
+
+/**
+ * Parse expires_in from the server.
+ * Supports:
+ *  - number (seconds): 3600 → 3600000ms
+ *  - string with unit: '24h', '7d', '30m', '60s'
+ *  - numeric string: '3600' → 3600000ms
+ * Falls back to 1 hour if unparseable.
+ */
+function parseExpiresIn(value: any): number {
+  if (typeof value === 'number' && value > 0) {
+    return value * 1000; // seconds → ms
+  }
+  if (typeof value === 'string') {
+    const match = value.match(/^(\d+)([hdms]?)$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      const unit = match[2];
+      switch (unit) {
+        case 'h': return num * 60 * 60 * 1000;
+        case 'd': return num * 24 * 60 * 60 * 1000;
+        case 'm': return num * 60 * 1000;
+        case 's': return num * 1000;
+        default: return num * 1000; // assume seconds if no unit
+      }
+    }
+  }
+  return 60 * 60 * 1000; // fallback: 1 hour
+}

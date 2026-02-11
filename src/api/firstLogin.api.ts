@@ -1,12 +1,12 @@
 /**
- * Phone-Based First Login API Service
- * 
- * 5-step flow:
- * 1. Initiate (phone) → SMS OTP
- * 2. Verify phone OTP → JWT + annotated profile
- * 3. Request email OTP (with JWT)
- * 4. Verify email OTP (with JWT)
- * 5. Complete profile + set password → real login tokens
+ * Multi-Identifier First Login API Service (v2)
+ *
+ * Supports phone, email, and system ID identifiers.
+ * Flow:
+ *   1. Initiate (any identifier) → OTP sent via best channel
+ *   2. Verify OTP → JWT + annotated profile + remaining verifications
+ *   3. Additional verification (phone/email) if needed
+ *   4. Complete profile + set password → real login tokens
  */
 
 import { getBaseUrl } from '@/contexts/utils/auth.api';
@@ -14,15 +14,28 @@ import { tokenStorageService, isNativePlatform } from '@/services/tokenStorageSe
 
 // ============= TYPES =============
 
-export interface FieldAnnotation {
+export interface AnnotatedField {
   value: any;
   editable: boolean;
   required: boolean;
-  needsVerification?: boolean;
   options?: string[];
+  needsVerification?: boolean;
+  isVerified?: boolean;
 }
 
-export interface PhoneVerifyResponse {
+export interface InitiateResponse {
+  success: boolean;
+  message: string;
+  otpSentVia: 'phone' | 'email';
+  maskedDestination: string;
+  expiresInMinutes: number;
+  verificationsRequired: { phone: boolean; email: boolean };
+  userHasPhone: boolean;
+  userHasEmail: boolean;
+  userId: string;
+}
+
+export interface VerifyOtpResponse {
   success: boolean;
   message: string;
   access_token: string;
@@ -30,9 +43,12 @@ export interface PhoneVerifyResponse {
   isPhoneVerified: boolean;
   isEmailVerified: boolean;
   hasPassword: boolean;
-  profile: Record<string, FieldAnnotation>;
-  studentFields?: Record<string, FieldAnnotation>;
-  parentFields?: Record<string, FieldAnnotation>;
+  verificationsStillRequired: { phone: boolean; email: boolean };
+  userHasPhone: boolean;
+  userHasEmail: boolean;
+  profile: Record<string, AnnotatedField>;
+  studentFields?: Record<string, AnnotatedField>;
+  parentFields?: Record<string, AnnotatedField>;
 }
 
 export interface CompleteProfileResponse {
@@ -48,141 +64,153 @@ export interface CompleteProfileResponse {
     firstName: string;
     lastName: string;
     userType: string;
+    role: string;
     phoneNumber: string;
-    isPhoneVerified: boolean;
-    isEmailVerified: boolean;
-    firstLoginCompleted: boolean;
-    profileCompletionStatus: string;
-    profileCompletionPercentage: number;
-    institutes: any[];
+    imageUrl?: string | null;
     nameWithInitials?: string;
-    imageUrl?: string;
+    isPhoneVerified?: boolean;
+    isEmailVerified?: boolean;
+    firstLoginCompleted?: boolean;
+    profileCompletionStatus?: string;
+    profileCompletionPercentage?: number;
+    institutes?: any[];
   };
 }
 
-// ============= API FUNCTIONS =============
+// ============= HELPERS =============
 
 const getApiBase = () => getBaseUrl();
 
-/**
- * Step 1: Initiate first login by phone number
- * Sends SMS OTP to the user's phone
- */
-export const initiatePhoneFirstLogin = async (phoneNumber: string): Promise<{
-  success: boolean;
-  message: string;
-  expiresInMinutes: number;
-}> => {
-  const res = await fetch(`${getApiBase()}/auth/first-login/phone/initiate`, {
+async function apiFetch<T>(
+  url: string,
+  body: Record<string, any>,
+  token?: string
+): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phoneNumber }),
+    headers,
+    body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || 'Failed to send OTP');
-  }
-  return data;
-};
+  if (!res.ok) throw new Error(data.message || 'Request failed');
+  return data as T;
+}
+
+// ============= STEP 1: INITIATE =============
 
 /**
- * Step 2: Verify phone OTP
- * Returns JWT + annotated profile for form rendering
+ * Step 1 — Send any identifier (phone / email / system ID).
+ * Backend auto-detects type and sends OTP via best channel.
  */
-export const verifyPhoneOtp = async (
+export const initiateFirstLogin = async (
+  identifier: string
+): Promise<InitiateResponse> => {
+  return apiFetch<InitiateResponse>(
+    `${getApiBase()}/auth/first-login/initiate`,
+    { identifier }
+  );
+};
+
+// ============= STEP 2: VERIFY OTP =============
+
+/**
+ * Step 2 — Verify OTP received in step 1.
+ * Returns JWT + annotated profile + remaining verifications.
+ */
+export const verifyFirstLoginOtp = async (
+  identifier: string,
+  otp: string,
+  channel: 'phone' | 'email'
+): Promise<VerifyOtpResponse> => {
+  return apiFetch<VerifyOtpResponse>(
+    `${getApiBase()}/auth/first-login/verify-otp`,
+    { identifier, otp, channel }
+  );
+};
+
+// ============= STEP 3: ADDITIONAL VERIFICATION =============
+
+/** 3A — Request phone OTP (in-flow, requires JWT) */
+export const requestPhoneOtp = async (
   phoneNumber: string,
-  otp: string
-): Promise<PhoneVerifyResponse> => {
-  const res = await fetch(`${getApiBase()}/auth/first-login/phone/verify`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phoneNumber, otp }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || 'Invalid OTP');
-  }
-  return data;
+  token: string
+): Promise<{ success: boolean; message: string; expiresInMinutes: number }> => {
+  return apiFetch(
+    `${getApiBase()}/auth/first-login/phone/request-otp`,
+    { phoneNumber },
+    token
+  );
 };
 
-/**
- * Step 3: Request email OTP (requires JWT from step 2)
- */
+/** 3A — Verify phone OTP (in-flow, requires JWT) */
+export const verifyPhoneInFlow = async (
+  phoneNumber: string,
+  otp: string,
+  token: string
+): Promise<{ success: boolean; message: string; phoneNumber: string }> => {
+  return apiFetch(
+    `${getApiBase()}/auth/first-login/phone/verify-in-flow`,
+    { phoneNumber, otp },
+    token
+  );
+};
+
+/** 3B — Request email OTP (requires JWT) */
 export const requestEmailOtp = async (
   email: string,
   token: string
 ): Promise<{ success: boolean; message: string; expiresInMinutes: number }> => {
-  const res = await fetch(`${getApiBase()}/auth/first-login/email/request-otp`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify({ email }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || 'Failed to send email OTP');
-  }
-  return data;
+  return apiFetch(
+    `${getApiBase()}/auth/first-login/email/request-otp`,
+    { email },
+    token
+  );
 };
 
-/**
- * Step 4: Verify email OTP (requires JWT from step 2)
- */
+/** 3B — Verify email OTP (requires JWT) */
 export const verifyEmailOtp = async (
   email: string,
   otpCode: string,
   token: string
 ): Promise<{ success: boolean; message: string; email: string }> => {
-  const res = await fetch(`${getApiBase()}/auth/first-login/email/verify`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify({ email, otpCode }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || 'Failed to verify email');
-  }
-  return data;
+  return apiFetch(
+    `${getApiBase()}/auth/first-login/email/verify`,
+    { email, otpCode },
+    token
+  );
 };
 
+// ============= STEP 4: COMPLETE PROFILE =============
+
 /**
- * Step 5: Complete profile and set password
- * Returns real login tokens (access + refresh)
+ * Step 4 — Submit profile + password.
+ * Returns real login tokens (access + refresh).
  */
 export const completeFirstLogin = async (
   formData: Record<string, any>,
   token: string
 ): Promise<CompleteProfileResponse> => {
-  const res = await fetch(`${getApiBase()}/auth/first-login/complete`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify(formData),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || 'Failed to complete profile');
-  }
-  return data;
+  return apiFetch<CompleteProfileResponse>(
+    `${getApiBase()}/auth/first-login/complete`,
+    formData,
+    token
+  );
 };
 
+// ============= TOKEN STORAGE =============
+
 /**
- * Store the real login tokens after profile completion (Step 5)
- * Uses secure storage on mobile, memory + localStorage on web
+ * Persist the real login tokens received from step 4.
+ * Uses secure storage on mobile, memory + localStorage on web.
  */
 export const storeFirstLoginTokens = async (
   accessToken: string,
   refreshToken: string,
   expiresIn: string
 ): Promise<void> => {
-  // Parse expires_in (e.g. "24h" → milliseconds)
   const expiryMs = parseExpiry(expiresIn);
   const expiryTimestamp = Date.now() + expiryMs;
 
@@ -190,15 +218,17 @@ export const storeFirstLoginTokens = async (
   await tokenStorageService.setRefreshToken(refreshToken);
   await tokenStorageService.setTokenExpiry(expiryTimestamp);
 
-  // On mobile, always remember the user
   if (isNativePlatform()) {
     await tokenStorageService.setRememberMe(true);
   }
 };
 
-function parseExpiry(expiresIn: string): number {
+function parseExpiry(expiresIn: string | number): number {
+  if (typeof expiresIn === 'number') {
+    return expiresIn > 100_000 ? expiresIn : expiresIn * 1000;
+  }
   const match = expiresIn.match(/^(\d+)([hdms])$/);
-  if (!match) return 24 * 60 * 60 * 1000; // default 24h
+  if (!match) return 24 * 60 * 60 * 1000;
   const val = parseInt(match[1]);
   switch (match[2]) {
     case 'h': return val * 60 * 60 * 1000;

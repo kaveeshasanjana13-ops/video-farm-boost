@@ -10,7 +10,7 @@ import { Eye, EyeOff, GraduationCap, Wifi, WifiOff, Settings, Mail, Key, UserChe
 import { useToast } from '@/hooks/use-toast';
 import { getBaseUrl, getBaseUrl2 } from '@/contexts/utils/auth.api';
 import { Capacitor } from '@capacitor/core';
-import PhoneFirstLogin from '@/components/PhoneFirstLogin';
+import FirstLogin from '@/components/FirstLogin';
 import surakshaLogo from '@/assets/suraksha-logo.png';
 import loginIllustration from '@/assets/login-illustration.png';
 
@@ -146,7 +146,7 @@ const Login = ({
   const [isLoading, setIsLoading] = useState(false);
   const [useApiLogin, setUseApiLogin] = useState(true);
   const [showFirstLogin, setShowFirstLogin] = useState(false);
-  const [showPhoneFirstLogin, setShowPhoneFirstLogin] = useState(false);
+  const [showFirstLoginV2, setShowFirstLoginV2] = useState(false);
 
   // First login and forgot password states
   const [loginStep, setLoginStep] = useState<LoginStep>('login');
@@ -619,11 +619,11 @@ const Login = ({
     setShowFirstLogin(true);
   };
   // Show Phone-based first login flow
-  if (showPhoneFirstLogin) {
-    return <PhoneFirstLogin
-      onBack={() => setShowPhoneFirstLogin(false)}
+  if (showFirstLoginV2) {
+    return <FirstLogin
+      onBack={() => setShowFirstLoginV2(false)}
       onComplete={(user) => {
-        setShowPhoneFirstLogin(false);
+        setShowFirstLoginV2(false);
         onLogin(user);
       }}
     />;
@@ -722,20 +722,12 @@ const Login = ({
                   {isLoading ? 'Signing in...' : 'Sign in'}
                 </Button>
 
-                {/* First Time Login Links */}
-                {useApiLogin && <div className="text-center pt-1 space-y-1">
-                    <div>
-                      <span className="text-xs md:text-sm text-muted-foreground">First time? </span>
-                      <Button type="button" variant="link" onClick={() => setShowPhoneFirstLogin(true)} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto">
-                        Sign up with Phone
-                      </Button>
-                    </div>
-                    <div>
-                      <span className="text-xs md:text-sm text-muted-foreground">Or </span>
-                      <Button type="button" variant="link" onClick={startFirstLogin} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto">
-                        Sign up with Email/ID
-                      </Button>
-                    </div>
+                {/* First Time Login Link */}
+                {useApiLogin && <div className="text-center pt-1">
+                    <span className="text-xs md:text-sm text-muted-foreground">First time? </span>
+                    <Button type="button" variant="link" onClick={() => setShowFirstLoginV2(true)} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto">
+                      Set up your account
+                    </Button>
                   </div>}
               </form>}
 
