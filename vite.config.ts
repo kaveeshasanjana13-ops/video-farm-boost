@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       external: [
         '@capacitor/geolocation',
+        '@capacitor/status-bar',
       ],
       output: {
         manualChunks: {

@@ -13,9 +13,13 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchShowDuration: 1000,
       launchAutoHide: true,
-      backgroundColor: "#ffffff",
+      backgroundColor: "#1976D2",
       androidScaleType: "CENTER_CROP",
       showSpinner: false
+    },
+    StatusBar: {
+      style: 'dark',
+      backgroundColor: '#1976D2'
     },
     PushNotifications: {
       // Android: presentationOptions determine how notifications appear when app is in foreground

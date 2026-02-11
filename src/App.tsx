@@ -8,6 +8,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
+import { StatusBar, Style } from '@capacitor/status-bar';
 import { useCapacitorConnection } from "@/hooks/useCapacitorConnection";
 import CapacitorConnectionError from "@/components/CapacitorConnectionError";
 import AppLoadingScreen from "@/components/AppLoadingScreen";
@@ -92,8 +93,17 @@ const App = () => {
     root.classList.add('light');
     localStorage.setItem('theme', 'light');
     
-    // Hide splash screen after app is ready
+    // Configure native platform features
     if (Capacitor.isNativePlatform()) {
+      // Configure Status Bar
+      StatusBar.setStyle({ style: Style.Dark }).catch((err) => {
+        console.warn('StatusBar.setStyle not available:', err);
+      });
+      StatusBar.setBackgroundColor({ color: '#1976D2' }).catch((err) => {
+        console.warn('StatusBar.setBackgroundColor not available:', err);
+      });
+      
+      // Hide splash screen after app is ready
       import('@capacitor/splash-screen').then(({ SplashScreen }) => {
         setTimeout(() => {
           SplashScreen.hide();
