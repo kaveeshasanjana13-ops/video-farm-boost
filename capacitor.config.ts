@@ -4,10 +4,10 @@ const config: CapacitorConfig = {
   appId: 'lk.suraksha.lms',
   appName: 'Suraksha LMS',
   webDir: 'dist',
-  // For development with live reload:
+  // For production:
   server: {
-    url: 'http://192.168.56.1:8080',
-    cleartext: true
+    url: 'https://lms.suraksha.lk',
+    cleartext: false
   },
   plugins: {
     SplashScreen: {
