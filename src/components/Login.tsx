@@ -9,6 +9,7 @@ import { type UserRole } from '@/contexts/AuthContext';
 import { Eye, EyeOff, GraduationCap, Wifi, WifiOff, Settings, Mail, Key, UserCheck, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getBaseUrl, getBaseUrl2 } from '@/contexts/utils/auth.api';
+import { Capacitor } from '@capacitor/core';
 import surakshaLogo from '@/assets/suraksha-logo.png';
 import loginIllustration from '@/assets/login-illustration.png';
 
@@ -131,7 +132,8 @@ const Login = ({
 }: LoginProps) => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  // On mobile app, always enable rememberMe for persistent login
+  const [rememberMe, setRememberMe] = useState(Capacitor.isNativePlatform());
   const [baseUrl, setBaseUrl] = useState(() => {
     const stored = getBaseUrl();
     return stored || 'https://your-backend-url.com';
@@ -680,7 +682,8 @@ const Login = ({
 
                 {/* Remember me and Forgot Password */}
                 {useApiLogin && <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center space-x-2">
+                  {/* Only show Remember Me checkbox on web, mobile always remembers */}
+                  {!Capacitor.isNativePlatform() && <div className="flex items-center space-x-2">
                     <input
                       type="checkbox"
                       id="remember"
@@ -691,7 +694,7 @@ const Login = ({
                     <label htmlFor="remember" className="text-xs md:text-sm text-foreground cursor-pointer">
                       Remember me
                     </label>
-                  </div>
+                  </div>}
                   <Button type="button" variant="link" onClick={startForgotPassword} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto">
                     Forgot password?
                   </Button>

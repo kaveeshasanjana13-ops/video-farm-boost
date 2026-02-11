@@ -27,6 +27,9 @@ export default defineConfig(({ mode }) => ({
       },
     },
     rollupOptions: {
+      external: [
+        '@capacitor/geolocation',
+      ],
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
