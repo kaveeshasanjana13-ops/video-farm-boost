@@ -11,11 +11,13 @@ import { pushNotificationService } from './pushNotificationService';
 export interface PermissionStatus {
   notifications: 'granted' | 'denied' | 'prompt' | 'unsupported';
   camera: 'granted' | 'denied' | 'prompt' | 'unsupported';
+  location: 'granted' | 'denied' | 'prompt' | 'unsupported';
 }
 
 export interface PermissionRequestResult {
   notifications: boolean;
   camera: boolean;
+  location: boolean;
 }
 
 class MobilePermissionService {
@@ -64,7 +66,8 @@ class MobilePermissionService {
   async getPermissionStatuses(): Promise<PermissionStatus> {
     const result: PermissionStatus = {
       notifications: 'unsupported',
-      camera: 'unsupported'
+      camera: 'unsupported',
+      location: 'unsupported'
     };
 
     if (!this.isNativePlatform()) {
@@ -99,6 +102,20 @@ class MobilePermissionService {
       console.warn('Failed to check camera permission:', e);
     }
 
+    try {
+      const { Geolocation } = await import('@capacitor/geolocation');
+      const locStatus = await Geolocation.checkPermissions();
+      if (locStatus.location === 'granted') {
+        result.location = 'granted';
+      } else if (locStatus.location === 'denied') {
+        result.location = 'denied';
+      } else {
+        result.location = 'prompt';
+      }
+    } catch (e) {
+      console.warn('Failed to check location permission:', e);
+    }
+
     return result;
   }
 
@@ -109,7 +126,8 @@ class MobilePermissionService {
   async requestAllPermissions(userId?: string): Promise<PermissionRequestResult> {
     const result: PermissionRequestResult = {
       notifications: false,
-      camera: false
+      camera: false,
+      location: false
     };
 
     if (!this.isNativePlatform()) {
@@ -158,6 +176,20 @@ class MobilePermissionService {
       }
     } catch (e) {
       console.error('❌ Failed to request camera permission:', e);
+    }
+
+    // Request location permission
+    try {
+      const { Geolocation } = await import('@capacitor/geolocation');
+      const locResult = await Geolocation.requestPermissions();
+      console.log('📱 Location permission result:', locResult);
+      
+      if (locResult.location === 'granted') {
+        result.location = true;
+        console.log('✅ Location permission granted');
+      }
+    } catch (e) {
+      console.error('❌ Failed to request location permission:', e);
     }
 
     console.log('📱 Permission request results:', result);

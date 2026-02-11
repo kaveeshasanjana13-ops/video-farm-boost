@@ -10,7 +10,8 @@ export const useMobilePermissions = () => {
   const { user } = useAuth();
   const [permissionStatus, setPermissionStatus] = useState<PermissionStatus>({
     notifications: 'unsupported',
-    camera: 'unsupported'
+    camera: 'unsupported',
+    location: 'unsupported'
   });
   const [isRequesting, setIsRequesting] = useState(false);
   const [hasRequested, setHasRequested] = useState(false);
@@ -66,7 +67,7 @@ export const useMobilePermissions = () => {
   // Manual request function
   const requestPermissions = useCallback(async (): Promise<PermissionRequestResult> => {
     if (isRequesting) {
-      return { notifications: false, camera: false };
+      return { notifications: false, camera: false, location: false };
     }
 
     setIsRequesting(true);
