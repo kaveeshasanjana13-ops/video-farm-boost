@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Badge } from '@/components/ui/badge';
 import { Eye, EyeOff, Phone, Mail, CheckCircle2, ArrowLeft, User, Shield, Lock, ChevronRight, Loader2, Hash } from 'lucide-react';
+import surakshaLogo from '@/assets/suraksha-logo.png';
+import loginIllustration from '@/assets/login-illustration.png';
 import { useToast } from '@/hooks/use-toast';
 import { tokenStorageService } from '@/services/tokenStorageService';
 import {
@@ -790,458 +792,390 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
   // ============= RENDER =============
 
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-start bg-background px-4 py-6 md:py-10">
-      <div className="w-full max-w-lg space-y-4">
+    <div className="min-h-[100dvh] flex flex-col md:flex-row overflow-x-hidden">
+      {/* Top Illustration - Mobile Only */}
+      <div className="block md:hidden w-full relative h-28 shrink-0">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
+        <img src={loginIllustration} alt="Education illustration" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+      </div>
 
-        {/* ── Header ── */}
-        <div className="flex items-center gap-3">
-          <Button type="button" variant="ghost" size="icon" onClick={handleBack} className="h-9 w-9">
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-lg md:text-xl font-bold">Activate Your Account</h1>
+      {/* Left Side - Form */}
+      <div className="w-full md:w-1/2 lg:w-2/5 flex flex-col items-center justify-start md:justify-center px-4 py-3 sm:p-6 md:p-8 bg-background -mt-6 md:mt-0 rounded-t-[2rem] md:rounded-none relative z-10 flex-1 md:min-h-screen overflow-y-auto">
+        <div className="w-full max-w-md space-y-2 md:space-y-4">
+
+          {/* Logo and Header */}
+          <div className="space-y-0.5 text-center">
+            <div className="flex flex-col items-center justify-center mb-1 md:mb-4">
+              <div className="w-10 h-10 md:w-24 md:h-24 rounded-lg overflow-hidden bg-transparent mb-0.5">
+                <img src={surakshaLogo} alt="SurakshaLMS logo" className="w-full h-full object-contain" loading="lazy" />
+              </div>
+              <span className="text-xl md:text-4xl font-bold text-foreground">SurakshaLMS</span>
+            </div>
+            <h1 className="text-base md:text-2xl font-bold text-foreground">Activate Your Account</h1>
             <p className="text-xs text-muted-foreground">
               {step === 'identifier' && 'Enter your registered phone, email, or student ID'}
               {step === 'verify-otp' && `Verify your ${otpChannel === 'phone' ? 'phone' : 'email'}`}
               {step === 'additional-verify' && `Verify your ${additionalType}`}
-              {step === 'complete-profile' && 'Complete your profile'}
+              {step === 'complete-profile' && 'Complete your profile to get started'}
             </p>
           </div>
-        </div>
 
-        {/* ── Step indicator ── */}
-        <div className="flex items-center gap-2">
-          {activeSteps.map((s, i) => (
-            <React.Fragment key={s.key}>
-              {i > 0 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-              <StepBadge
-                number={i + 1}
-                label={s.label}
-                active={step === s.key}
-                done={i < stepIndex}
-              />
-            </React.Fragment>
-          ))}
-        </div>
-
-        {/* ── Error ── */}
-        {error && (
-          <div className="text-xs md:text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
-            {error}
+          {/* Step Indicator */}
+          <div className="flex items-center justify-center gap-0 px-2">
+            {activeSteps.map((s, i) => {
+              const isActive = step === s.key;
+              const isDone = i < stepIndex;
+              return (
+                <React.Fragment key={s.key}>
+                  {i > 0 && (
+                    <div className={`h-[2px] w-6 sm:w-10 transition-colors duration-300 ${isDone ? 'bg-primary' : 'bg-border'}`} />
+                  )}
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${
+                      isActive ? 'bg-primary text-primary-foreground shadow-md ring-3 ring-primary/20'
+                        : isDone ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground border border-border'
+                    }`}>
+                      {isDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                    </div>
+                    <span className={`text-[9px] font-medium transition-colors ${isActive ? 'text-primary' : isDone ? 'text-primary/70' : 'text-muted-foreground'}`}>{s.label}</span>
+                  </div>
+                </React.Fragment>
+              );
+            })}
           </div>
-        )}
 
-        {/* =============== STEP 1: IDENTIFIER INPUT =============== */}
-        {step === 'identifier' && (
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <div className="text-center space-y-2 mb-4">
-                <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  {identifierType === 'phone' && <Phone className="h-6 w-6 text-primary" />}
-                  {identifierType === 'email' && <Mail className="h-6 w-6 text-primary" />}
-                  {identifierType === 'id' && <Hash className="h-6 w-6 text-primary" />}
+          {/* Main Card */}
+          <Card className="border-border shadow-sm">
+            <CardContent className="pt-4 px-4 pb-4 md:pt-6 md:px-6 md:pb-6">
+
+              {/* Error */}
+              {error && (
+                <div className="text-xs md:text-sm text-destructive bg-destructive/10 p-2.5 md:p-3 rounded-md mb-4">
+                  {error}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Enter the phone, email, or ID that your institute used when they registered you.
-                </p>
-              </div>
+              )}
 
-              <form onSubmit={handleInitiate} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="identifier" className="text-sm font-medium">
-                    Phone, Email, or Student ID
-                  </Label>
-                  <Input
-                    id="identifier"
-                    type={identifierType === 'email' ? 'email' : 'text'}
-                    value={identifier}
-                    onChange={e => setIdentifier(e.target.value)}
-                    placeholder="077XXXXXXX, student@school.lk, or STU-0001"
-                    required
-                    className="h-11 text-base"
-                    autoComplete="username"
-                    autoFocus
-                  />
-                  <div className="flex items-center gap-1.5 mt-1">
+              {/* =============== STEP 1: IDENTIFIER INPUT =============== */}
+              {step === 'identifier' && (
+                <form onSubmit={handleInitiate} className="space-y-3 md:space-y-4">
+                  <div className="text-center">
+                    <div className={`mx-auto w-12 h-12 rounded-xl flex items-center justify-center mb-2 bg-primary/10 text-primary`}>
+                      {identifierType === 'phone' && <Phone className="h-5 w-5" />}
+                      {identifierType === 'email' && <Mail className="h-5 w-5" />}
+                      {identifierType === 'id' && <Hash className="h-5 w-5" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Enter the phone, email, or ID your institute used to register you.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="identifier" className="text-sm font-medium text-foreground">
+                      Phone, Email, or Student ID
+                    </Label>
+                    <Input
+                      id="identifier"
+                      type={identifierType === 'email' ? 'email' : 'text'}
+                      value={identifier}
+                      onChange={e => setIdentifier(e.target.value)}
+                      placeholder="077XXXXXXX, student@school.lk, or STU-0001"
+                      required
+                      className="h-10 md:h-11 text-base"
+                      autoComplete="username"
+                      autoFocus
+                    />
                     {identifier.trim() && (
-                      <Badge variant="secondary" className="text-[10px]">
-                        {identifierType === 'phone' && 'Phone number detected'}
-                        {identifierType === 'email' && 'Email detected'}
-                        {identifierType === 'id' && 'Student/System ID detected'}
+                      <Badge variant="secondary" className="text-[10px] font-medium">
+                        {identifierType === 'phone' && '📱 Phone number detected'}
+                        {identifierType === 'email' && '📧 Email detected'}
+                        {identifierType === 'id' && '🆔 Student/System ID detected'}
                       </Badge>
                     )}
                   </div>
-                </div>
 
-                <Button
-                  type="submit"
-                  className="w-full h-11 text-base touch-manipulation"
-                  disabled={!identifier.trim() || isLoading}
-                >
-                  {isLoading ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending verification code...</>
-                  ) : (
-                    'Send Verification Code'
-                  )}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+                  <div className="text-xs md:text-sm text-muted-foreground bg-primary/10 p-2.5 md:p-3 rounded-lg">
+                    We'll send a 6-digit verification code to your registered contact.
+                  </div>
 
-        {/* =============== STEP 2: VERIFY INITIAL OTP =============== */}
-        {step === 'verify-otp' && (
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <div className="text-center space-y-2 mb-4">
-                <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Shield className="h-6 w-6 text-primary" />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Enter the 6-digit code sent via{' '}
-                  <strong>{otpChannel === 'phone' ? 'SMS' : 'email'}</strong> to{' '}
-                  <strong>{maskedDest}</strong>
-                </p>
-              </div>
+                  <Button type="submit" className="w-full h-10 md:h-11 text-base touch-manipulation" disabled={!identifier.trim() || isLoading}>
+                    {isLoading ? 'Sending Code...' : 'Send Verification Code'}
+                  </Button>
 
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div className="flex justify-center py-2">
-                  <InputOTP maxLength={6} value={otp} onChange={setOtp} className="gap-1.5 md:gap-2">
-                    <InputOTPGroup className="gap-1.5 md:gap-2">
-                      {[0, 1, 2, 3, 4, 5].map(i => (
-                        <InputOTPSlot key={i} index={i} className="w-10 h-12 md:w-12 md:h-14 text-lg md:text-xl" />
-                      ))}
-                    </InputOTPGroup>
-                  </InputOTP>
-                </div>
+                  <Button type="button" variant="ghost" onClick={handleBack} className="w-full h-9 md:h-10 touch-manipulation">
+                    <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Login
+                  </Button>
+                </form>
+              )}
 
-                <Button
-                  type="submit"
-                  className="w-full h-11 text-base touch-manipulation"
-                  disabled={otp.length !== 6 || isLoading}
-                >
-                  {isLoading ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verifying...</>
-                  ) : (
-                    'Verify Code'
-                  )}
-                </Button>
-
-                <div className="text-center">
-                  {otpTimer > 0 ? (
+              {/* =============== STEP 2: VERIFY INITIAL OTP =============== */}
+              {step === 'verify-otp' && (
+                <form onSubmit={handleVerifyOtp} className="space-y-3 md:space-y-4">
+                  <div className="text-center">
                     <p className="text-xs md:text-sm text-muted-foreground">
-                      Resend code in {formatTimer(otpTimer)}
+                      Enter the 6-digit code sent via <span className="font-semibold text-foreground">{otpChannel === 'phone' ? 'SMS' : 'email'}</span> to <span className="font-semibold text-foreground">{maskedDest}</span>
                     </p>
-                  ) : (
-                    <Button type="button" variant="ghost" onClick={handleResendInitiateOtp}
-                      disabled={isLoading} className="text-xs md:text-sm h-9">
-                      Resend OTP
-                    </Button>
-                  )}
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        )}
+                  </div>
 
-        {/* =============== STEP 3: ADDITIONAL VERIFICATION =============== */}
-        {step === 'additional-verify' && (
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <div className="text-center space-y-2 mb-4">
-                <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  {additionalType === 'email' ? (
-                    <Mail className="h-6 w-6 text-primary" />
-                  ) : (
-                    <Phone className="h-6 w-6 text-primary" />
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {additionalType === 'email'
-                    ? 'Verify your email address to continue.'
-                    : 'Verify your phone number to continue.'}
-                </p>
-              </div>
+                  <div className="flex justify-center py-2">
+                    <InputOTP maxLength={6} value={otp} onChange={setOtp} className="gap-1.5 md:gap-2">
+                      <InputOTPGroup className="gap-1.5 md:gap-2">
+                        {[0, 1, 2, 3, 4, 5].map(i => (
+                          <InputOTPSlot key={i} index={i} className="w-10 h-12 md:w-12 md:h-14 text-lg md:text-xl" />
+                        ))}
+                      </InputOTPGroup>
+                    </InputOTP>
+                  </div>
 
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-medium">
-                    {additionalType === 'email' ? 'Email Address' : 'Phone Number'}
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type={additionalType === 'email' ? 'email' : 'tel'}
-                      value={additionalInput}
-                      onChange={e => setAdditionalInput(e.target.value)}
-                      placeholder={additionalType === 'email' ? 'your@email.com' : '077XXXXXXX'}
-                      className="flex-1 h-11 text-base"
-                      disabled={
-                        additionalType === 'email'
-                          ? (!!profile?.email?.value && !profile.email.editable)
-                          : (!!profile?.phoneNumber?.value && !profile.phoneNumber.editable)
-                      }
-                    />
-                    {!additionalOtpSent && (
-                      <Button
-                        type="button"
-                        onClick={handleRequestAdditionalOtp}
-                        disabled={!additionalInput.trim() || isLoading}
-                        className="h-11"
-                      >
-                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Code'}
+                  <Button type="submit" className="w-full h-10 md:h-11 text-base touch-manipulation" disabled={otp.length !== 6 || isLoading}>
+                    {isLoading ? 'Verifying...' : 'Verify Code'}
+                  </Button>
+
+                  <div className="text-center">
+                    {otpTimer > 0 ? (
+                      <p className="text-xs md:text-sm text-muted-foreground">Resend code in <span className="font-semibold text-foreground">{formatTimer(otpTimer)}</span></p>
+                    ) : (
+                      <Button type="button" variant="ghost" onClick={handleResendInitiateOtp} disabled={isLoading} className="h-9 touch-manipulation">
+                        Resend Code
                       </Button>
                     )}
                   </div>
-                </div>
 
-                {additionalOtpSent && (
-                  <div className="space-y-3 bg-muted/30 p-4 rounded-lg">
-                    <p className="text-xs text-muted-foreground">
-                      Enter the 6-digit code sent to <strong>{additionalInput}</strong>
+                  <Button type="button" variant="ghost" onClick={handleBack} className="w-full h-9 md:h-10 touch-manipulation">
+                    <ArrowLeft className="h-4 w-4 mr-1.5" /> Back
+                  </Button>
+                </form>
+              )}
+
+              {/* =============== STEP 3: ADDITIONAL VERIFICATION =============== */}
+              {step === 'additional-verify' && (
+                <div className="space-y-3 md:space-y-4">
+                  <div className="text-center">
+                    <p className="text-xs md:text-sm text-muted-foreground">
+                      {additionalType === 'email' ? 'Verify your email address to continue.' : 'Verify your phone number to continue.'}
                     </p>
-                    <div className="flex justify-center">
-                      <InputOTP maxLength={6} value={additionalOtp} onChange={setAdditionalOtp} className="gap-1.5">
-                        <InputOTPGroup className="gap-1.5">
-                          {[0, 1, 2, 3, 4, 5].map(i => (
-                            <InputOTPSlot key={i} index={i} className="w-10 h-12 text-lg" />
-                          ))}
-                        </InputOTPGroup>
-                      </InputOTP>
-                    </div>
-                    <Button
-                      type="button"
-                      className="w-full h-11"
-                      onClick={handleVerifyAdditionalOtp}
-                      disabled={additionalOtp.length !== 6 || isLoading}
-                    >
-                      {isLoading ? (
-                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verifying...</>
-                      ) : (
-                        'Verify'
-                      )}
-                    </Button>
-                    <div className="text-center">
-                      {additionalOtpTimer > 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          Resend in {formatTimer(additionalOtpTimer)}
-                        </p>
-                      ) : (
-                        <Button type="button" variant="ghost" size="sm"
-                          onClick={handleRequestAdditionalOtp} disabled={isLoading}
-                          className="text-xs h-7">
-                          Resend Code
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium text-foreground">
+                      {additionalType === 'email' ? 'Email Address' : 'Phone Number'}
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type={additionalType === 'email' ? 'email' : 'tel'}
+                        value={additionalInput}
+                        onChange={e => setAdditionalInput(e.target.value)}
+                        placeholder={additionalType === 'email' ? 'your@email.com' : '077XXXXXXX'}
+                        className="flex-1 h-10 md:h-11 text-base"
+                        disabled={
+                          additionalType === 'email'
+                            ? (!!profile?.email?.value && !profile.email.editable)
+                            : (!!profile?.phoneNumber?.value && !profile.phoneNumber.editable)
+                        }
+                      />
+                      {!additionalOtpSent && (
+                        <Button type="button" onClick={handleRequestAdditionalOtp} disabled={!additionalInput.trim() || isLoading} className="h-10 md:h-11 px-4">
+                          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Code'}
                         </Button>
                       )}
                     </div>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
-        {/* =============== STEP 4: COMPLETE PROFILE =============== */}
-        {step === 'complete-profile' && (
-          <form onSubmit={handleCompleteProfile} className="space-y-4">
-
-            {/* Verifiable contacts */}
-            {(profile.email?.needsVerification !== undefined || profile.phoneNumber?.needsVerification !== undefined) && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Shield className="h-4 w-4" /> Contact Verification
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-3">
-                  {profile.email?.needsVerification !== undefined &&
-                    renderAnnotatedField('email', profile.email, 'profile')}
-                  {profile.phoneNumber?.needsVerification !== undefined &&
-                    renderAnnotatedField('phoneNumber', profile.phoneNumber, 'profile')}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Personal Information */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <User className="h-4 w-4" /> Personal Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {Object.entries(profile)
-                    .filter(([key]) => key !== 'id' && key !== 'email' && key !== 'phoneNumber')
-                    .map(([key, field]) => renderAnnotatedField(key, field, 'profile'))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Student Information */}
-            {showStudentFields && Object.keys(studentFields!).length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    📚 Student Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {Object.entries(studentFields!).map(([key, field]) =>
-                      renderAnnotatedField(key, field, 'student')
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Parent Information */}
-            {showParentFields && Object.keys(parentFields!).length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    👨‍👩‍👧 Parent Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {Object.entries(parentFields!).map(([key, field]) =>
-                      renderAnnotatedField(key, field, 'parent')
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Password */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Lock className="h-4 w-4" /> Set Password
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="newPwd" className="text-sm">
-                    Password <span className="text-destructive">*</span>
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="newPwd"
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      placeholder="Min 8 chars, upper, lower, number, special"
-                      required
-                      className="h-10 pr-12"
-                      autoComplete="new-password"
-                    />
-                    <Button type="button" variant="ghost" size="sm"
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowPassword(!showPassword)}>
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                  {/* Strength indicator */}
-                  {password && (
-                    <div className="space-y-1">
-                      <div className="flex gap-1 h-1">
-                        {[1, 2, 3, 4, 5].map(i => (
-                          <div key={i} className={`flex-1 rounded-full ${i <= pwStrength.level ? pwStrength.color : 'bg-muted'}`} />
-                        ))}
-                      </div>
-                      <p className={`text-[10px] ${pwStrength.level <= 2 ? 'text-red-500' : pwStrength.level <= 3 ? 'text-yellow-500' : 'text-green-500'}`}>
-                        {pwStrength.label}
+                  {additionalOtpSent && (
+                    <div className="space-y-3 bg-primary/5 p-3 rounded-lg border border-border/50">
+                      <p className="text-xs text-muted-foreground text-center">
+                        Enter the 6-digit code sent to <strong className="text-foreground">{additionalInput}</strong>
                       </p>
+                      <div className="flex justify-center">
+                        <InputOTP maxLength={6} value={additionalOtp} onChange={setAdditionalOtp} className="gap-1.5">
+                          <InputOTPGroup className="gap-1.5">
+                            {[0, 1, 2, 3, 4, 5].map(i => (
+                              <InputOTPSlot key={i} index={i} className="w-10 h-12 text-lg" />
+                            ))}
+                          </InputOTPGroup>
+                        </InputOTP>
+                      </div>
+                      <Button type="button" className="w-full h-10 md:h-11 text-base touch-manipulation" onClick={handleVerifyAdditionalOtp} disabled={additionalOtp.length !== 6 || isLoading}>
+                        {isLoading ? 'Verifying...' : 'Verify'}
+                      </Button>
+                      <div className="text-center">
+                        {additionalOtpTimer > 0 ? (
+                          <p className="text-xs text-muted-foreground">Resend in <span className="font-semibold text-foreground">{formatTimer(additionalOtpTimer)}</span></p>
+                        ) : (
+                          <Button type="button" variant="ghost" size="sm" onClick={handleRequestAdditionalOtp} disabled={isLoading} className="text-xs h-7">
+                            Resend Code
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   )}
-                  <ul className="text-[10px] text-muted-foreground space-y-0.5 mt-1">
-                    <li className={password.length >= 8 ? 'text-green-600' : ''}>
-                      {password.length >= 8 ? '✓' : '○'} At least 8 characters
-                    </li>
-                    <li className={/[A-Z]/.test(password) ? 'text-green-600' : ''}>
-                      {/[A-Z]/.test(password) ? '✓' : '○'} Uppercase letter
-                    </li>
-                    <li className={/[a-z]/.test(password) ? 'text-green-600' : ''}>
-                      {/[a-z]/.test(password) ? '✓' : '○'} Lowercase letter
-                    </li>
-                    <li className={/[0-9]/.test(password) ? 'text-green-600' : ''}>
-                      {/[0-9]/.test(password) ? '✓' : '○'} Number
-                    </li>
-                    <li className={/[^A-Za-z0-9]/.test(password) ? 'text-green-600' : ''}>
-                      {/[^A-Za-z0-9]/.test(password) ? '✓' : '○'} Special character
-                    </li>
-                  </ul>
-                </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="confirmPwd" className="text-sm">
-                    Confirm Password <span className="text-destructive">*</span>
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="confirmPwd"
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={e => setConfirmPassword(e.target.value)}
-                      placeholder="Confirm your password"
-                      required
-                      className="h-10 pr-12"
-                      autoComplete="new-password"
-                    />
-                    <Button type="button" variant="ghost" size="sm"
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
-                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                  {password && confirmPassword && password !== confirmPassword && (
-                    <p className="text-xs text-destructive">Passwords do not match</p>
-                  )}
-                  {password && confirmPassword && password === confirmPassword && (
-                    <p className="text-xs text-green-600">✓ Passwords match</p>
-                  )}
+                  <Button type="button" variant="ghost" onClick={handleBack} className="w-full h-9 md:h-10 touch-manipulation">
+                    <ArrowLeft className="h-4 w-4 mr-1.5" /> Back
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Submit */}
-            <Button
-              type="submit"
-              className="w-full h-11 text-base touch-manipulation"
-              disabled={!canSubmit}
-            >
-              {isLoading ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Activating account...</>
-              ) : (
-                'Activate Account'
               )}
-            </Button>
-          </form>
-        )}
+
+              {/* =============== STEP 4: COMPLETE PROFILE =============== */}
+              {step === 'complete-profile' && (
+                <form onSubmit={handleCompleteProfile} className="space-y-4">
+
+                  {/* Verifiable contacts */}
+                  {(profile.email?.needsVerification !== undefined || profile.phoneNumber?.needsVerification !== undefined) && (
+                    <div className="space-y-2 p-3 bg-primary/5 rounded-lg border border-border/50">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <Shield className="h-3.5 w-3.5 text-primary" /> Contact Verification
+                      </p>
+                      <div className="space-y-3">
+                        {profile.email?.needsVerification !== undefined &&
+                          renderAnnotatedField('email', profile.email, 'profile')}
+                        {profile.phoneNumber?.needsVerification !== undefined &&
+                          renderAnnotatedField('phoneNumber', profile.phoneNumber, 'profile')}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Personal Information */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-primary" /> Personal Information
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {Object.entries(profile)
+                        .filter(([key]) => key !== 'id' && key !== 'email' && key !== 'phoneNumber')
+                        .map(([key, field]) => renderAnnotatedField(key, field, 'profile'))}
+                    </div>
+                  </div>
+
+                  {/* Student Information */}
+                  {showStudentFields && Object.keys(studentFields!).length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        📚 Student Information
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {Object.entries(studentFields!).map(([key, field]) =>
+                          renderAnnotatedField(key, field, 'student')
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Parent Information */}
+                  {showParentFields && Object.keys(parentFields!).length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        👨‍👩‍👧 Parent Information
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {Object.entries(parentFields!).map(([key, field]) =>
+                          renderAnnotatedField(key, field, 'parent')
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Password */}
+                  <div className="space-y-2 pt-2 border-t border-border/50">
+                    <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Lock className="h-3.5 w-3.5 text-primary" /> Set Password
+                    </p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="newPwd" className="text-sm">Password <span className="text-destructive">*</span></Label>
+                      <div className="relative">
+                        <Input
+                          id="newPwd"
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          placeholder="Min 8 chars, upper, lower, number, special"
+                          required
+                          className="h-10 md:h-11 text-base pr-12"
+                          autoComplete="new-password"
+                        />
+                        <Button type="button" variant="ghost" size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent touch-manipulation"
+                          onClick={() => setShowPassword(!showPassword)}>
+                          {showPassword ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+                        </Button>
+                      </div>
+                      {/* Strength indicator */}
+                      {password && (
+                        <div className="space-y-1">
+                          <div className="flex gap-1 h-1.5 rounded-full overflow-hidden">
+                            {[1, 2, 3, 4, 5].map(i => (
+                              <div key={i} className={`flex-1 rounded-full transition-colors duration-300 ${i <= pwStrength.level ? pwStrength.color : 'bg-muted'}`} />
+                            ))}
+                          </div>
+                          <p className={`text-[10px] font-medium ${pwStrength.level <= 2 ? 'text-destructive' : pwStrength.level <= 3 ? 'text-warning' : 'text-success'}`}>
+                            {pwStrength.label}
+                          </p>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                        {[
+                          { test: password.length >= 8, label: '8+ characters' },
+                          { test: /[A-Z]/.test(password), label: 'Uppercase' },
+                          { test: /[a-z]/.test(password), label: 'Lowercase' },
+                          { test: /[0-9]/.test(password), label: 'Number' },
+                          { test: /[^A-Za-z0-9]/.test(password), label: 'Special char' },
+                        ].map(({ test, label }) => (
+                          <span key={label} className={`text-[10px] flex items-center gap-1 ${test ? 'text-success' : 'text-muted-foreground'}`}>
+                            {test ? <CheckCircle2 className="h-3 w-3" /> : <span className="w-3 h-3 rounded-full border border-border inline-block" />}
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="confirmPwd" className="text-sm">Confirm Password <span className="text-destructive">*</span></Label>
+                      <div className="relative">
+                        <Input
+                          id="confirmPwd"
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          value={confirmPassword}
+                          onChange={e => setConfirmPassword(e.target.value)}
+                          placeholder="Confirm your password"
+                          required
+                          className="h-10 md:h-11 text-base pr-12"
+                          autoComplete="new-password"
+                        />
+                        <Button type="button" variant="ghost" size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent touch-manipulation"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                          {showConfirmPassword ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+                        </Button>
+                      </div>
+                      {password && confirmPassword && password !== confirmPassword && (
+                        <p className="text-xs text-destructive">Passwords do not match</p>
+                      )}
+                      {password && confirmPassword && password === confirmPassword && (
+                        <p className="text-xs text-success flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Passwords match
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <Button type="submit" className="w-full h-10 md:h-11 text-base touch-manipulation" disabled={!canSubmit}>
+                    {isLoading ? 'Activating account...' : 'Activate Account'}
+                  </Button>
+                </form>
+              )}
+
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Right Side - Illustration (Desktop Only) */}
+      <div className="hidden md:flex md:w-1/2 lg:w-3/5 relative min-h-[300px] md:min-h-screen">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
+        <img src={loginIllustration} alt="Education illustration" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
       </div>
     </div>
   );
 };
-
-// ============= STEP BADGE COMPONENT =============
-
-const StepBadge: React.FC<{
-  number: number;
-  label: string;
-  active: boolean;
-  done: boolean;
-}> = ({ number, label, active, done }) => (
-  <div className={`flex items-center gap-1.5 ${active ? 'text-primary' : done ? 'text-green-600' : 'text-muted-foreground'}`}>
-    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-      active ? 'bg-primary text-primary-foreground' :
-      done ? 'bg-green-100 text-green-700' :
-      'bg-muted text-muted-foreground'
-    }`}>
-      {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : number}
-    </div>
-    <span className="text-xs font-medium hidden sm:inline">{label}</span>
-  </div>
-);
 
 export default FirstLogin;

@@ -15,7 +15,7 @@ export const useRouteContext = () => {
   const params = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isValidating, setIsValidating] = useState(true);
+  const [isValidating, setIsValidating] = useState(false);
   const fetchInProgressRef = useRef<{ [key: string]: boolean }>({});
 
   // IMPORTANT: Our main route uses a wildcard (e.g. "/institute/:instituteId/*"),
@@ -164,7 +164,20 @@ export const useRouteContext = () => {
       return;
     }
 
+    // Only validate when there are actual context IDs in the URL to resolve
+    const hasContextToResolve = !!(urlInstituteId || urlChildId || urlOrganizationId || urlTransportId);
+    if (!hasContextToResolve) {
+      setIsValidating(false);
+      return;
+    }
+
     setIsValidating(true); // Start validation
+
+    // Safety timeout: never block the UI for more than 8 seconds
+    const safetyTimeout = setTimeout(() => {
+      console.warn('⚠️ Context validation timeout — unblocking UI');
+      setIsValidating(false);
+    }, 8000);
     
     const syncContextFromUrl = async () => {
       try {
@@ -339,12 +352,17 @@ export const useRouteContext = () => {
       } catch (error) {
         console.error('Error in syncContextFromUrl:', error);
       } finally {
+        clearTimeout(safetyTimeout);
         // Always mark validation as complete
         setIsValidating(false);
       }
     };
 
     syncContextFromUrl();
+
+    return () => {
+      clearTimeout(safetyTimeout);
+    };
   }, [
     urlInstituteId,
     urlClassId,

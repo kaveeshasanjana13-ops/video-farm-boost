@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Menu, LogOut, User, Bell, ChevronDown } from 'lucide-react';
+import { Menu, LogOut, User, Bell, ChevronDown, ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -139,9 +139,19 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     : (user?.imageUrl ? getImageUrl(user.imageUrl) : '');
 
   return (
-    <header className="lg:hidden bg-background border-b border-border px-3 sm:px-4 py-3 sm:py-4 sticky top-0 z-40 pt-safe-top">
+    <header className="lg:hidden bg-background/95 backdrop-blur-md border-b border-border/50 px-2 sm:px-4 py-2.5 sm:py-3 sticky top-0 z-40 pt-safe-top">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          {/* Global Back Button */}
+          {location.pathname !== '/' && location.pathname !== '/dashboard' && !location.pathname.endsWith('/dashboard') && (
+            <button
+              onClick={() => window.history.back()}
+              className="p-1.5 -ml-1 rounded-xl hover:bg-muted/60 active:scale-95 transition-all"
+              aria-label="Go back"
+            >
+              <ChevronLeft className="h-5 w-5 text-foreground" />
+            </button>
+          )}
           {/* Institute Switcher Dropdown */}
           <DropdownMenu onOpenChange={(open) => { if (open) loadInstitutes(); }}>
             <DropdownMenuTrigger asChild>

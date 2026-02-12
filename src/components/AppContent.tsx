@@ -1114,9 +1114,9 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     }} loginFunction={login} />;
   }
 
-  // 🛡️ CRITICAL: Show loading state while validating context from URL
-  // This MUST happen BEFORE any institute/class/subject checks
-  if (isValidating) {
+  // 🛡️ Show loading state while validating context from URL (only for context-heavy routes)
+  // isValidating is now only true when there are actual context IDs in the URL
+  if (isValidating && (urlInstituteId || location.pathname.startsWith('/child/') || location.pathname.startsWith('/organization/') || location.pathname.startsWith('/transport/'))) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
