@@ -1,5 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -79,7 +80,11 @@ const Profile = () => {
   const [passwordVisibility, setPasswordVisibility] = useState({
     currentPassword: false, newPassword: false, confirmNewPassword: false
   });
-  const [activeProfileTab, setActiveProfileTab] = useState('details');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeProfileTab = searchParams.get('tab') || 'details';
+  const setActiveProfileTab = useCallback((tab: string) => {
+    setSearchParams({ tab }, { replace: true });
+  }, [setSearchParams]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
@@ -319,54 +324,53 @@ const Profile = () => {
   const langDisplay = formData.language === 'E' ? 'English' : formData.language === 'S' ? 'Sinhala' : formData.language;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-      {/* Logout Button - Mobile */}
-      <div className="lg:hidden">
-        <Button
-          variant="outline"
-          onClick={() => logout()}
-          className="w-full flex items-center justify-center gap-2 h-10 text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground transition-colors"
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </Button>
-      </div>
+    <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-20 lg:pb-6">
       {/* Profile Header */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row items-center gap-5">
+      <Card className="overflow-hidden">
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-5">
             <div className="relative group">
-              <Avatar className="h-24 w-24 ring-2 ring-border">
+              <Avatar className="h-20 w-20 sm:h-24 sm:w-24 ring-2 ring-primary/20">
                 <AvatarImage src={currentImageUrl} alt="Profile" />
-                <AvatarFallback className="text-xl font-semibold bg-primary/10 text-primary">
+                <AvatarFallback className="text-lg sm:text-xl font-semibold bg-primary/10 text-primary">
                   {getUserInitials()}
                 </AvatarFallback>
               </Avatar>
               <Button
                 size="icon"
                 variant="secondary"
-                className="absolute -bottom-1 -right-1 h-8 w-8 rounded-full shadow-md"
+                className="absolute -bottom-1 -right-1 h-7 w-7 sm:h-8 sm:w-8 rounded-full shadow-md"
                 onClick={() => document.querySelector<HTMLButtonElement>('[aria-label="change-photo"]')?.click()}
               >
-                <Camera className="h-3.5 w-3.5" />
+                <Camera className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
               </Button>
               <div className="hidden">
                 <ProfileImageUpload currentImageUrl={currentImageUrl} onImageUpdate={handleImageUpdate} />
               </div>
             </div>
-            <div className="text-center sm:text-left flex-1">
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground break-words">{formData.nameWithInitials || formData.name || 'Welcome'}</h1>
-              <p className="text-muted-foreground text-sm mt-1">{formData.email}</p>
-              <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start">
-                <Badge variant="secondary" className="text-xs">
+            <div className="text-center sm:text-left flex-1 min-w-0">
+              <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate">{formData.nameWithInitials || formData.name || 'Welcome'}</h1>
+              <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 truncate">{formData.email}</p>
+              <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start flex-wrap">
+                <Badge variant="secondary" className="text-[10px] sm:text-xs">
                   <Shield className="h-3 w-3 mr-1" />
                   {userTypeDisplay}
                 </Badge>
                 {formData.joinDate && (
-                  <span className="text-xs text-muted-foreground">Joined {formData.joinDate}</span>
+                  <span className="text-[10px] sm:text-xs text-muted-foreground">Joined {formData.joinDate}</span>
                 )}
               </div>
             </div>
+            {/* Logout - Desktop inline, Mobile bottom */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => logout()}
+              className="hidden lg:flex items-center gap-1.5 text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Logout
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -376,18 +380,18 @@ const Profile = () => {
         setActiveProfileTab(val);
         if (val === 'devices' && sessions.length === 0) loadSessions();
       }}>
-        <TabsList className="w-full grid grid-cols-4">
-          <TabsTrigger value="details" className="gap-1 text-xs sm:text-sm">
-            <User className="h-4 w-4" /> <span className="hidden sm:inline">Details</span>
+        <TabsList className="w-full grid grid-cols-4 h-11 sm:h-10">
+          <TabsTrigger value="details" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
+            <User className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Details</span>
           </TabsTrigger>
-          <TabsTrigger value="change-password" className="gap-1 text-xs sm:text-sm">
-            <Lock className="h-4 w-4" /> <span className="hidden sm:inline">Security</span>
+          <TabsTrigger value="security" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
+            <Lock className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Security</span>
           </TabsTrigger>
-          <TabsTrigger value="devices" className="gap-1 text-xs sm:text-sm">
-            <Monitor className="h-4 w-4" /> <span className="hidden sm:inline">Devices</span>
+          <TabsTrigger value="sessions" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
+            <Monitor className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Devices</span>
           </TabsTrigger>
-          <TabsTrigger value="apps" className="gap-1 text-xs sm:text-sm">
-            <Link2 className="h-4 w-4" /> <span className="hidden sm:inline">Apps</span>
+          <TabsTrigger value="apps" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
+            <Link2 className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Apps</span>
           </TabsTrigger>
         </TabsList>
 
@@ -459,7 +463,7 @@ const Profile = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="change-password" className="mt-4">
+        <TabsContent value="security" className="mt-4">
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -502,7 +506,7 @@ const Profile = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="devices" className="mt-4 space-y-4">
+        <TabsContent value="sessions" className="mt-4 space-y-4">
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -583,6 +587,18 @@ const Profile = () => {
           <ConnectedApps />
         </TabsContent>
       </Tabs>
+
+      {/* Logout Button - Mobile only */}
+      <div className="lg:hidden">
+        <Button
+          variant="outline"
+          onClick={() => logout()}
+          className="w-full flex items-center justify-center gap-2 h-11 text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground transition-colors"
+        >
+          <LogOut className="h-4 w-4" />
+          Logout
+        </Button>
+      </div>
     </div>
   );
 };
