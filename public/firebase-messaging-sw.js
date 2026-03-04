@@ -16,10 +16,9 @@ self.addEventListener('message', (event) => {
       try {
         firebase.initializeApp(event.data.config);
         firebaseInitialized = true;
-        console.log('[firebase-messaging-sw.js] Firebase initialized with config from main app');
         initializeMessaging();
       } catch (error) {
-        console.error('[firebase-messaging-sw.js] Firebase initialization failed:', error);
+        // silent
       }
     }
   }
@@ -34,10 +33,9 @@ if (configParam && !firebaseInitialized) {
     const config = JSON.parse(decodeURIComponent(configParam));
     firebase.initializeApp(config);
     firebaseInitialized = true;
-    console.log('[firebase-messaging-sw.js] Firebase initialized from URL params');
     initializeMessaging();
   } catch (error) {
-    console.warn('[firebase-messaging-sw.js] Could not parse Firebase config from URL:', error);
+    // silent
   }
 }
 
@@ -46,8 +44,6 @@ function initializeMessaging() {
 
   // Handle background messages
   messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Background message received:', payload);
-    
     const notificationTitle = payload.notification?.title || 'New Notification';
     const notificationOptions = {
       body: payload.notification?.body || '',
@@ -69,23 +65,51 @@ function initializeMessaging() {
 
 // Handle notification click
 self.addEventListener('notificationclick', (event) => {
-  console.log('[firebase-messaging-sw.js] Notification clicked:', event);
-  
   event.notification.close();
-  
+
   const actionUrl = event.notification.data?.actionUrl || '/notifications';
-  
+
+  // Determine if actionUrl is external (different origin) or internal
+  const appOrigin = self.location.origin;
+  let isExternal = false;
+  let targetAbsolute = actionUrl;
+
+  if (actionUrl.startsWith('http')) {
+    try {
+      const parsed = new URL(actionUrl);
+      isExternal = parsed.origin !== appOrigin;
+      targetAbsolute = actionUrl;
+    } catch (_) {
+      // malformed URL — treat as internal path
+    }
+  } else {
+    targetAbsolute = appOrigin + actionUrl;
+  }
+
+  if (isExternal) {
+    // Open external site directly in a new tab — no in-app navigation
+    event.waitUntil(
+      clients.openWindow(actionUrl)
+    );
+    return;
+  }
+
+  // Internal — focus existing app tab and post message, or open new tab
+  const targetPath = actionUrl.startsWith('http') ? new URL(actionUrl).pathname : actionUrl;
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Check if there is already a window/tab open with the target URL
       for (const client of windowClients) {
-        if (client.url === actionUrl && 'focus' in client) {
-          return client.focus();
+        if ('focus' in client) {
+          client.focus();
+          // Pass full original URL so the hook can decide path+search+hash
+          client.postMessage({ type: 'NAVIGATE_TO', url: actionUrl, path: targetPath });
+          return;
         }
       }
-      // If not, open a new window/tab
+      // App not open — open new tab
       if (clients.openWindow) {
-        return clients.openWindow(actionUrl);
+        return clients.openWindow(targetAbsolute);
       }
     })
   );

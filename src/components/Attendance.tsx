@@ -330,10 +330,7 @@ const Attendance = () => {
         setAttendanceSummary(response.summary ? normalizeAttendanceSummary(response.summary) : null);
         setDataLoaded(true);
         
-        toast({
-          title: "Data Loaded",
-          description: `Loaded ${response.data.length} attendance records`,
-        });
+        
       } else {
         throw new Error(response.message || 'Failed to load attendance data');
       }
@@ -353,7 +350,7 @@ const Attendance = () => {
     if (hasPermission) {
       loadStudentAttendanceData();
     }
-  }, [page, rowsPerPage, currentInstituteId, currentClassId, currentSubjectId, viewType]);
+  }, [loadStudentAttendanceData, hasPermission]);
 
   const getCurrentSelection = () => {
     const parts = [];

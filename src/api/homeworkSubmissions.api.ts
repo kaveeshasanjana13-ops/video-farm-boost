@@ -360,6 +360,22 @@ class HomeworkSubmissionsApi {
   }
 
   /**
+   * Upload correction file via Google Drive (Teacher/Admin)
+   * POST /institute-class-subject-homework-submissions/{submissionId}/correction-file-drive
+   */
+  async uploadCorrectionFileDrive(
+    submissionId: string,
+    driveFileId: string,
+    accessToken: string
+  ): Promise<{ teacherCorrectionFileUrl: string }> {
+    console.log('📎 Uploading correction file via Drive:', submissionId, driveFileId);
+    return apiClient.post(
+      `${this.basePath}/${submissionId}/correction-file-drive`,
+      { driveFileId, accessToken }
+    );
+  }
+
+  /**
    * Review submission with remarks (Teacher/Admin)
    * PATCH /institute-class-subject-homework-submissions/{submissionId}/review
    */

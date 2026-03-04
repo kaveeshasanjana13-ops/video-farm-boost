@@ -26,6 +26,8 @@ import {
   Bell,
   ImageIcon,
   Camera,
+  Calendar,
+  CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -106,6 +108,8 @@ const MobileDashboard = () => {
           title: 'Navigation',
           items: [
             { id: 'select-class', label: 'Select Class', icon: School, description: 'Choose your class', color: nextColor() },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, description: 'Today\'s schedule', color: nextColor() },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, description: 'Month calendar', color: nextColor() },
             { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, description: 'View attendance records', color: nextColor() },
             { id: 'institute-lectures', label: 'Institute Lectures', icon: Video, description: 'Watch lectures', color: nextColor() },
           ],
@@ -139,6 +143,8 @@ const MobileDashboard = () => {
             { id: 'institute-subjects', label: `Institute ${subjectLabel}s`, icon: BookOpen, description: `All ${subjectLabel.toLowerCase()}s`, color: nextColor() },
             { id: 'select-class', label: 'Select Class', icon: School, description: 'Choose a class', color: nextColor() },
             { id: 'select-subject', label: isTuitionInstitute ? 'Select Sub Class' : 'Select Subject', icon: BookOpen, description: `Choose a ${subjectLabel.toLowerCase()}`, color: nextColor() },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, description: 'Today\'s schedule', color: nextColor() },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, description: 'Month calendar', color: nextColor() },
             { id: 'institute-lectures', label: 'Institute Lectures', icon: Video, description: 'All lectures', color: nextColor() },
           ],
         });
@@ -207,8 +213,10 @@ const MobileDashboard = () => {
         sections.push({
           title: 'Attendance',
           items: [
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, description: 'Today\'s schedule', color: nextColor() },
             { id: 'daily-attendance', label: 'Daily Attendance', icon: UserCheck, description: 'Mark & view', color: nextColor() },
             { id: 'qr-attendance', label: 'Mark Attendance', icon: QrCode, description: 'QR code scan', color: nextColor() },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, description: 'Month calendar', color: nextColor() },
           ],
         });
         sections.push({
@@ -334,29 +342,29 @@ const MobileDashboard = () => {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 px-1">
             {section.title}
           </h2>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {section.items.map((item) => (
               <button
                 key={item.id}
                 onClick={() => !item.locked && handleNavigate(item.id)}
                 disabled={item.locked}
                 className={`
-                  flex flex-col items-center gap-2 p-4 rounded-2xl
+                  flex flex-col items-center gap-1.5 sm:gap-2 p-2.5 sm:p-4 rounded-2xl
                   transition-all duration-200 active:scale-95
                   ${item.locked 
                     ? 'opacity-40 cursor-not-allowed' 
                     : 'hover:shadow-md active:shadow-sm'
                   }
-                  bg-card border border-border/50 shadow-sm
+                  bg-card border border-border/50 shadow-sm min-w-0 overflow-hidden
                 `}
               >
                 <div className={`
-                  w-12 h-12 rounded-xl flex items-center justify-center
+                  w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0
                   ${item.color} text-white shadow-sm
                 `}>
-                  <item.icon className="h-6 w-6" />
+                  <item.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
-                <span className="text-xs font-medium text-foreground text-center leading-tight line-clamp-2">
+                <span className="text-[10px] sm:text-xs font-medium text-foreground text-center leading-tight line-clamp-2 w-full">
                   {item.label}
                 </span>
               </button>

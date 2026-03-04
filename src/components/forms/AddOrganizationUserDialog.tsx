@@ -72,7 +72,7 @@ const AddOrganizationUserDialog: React.FC<AddOrganizationUserDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md mx-auto">
         <DialogHeader>
           <DialogTitle>Add User to {organizationName}</DialogTitle>
         </DialogHeader>

@@ -19,7 +19,7 @@ import { useToast } from '@/hooks/use-toast';
 import { enrollmentApi } from '@/api/enrollment.api';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 import { CACHE_TTL } from '@/config/cacheTTL';
 
 interface Student {
@@ -130,15 +130,12 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
       });
       
       // Use new bulk-enroll API endpoint
-      const token = localStorage.getItem('access_token');
+      const headers = await getApiHeadersAsync();
       const response = await fetch(
         `${getBaseUrl()}/institute-class-subject-students/bulk-enroll`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers,
           body: JSON.stringify({
             instituteId: selectedInstitute.id,
             classId: selectedClass.id,
@@ -239,33 +236,34 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5" />
+      <DialogContent className="max-w-2xl max-h-[90vh] sm:max-h-[80vh] p-0 sm:p-6 gap-0 w-[calc(100%-1rem)] mx-auto sm:w-full rounded-2xl sm:rounded-lg">
+        <DialogHeader className="px-4 pt-5 pb-3 sm:px-0 sm:pt-0 sm:pb-0">
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <UserPlus className="h-5 w-5 text-primary" />
             Assign Students to Subject
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">
             Select students to assign to <strong>{selectedSubject.name}</strong> in <strong>{selectedClass?.name}</strong>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-3 px-4 sm:px-0 py-3 sm:py-4">
           {/* Search and Select All */}
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search students..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 h-10"
               />
             </div>
             <Button
               variant="outline"
               onClick={handleSelectAll}
               disabled={filteredStudents.length === 0}
+              className="h-10 text-xs sm:text-sm shrink-0"
             >
               {selectedStudentIds.length === filteredStudents.length ? 'Deselect All' : 'Select All'}
             </Button>
@@ -273,61 +271,62 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
 
           {/* Selected Count */}
           <div className="flex items-center justify-between">
-            <Badge variant="outline" className="flex items-center gap-1">
-              <Users className="h-4 w-4" />
+            <Badge variant="outline" className="flex items-center gap-1 text-xs">
+              <Users className="h-3.5 w-3.5" />
               {selectedStudentIds.length} Selected
             </Badge>
-            <Badge variant="outline" className="flex items-center gap-1">
-              <Users className="h-4 w-4" />
+            <Badge variant="outline" className="flex items-center gap-1 text-xs">
+              <Users className="h-3.5 w-3.5" />
               {filteredStudents.length} Available
             </Badge>
           </div>
 
           {/* Students List */}
-          <ScrollArea className="h-96">
+          <ScrollArea className="h-[45vh] sm:h-96">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin" />
-                <span className="ml-2">Loading students...</span>
+                <span className="ml-2 text-sm">Loading students...</span>
               </div>
             ) : filteredStudents.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-medium mb-2">No Students Found</h3>
-                <p className="text-muted-foreground">
+              <div className="text-center py-10">
+                <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                <h3 className="text-base font-medium mb-1">No Students Found</h3>
+                <p className="text-sm text-muted-foreground">
                   {searchTerm ? 'No students match your search.' : 'No students available.'}
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {filteredStudents.map((student) => (
                   <div
                     key={student.id}
-                    className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-muted/50 cursor-pointer"
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer active:scale-[0.98] transition-all ${
+                      selectedStudentIds.includes(student.id) 
+                        ? 'bg-primary/5 border-primary/20' 
+                        : 'hover:bg-muted/50'
+                    }`}
                     onClick={() => handleStudentToggle(student.id)}
                   >
                     <Checkbox
                       checked={selectedStudentIds.includes(student.id)}
                       onChange={() => handleStudentToggle(student.id)}
                     />
-                    <Avatar className="h-10 w-10">
+                    <Avatar className="h-9 w-9 shrink-0">
                       <AvatarImage src={student.imageUrl || ''} alt={student.name} />
-                      <AvatarFallback>
+                      <AvatarFallback className="text-xs">
                         {student.name.split(' ').map(n => n.charAt(0)).join('')}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{student.name}</p>
-                      <p className="text-sm text-muted-foreground truncate">
-                        {student.email || 'No email'}
+                      <p className="text-sm font-medium truncate">{student.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        ID: {student.id}{student.email ? ` · ${student.email}` : student.phoneNumber ? ` · ${student.phoneNumber}` : ''}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-muted-foreground">ID: {student.id}</p>
-                      {student.phoneNumber && (
-                        <p className="text-sm text-muted-foreground">{student.phoneNumber}</p>
-                      )}
-                    </div>
+                    {selectedStudentIds.includes(student.id) && (
+                      <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                    )}
                   </div>
                 ))}
               </div>
@@ -335,13 +334,14 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
           </ScrollArea>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="px-4 pb-4 sm:px-0 sm:pb-0 flex-row gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1 sm:flex-none h-11 sm:h-10">
             Cancel
           </Button>
           <Button 
             onClick={handleAssignStudents}
             disabled={selectedStudentIds.length === 0 || assigning}
+            className="flex-1 sm:flex-none h-11 sm:h-10"
           >
             {assigning ? (
               <>
@@ -351,7 +351,7 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
             ) : (
               <>
                 <UserPlus className="h-4 w-4 mr-2" />
-                Assign {selectedStudentIds.length} Students
+                Assign {selectedStudentIds.length}
               </>
             )}
           </Button>

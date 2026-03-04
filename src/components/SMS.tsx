@@ -977,7 +977,7 @@ const SMS = () => {
 
       {/* View Payment Details Dialog */}
       <Dialog open={viewPaymentDialogOpen} onOpenChange={setViewPaymentDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle>Payment Submission Details</DialogTitle>
           </DialogHeader>
@@ -1122,7 +1122,7 @@ const SMS = () => {
 
       {/* New Payment Dialog */}
       <Dialog open={newPaymentOpen} onOpenChange={setNewPaymentOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle>Submit Payment for SMS Credits</DialogTitle>
           </DialogHeader>

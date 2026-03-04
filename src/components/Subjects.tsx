@@ -176,7 +176,7 @@ const Subjects = () => {
     actions.refresh();
   };
   const getBaseUrl = () => {
-    return import.meta.env.VITE_LMS_BASE_URL || 'http://localhost:8080';
+    return import.meta.env.VITE_LMS_BASE_URL || 'https://lmsapi.suraksha.lk';
   };
 
   const resolveImageUrl = (url?: string | null) => {
@@ -656,7 +656,7 @@ const Subjects = () => {
 
       {/* Create Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle>Create New Subject</DialogTitle>
           </DialogHeader>
@@ -666,7 +666,7 @@ const Subjects = () => {
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle>Edit Subject</DialogTitle>
           </DialogHeader>
@@ -679,7 +679,7 @@ const Subjects = () => {
 
       {/* Assign Subject Dialog */}
       <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto mx-auto">
           <DialogHeader>
             <DialogTitle>Assign Subjects to Class</DialogTitle>
           </DialogHeader>

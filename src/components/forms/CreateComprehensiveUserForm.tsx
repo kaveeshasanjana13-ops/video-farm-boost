@@ -427,13 +427,13 @@ const CreateComprehensiveUserForm = ({
 
   return (
     <Dialog open={true} onOpenChange={() => onCancel()}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-4 sm:p-6">
+      <DialogContent className="w-full sm:w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-3 sm:p-6">
         <DialogHeader className="pb-2">
-          <DialogTitle className="text-lg sm:text-xl">Create New User</DialogTitle>
-          <p className="text-xs sm:text-sm text-muted-foreground">Fill in the details to create a user profile</p>
+          <DialogTitle className="text-lg sm:text-xl text-center">Create New User</DialogTitle>
+          <p className="text-xs sm:text-sm text-muted-foreground text-center">Fill in the details to create a user profile</p>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto -mx-4 px-4 sm:-mx-6 sm:px-6">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
           <form id="comprehensive-user-form" onSubmit={handleSubmit} className="space-y-5 py-2">
             
             {/* User Type Selection */}

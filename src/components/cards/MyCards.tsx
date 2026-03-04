@@ -1,8 +1,15 @@
 /**
- * MyCards - View and manage my active/deactivated cards
+ * MyCards - View and manage my active/deactivated cards with Card/Table view modes
  */
 
 import React, { useState, useEffect } from 'react';
+import Paper from '@mui/material/Paper';
+import MuiTable from '@mui/material/Table';
+import MuiTableBody from '@mui/material/TableBody';
+import MuiTableCell from '@mui/material/TableCell';
+import MuiTableContainer from '@mui/material/TableContainer';
+import MuiTableHead from '@mui/material/TableHead';
+import MuiTableRow from '@mui/material/TableRow';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +39,8 @@ import {
   Calendar,
   RefreshCw,
   CheckCircle,
+  LayoutGrid,
+  Table2,
 } from 'lucide-react';
 import {
   userCardApi,
@@ -57,6 +66,19 @@ const MyCards: React.FC = () => {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionType, setActionType] = useState<CardStatus | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
+    return (localStorage.getItem('viewMode') as 'card' | 'table') || 'card';
+  });
+
+  // Listen for viewMode changes from Settings
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const mode = (localStorage.getItem('viewMode') as 'card' | 'table') || 'card';
+      setViewMode(mode);
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   const fetchCards = async (forceRefresh = false) => {
     try {
@@ -145,30 +167,40 @@ const MyCards: React.FC = () => {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">My Cards</h2>
-          <p className="text-muted-foreground">View and manage your ID cards</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fetchCards(true)}
-          disabled={refreshing}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
+  const renderActionsDropdown = (card: UserIdCardOrder) => {
+    const isActive = card.status === CardStatus.ACTIVE;
+    if (!isActive) return null;
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => handleAction(card, CardStatus.LOST)} className="text-red-600">
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            Report Lost
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleAction(card, CardStatus.DAMAGED)} className="text-orange-600">
+            <AlertTriangle className="h-4 w-4 mr-2" />
+            Report Damaged
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleAction(card, CardStatus.DEACTIVATED)} className="text-gray-600">
+            <Ban className="h-4 w-4 mr-2" />
+            Deactivate
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
-      {/* Cards Grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  const renderCardView = () => {
+    if (loading) {
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-items-center">
           {[1, 2].map((i) => (
-            <Card key={i}>
+            <Card key={i} className="w-full max-w-[300px]">
               <CardHeader>
                 <Skeleton className="h-6 w-3/4" />
                 <Skeleton className="h-4 w-1/2" />
@@ -179,116 +211,223 @@ const MyCards: React.FC = () => {
             </Card>
           ))}
         </div>
-      ) : cards.length === 0 ? (
+      );
+    }
+
+    if (cards.length === 0) {
+      return (
         <Card className="p-12 text-center">
           <div className="flex flex-col items-center gap-4">
             <CreditCard className="h-16 w-16 text-muted-foreground" />
             <div>
               <h3 className="text-lg font-semibold">No Cards Yet</h3>
-              <p className="text-muted-foreground">
-                You don't have any active or delivered cards yet.
-              </p>
+              <p className="text-muted-foreground">You don't have any active or delivered cards yet.</p>
             </div>
           </div>
         </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {cards.map((card) => {
-            const daysUntilExpiry = getDaysUntilExpiry(card.cardExpiryDate);
-            const expiringSoon = isExpiringSoon(card.cardExpiryDate);
-            const isActive = card.status === CardStatus.ACTIVE;
+      );
+    }
 
-            return (
-              <Card
-                key={card.id}
-                className={`overflow-hidden ${!isActive ? 'opacity-75' : ''}`}
-              >
-                <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                  <div className="space-y-1">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <CreditCard className="h-4 w-4" />
-                      {card.card?.cardName || 'ID Card'}
-                    </CardTitle>
-                    <Badge variant="outline" className="text-xs">
-                      {card.cardType}
-                    </Badge>
-                  </div>
-                  {isActive && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => handleAction(card, CardStatus.LOST)}
-                          className="text-red-600"
-                        >
-                          <AlertTriangle className="h-4 w-4 mr-2" />
-                          Report Lost
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleAction(card, CardStatus.DAMAGED)}
-                          className="text-orange-600"
-                        >
-                          <AlertTriangle className="h-4 w-4 mr-2" />
-                          Report Damaged
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleAction(card, CardStatus.DEACTIVATED)}
-                          className="text-gray-600"
-                        >
-                          <Ban className="h-4 w-4 mr-2" />
-                          Deactivate
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </CardHeader>
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-items-center">
+        {cards.map((card) => {
+          const daysUntilExpiry = getDaysUntilExpiry(card.cardExpiryDate);
+          const expiringSoon = isExpiringSoon(card.cardExpiryDate);
+          const isActive = card.status === CardStatus.ACTIVE;
 
-                <CardContent className="space-y-4">
-                  {/* Status */}
-                  <Badge className={`${cardStatusColors[card.status]} flex items-center gap-1 w-fit`}>
-                    {isActive ? (
-                      <CheckCircle className="h-3 w-3" />
-                    ) : (
-                      <Ban className="h-3 w-3" />
-                    )}
-                    {cardStatusLabels[card.status]}
-                  </Badge>
-
-                  {/* RFID */}
-                  {card.rfidNumber && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Wifi className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-mono text-xs">{card.rfidNumber}</span>
-                    </div>
-                  )}
-
-                  {/* Expiry */}
+          return (
+            <Card key={card.id} className={`w-full max-w-[300px] overflow-hidden ${!isActive ? 'opacity-75' : ''}`}>
+              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1.5">
+                <div className="space-y-1">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <CreditCard className="h-3.5 w-3.5" />
+                    {card.card?.cardName || 'ID Card'}
+                  </CardTitle>
+                  <Badge variant="outline" className="text-xs">{card.cardType}</Badge>
+                </div>
+                {renderActionsDropdown(card)}
+              </CardHeader>
+              <CardContent className="space-y-4 pt-3">
+                <Badge className={`${cardStatusColors[card.status]} flex items-center gap-1 w-fit`}>
+                  {isActive ? <CheckCircle className="h-3 w-3" /> : <Ban className="h-3 w-3" />}{cardStatusLabels[card.status]}
+                </Badge>
+                {card.rfidNumber && (
                   <div className="flex items-center gap-2 text-sm">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span className={expiringSoon ? 'text-orange-500 font-medium' : ''}>
-                      Expires: {formatDate(card.cardExpiryDate)}
-                      {daysUntilExpiry > 0 && daysUntilExpiry <= 30 && (
-                        <span className="text-xs ml-1">({daysUntilExpiry} days)</span>
-                      )}
-                    </span>
+                    <Wifi className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-mono text-xs">{card.rfidNumber}</span>
                   </div>
+                )}
+                <div className="flex items-center gap-2 text-sm">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className={expiringSoon ? 'text-orange-500 font-medium' : ''}>
+                    Expires: {formatDate(card.cardExpiryDate)}
+                    {daysUntilExpiry > 0 && daysUntilExpiry <= 30 && (
+                      <span className="text-xs ml-1">({daysUntilExpiry} days)</span>
+                    )}
+                  </span>
+                </div>
+                {card.deliveredAt && (
+                  <div className="text-xs text-muted-foreground">
+                    Delivered: {formatDate(card.deliveredAt)}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  };
 
-                  {/* Delivered Date */}
-                  {card.deliveredAt && (
-                    <div className="text-xs text-muted-foreground">
-                      Delivered: {formatDate(card.deliveredAt)}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+  const renderTableView = () => {
+    if (loading) {
+      return (
+        <Paper sx={{ width: '100%', overflow: 'hidden', backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}>
+          <div className="p-6 space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex gap-4">
+                <Skeleton className="h-12 w-12 rounded" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Paper>
+      );
+    }
+
+    if (cards.length === 0) {
+      return (
+        <Card className="p-12 text-center">
+          <div className="flex flex-col items-center gap-4">
+            <CreditCard className="h-16 w-16 text-muted-foreground" />
+            <div>
+              <h3 className="text-lg font-semibold">No Cards Yet</h3>
+              <p className="text-muted-foreground">You don't have any active or delivered cards yet.</p>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    const cellSx = { color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' };
+
+    return (
+      <Paper sx={{ width: '100%', overflow: 'hidden', backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}>
+        <MuiTableContainer sx={{ maxHeight: 440 }}>
+          <MuiTable stickyHeader aria-label="cards table">
+            <MuiTableHead>
+              <MuiTableRow>
+                {['Card Name', 'Type', 'Status', 'RFID', 'Expiry', 'Delivered', 'Actions'].map((col) => (
+                  <MuiTableCell
+                    key={col}
+                    sx={{
+                      backgroundColor: 'hsl(var(--muted))',
+                      color: 'hsl(var(--foreground))',
+                      fontWeight: 'bold',
+                      borderBottom: '1px solid hsl(var(--border))',
+                    }}
+                    align={col === 'Actions' ? 'right' : 'left'}
+                  >
+                    {col}
+                  </MuiTableCell>
+                ))}
+              </MuiTableRow>
+            </MuiTableHead>
+            <MuiTableBody>
+              {cards.map((card) => {
+                const isActive = card.status === CardStatus.ACTIVE;
+                const expiringSoon = isExpiringSoon(card.cardExpiryDate);
+                const daysUntilExpiry = getDaysUntilExpiry(card.cardExpiryDate);
+                return (
+                  <MuiTableRow hover key={card.id} sx={{ '&:hover': { backgroundColor: 'hsl(var(--muted) / 0.5)' }, opacity: isActive ? 1 : 0.75 }}>
+                    <MuiTableCell sx={cellSx}>
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{card.card?.cardName || 'ID Card'}</span>
+                      </div>
+                    </MuiTableCell>
+                    <MuiTableCell sx={cellSx}>
+                      <Badge variant="outline" className="text-xs">{card.cardType}</Badge>
+                    </MuiTableCell>
+                    <MuiTableCell sx={cellSx}>
+                      <Badge className={`${cardStatusColors[card.status]} flex items-center gap-1 w-fit`}>
+                        {isActive ? <CheckCircle className="h-3 w-3" /> : <Ban className="h-3 w-3" />}{cardStatusLabels[card.status]}
+                      </Badge>
+                    </MuiTableCell>
+                    <MuiTableCell sx={cellSx}>
+                      {card.rfidNumber ? (
+                        <span className="font-mono text-xs">{card.rfidNumber}</span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </MuiTableCell>
+                    <MuiTableCell sx={cellSx}>
+                      <span className={expiringSoon ? 'text-orange-500 font-medium' : ''}>
+                        {formatDate(card.cardExpiryDate)}
+                        {daysUntilExpiry > 0 && daysUntilExpiry <= 30 && (
+                          <span className="text-xs ml-1">({daysUntilExpiry}d)</span>
+                        )}
+                      </span>
+                    </MuiTableCell>
+                    <MuiTableCell sx={cellSx}>
+                      {card.deliveredAt ? formatDate(card.deliveredAt) : '-'}
+                    </MuiTableCell>
+                    <MuiTableCell align="right" sx={cellSx}>
+                      {renderActionsDropdown(card)}
+                    </MuiTableCell>
+                  </MuiTableRow>
+                );
+              })}
+            </MuiTableBody>
+          </MuiTable>
+        </MuiTableContainer>
+      </Paper>
+    );
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-5">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">My Cards</h2>
+          <p className="text-muted-foreground">View and manage your ID cards</p>
         </div>
-      )}
+        <div className="flex items-center gap-2">
+          {/* View Mode Toggle */}
+          <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Card View"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Table View"
+            >
+              <Table2 className="h-4 w-4" />
+            </button>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchCards(true)}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Content */}
+      {viewMode === 'card' ? renderCardView() : renderTableView()}
 
       {/* Action Confirmation Dialog */}
       <AlertDialog open={actionDialogOpen} onOpenChange={setActionDialogOpen}>

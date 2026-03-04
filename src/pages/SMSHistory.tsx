@@ -187,7 +187,7 @@ export default function SMSHistory() {
       return;
     }
     // Open the slip - use configured backend URL
-    const baseUrl = import.meta.env.VITE_LMS_BASE_URL || 'http://localhost:8080';
+    const baseUrl = import.meta.env.VITE_LMS_BASE_URL || 'https://lmsapi.suraksha.lk';
     const slipUrl = `${baseUrl}/sms/payment-slip/${filename}`;
     window.open(slipUrl, '_blank');
   };

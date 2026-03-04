@@ -68,7 +68,7 @@ const EnrollTransportDialog: React.FC<EnrollTransportDialogProps> = ({
           Enroll Transport
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] mx-auto">
         <DialogHeader>
           <DialogTitle>Enroll in Transport Service</DialogTitle>
         </DialogHeader>

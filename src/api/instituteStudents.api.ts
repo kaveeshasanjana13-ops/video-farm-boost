@@ -90,6 +90,14 @@ export interface StudentAttendanceParams {
   limit?: number;
   userId?: string;
   role?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+  searchTerm?: string;
+  studentName?: string;
+  markingMethod?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 class InstituteStudentsApi {
@@ -162,15 +170,22 @@ class InstituteStudentsApi {
     params: StudentAttendanceParams = {},
     forceRefresh = false
   ): Promise<StudentAttendanceResponse> {
-    const queryParams = {
-      page: params.page || 1,
-      limit: params.limit || 50
-    };
+    const queryParams = new URLSearchParams();
+    queryParams.append('page', String(params.page || 1));
+    queryParams.append('limit', String(params.limit || 50));
+    if (params.startDate) queryParams.append('startDate', params.startDate);
+    if (params.endDate) queryParams.append('endDate', params.endDate);
+    if (params.status) queryParams.append('status', params.status);
+    if (params.searchTerm) queryParams.append('searchTerm', params.searchTerm);
+    if (params.studentName) queryParams.append('studentName', params.studentName);
+    if (params.markingMethod) queryParams.append('markingMethod', params.markingMethod);
+    if (params.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
-    console.log('Fetching institute student attendance for institute:', instituteId, 'with params:', queryParams);
+    console.log('Fetching institute student attendance for institute:', instituteId, 'with params:', Object.fromEntries(queryParams));
 
     const attendanceUrl = getAttendanceUrl();
-    const endpoint = `${attendanceUrl}/api/attendance/institute/${instituteId}?page=${queryParams.page}&limit=${queryParams.limit}`;
+    const endpoint = `${attendanceUrl}/api/attendance/institute/${instituteId}?${queryParams.toString()}`;
     const headers = await getApiHeaders();
     
     const response = await fetch(endpoint, { headers });
@@ -187,15 +202,22 @@ class InstituteStudentsApi {
     params: StudentAttendanceParams = {},
     forceRefresh = false
   ): Promise<StudentAttendanceResponse> {
-    const queryParams = {
-      page: params.page || 1,
-      limit: params.limit || 50
-    };
+    const queryParams = new URLSearchParams();
+    queryParams.append('page', String(params.page || 1));
+    queryParams.append('limit', String(params.limit || 50));
+    if (params.startDate) queryParams.append('startDate', params.startDate);
+    if (params.endDate) queryParams.append('endDate', params.endDate);
+    if (params.status) queryParams.append('status', params.status);
+    if (params.searchTerm) queryParams.append('searchTerm', params.searchTerm);
+    if (params.studentName) queryParams.append('studentName', params.studentName);
+    if (params.markingMethod) queryParams.append('markingMethod', params.markingMethod);
+    if (params.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
-    console.log('Fetching class student attendance for institute:', instituteId, 'class:', classId, 'with params:', queryParams);
+    console.log('Fetching class student attendance for institute:', instituteId, 'class:', classId, 'with params:', Object.fromEntries(queryParams));
 
     const attendanceUrl = getAttendanceUrl();
-    const endpoint = `${attendanceUrl}/api/students/by-institute/${instituteId}/class/${classId}?page=${queryParams.page}&limit=${queryParams.limit}`;
+    const endpoint = `${attendanceUrl}/api/attendance/institute/${instituteId}/class/${classId}?${queryParams.toString()}`;
     const headers = await getApiHeaders();
     
     const response = await fetch(endpoint, { headers });
@@ -213,15 +235,22 @@ class InstituteStudentsApi {
     params: StudentAttendanceParams = {},
     forceRefresh = false
   ): Promise<StudentAttendanceResponse> {
-    const queryParams = {
-      page: params.page || 1,
-      limit: params.limit || 50
-    };
+    const queryParams = new URLSearchParams();
+    queryParams.append('page', String(params.page || 1));
+    queryParams.append('limit', String(params.limit || 50));
+    if (params.startDate) queryParams.append('startDate', params.startDate);
+    if (params.endDate) queryParams.append('endDate', params.endDate);
+    if (params.status) queryParams.append('status', params.status);
+    if (params.searchTerm) queryParams.append('searchTerm', params.searchTerm);
+    if (params.studentName) queryParams.append('studentName', params.studentName);
+    if (params.markingMethod) queryParams.append('markingMethod', params.markingMethod);
+    if (params.sortBy) queryParams.append('sortBy', params.sortBy);
+    if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
-    console.log('Fetching subject student attendance for institute:', instituteId, 'class:', classId, 'subject:', subjectId, 'with params:', queryParams);
+    console.log('Fetching subject student attendance for institute:', instituteId, 'class:', classId, 'subject:', subjectId, 'with params:', Object.fromEntries(queryParams));
 
     const attendanceUrl = getAttendanceUrl();
-    const endpoint = `${attendanceUrl}/api/students/by-institute/${instituteId}/class/${classId}/subject/${subjectId}?page=${queryParams.page}&limit=${queryParams.limit}`;
+    const endpoint = `${attendanceUrl}/api/attendance/institute/${instituteId}/class/${classId}/subject/${subjectId}?${queryParams.toString()}`;
     const headers = await getApiHeaders();
     
     const response = await fetch(endpoint, { headers });

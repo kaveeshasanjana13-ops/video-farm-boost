@@ -75,7 +75,7 @@ const VerifySubmissionDialog = ({ open, onOpenChange, submission, instituteId, o
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl mx-auto">
         <DialogHeader>
           <DialogTitle>Verify Payment Submission</DialogTitle>
         </DialogHeader>

@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
+import ImagePreviewModal from '@/components/ImagePreviewModal';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,15 +10,18 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { useAuth } from '@/contexts/AuthContext';
 import { AccessControl } from '@/utils/permissions';
 import ProfileImageUpload from '@/components/ProfileImageUpload';
 import { apiClient } from '@/api/client';
 import { useToast } from '@/hooks/use-toast';
-import { User, Mail, Phone, MapPin, Calendar, Shield, Lock, Eye, EyeOff, Camera, Briefcase, GraduationCap, CreditCard, Languages, Monitor, Smartphone, Tablet, LogOut, ShieldAlert, RefreshCw, Link2 } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Shield, Lock, Eye, EyeOff, Camera, Briefcase, GraduationCap, CreditCard, Languages, Monitor, Smartphone, Tablet, LogOut, ShieldAlert, RefreshCw, Link2, Pencil } from 'lucide-react';
+import ContactChangeDialog from '@/components/forms/ContactChangeDialog';
 import { getActiveSessions, revokeSession, revokeAllSessions } from '@/contexts/utils/auth.api';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import ConnectedApps from '@/components/ConnectedApps';
+import CurrentSelection from '@/components/ui/current-selection';
 
 interface UserData {
   id: string;
@@ -50,13 +54,20 @@ interface UserData {
   language: string;
 }
 
-const InfoRow = ({ icon: Icon, label, value }: { icon?: React.ElementType; label: string; value: string }) => (
+const InfoRow = ({ icon: Icon, label, value, onEdit }: { icon?: React.ElementType; label: string; value: string; onEdit?: () => void }) => (
   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-3 border-b border-border/30 last:border-0">
     <div className="flex items-center gap-2 sm:w-36 shrink-0">
       {Icon && <Icon className="h-4 w-4 text-muted-foreground shrink-0" />}
       <span className="text-xs sm:text-sm text-muted-foreground">{label}</span>
     </div>
-    <span className="text-sm font-medium text-foreground break-all pl-6 sm:pl-0">{value || '—'}</span>
+    <div className="flex items-center gap-2 flex-1 min-w-0 pl-6 sm:pl-0">
+      <span className="text-sm font-medium text-foreground break-all flex-1">{value || '—'}</span>
+      {onEdit && (
+        <button onClick={onEdit} className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title={`Change ${label}`}>
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
   </div>
 );
 
@@ -89,7 +100,8 @@ const Profile = () => {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokingAll, setRevokingAll] = useState(false);
-
+  const [showImagePreview, setShowImagePreview] = useState(false);
+  const [contactChangeType, setContactChangeType] = useState<'phone' | 'email' | null>(null);
   const loadSessions = async () => {
     setSessionsLoading(true);
     try {
@@ -126,6 +138,13 @@ const Profile = () => {
       setRevokingAll(false);
     }
   };
+
+  // Auto-load sessions when tab=sessions on mount or tab change
+  useEffect(() => {
+    if (activeProfileTab === 'sessions' && sessions.length === 0 && !sessionsLoading) {
+      loadSessions();
+    }
+  }, [activeProfileTab]);
 
   const parseUserAgent = (ua: string | null): { os: string; browser: string } => {
     if (!ua) return { os: 'Unknown', browser: '' };
@@ -325,13 +344,17 @@ const Profile = () => {
 
   return (
     <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-20 lg:pb-6">
+      <CurrentSelection showNavigation={false} />
       {/* Profile Header */}
       <Card className="overflow-hidden">
         <CardContent className="p-4 sm:p-6">
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-5">
             <div className="relative group">
-              <Avatar className="h-20 w-20 sm:h-24 sm:w-24 ring-2 ring-primary/20">
-                <AvatarImage src={currentImageUrl} alt="Profile" />
+              <Avatar
+                className="h-20 w-20 sm:h-24 sm:w-24 ring-2 ring-primary/20 cursor-pointer transition-opacity hover:opacity-80"
+                onClick={() => currentImageUrl && setShowImagePreview(true)}
+              >
+                <AvatarImage src={currentImageUrl} alt="Profile" className="object-cover" />
                 <AvatarFallback className="text-lg sm:text-xl font-semibold bg-primary/10 text-primary">
                   {getUserInitials()}
                 </AvatarFallback>
@@ -351,6 +374,9 @@ const Profile = () => {
             <div className="text-center sm:text-left flex-1 min-w-0">
               <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate">{formData.nameWithInitials || formData.name || 'Welcome'}</h1>
               <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 truncate">{formData.email}</p>
+              {user?.id && (
+                <p className="text-muted-foreground text-[10px] sm:text-xs mt-0.5 font-mono">ID: {user.id}</p>
+              )}
               <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start flex-wrap">
                 <Badge variant="secondary" className="text-[10px] sm:text-xs">
                   <Shield className="h-3 w-3 mr-1" />
@@ -395,72 +421,70 @@ const Profile = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="details" className="space-y-4 mt-4">
-          {/* Personal Info */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <User className="h-4 w-4 text-primary" /> Personal Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <InfoRow label="Name with Initials" value={formData.nameWithInitials} />
-              <InfoRow label="Full Name" value={formData.name} />
-              <InfoRow icon={Mail} label="Email" value={formData.email} />
-              <InfoRow icon={Phone} label="Phone" value={formData.phone} />
-              <InfoRow icon={Calendar} label="Date of Birth" value={formData.dateOfBirth} />
-              <InfoRow label="Gender" value={formData.gender} />
-              <InfoRow label="NIC" value={formData.nic} />
-              <InfoRow label="Birth Cert. No" value={formData.birthCertificateNo} />
-              <InfoRow icon={Shield} label="User Type" value={userTypeDisplay} />
-            </CardContent>
-          </Card>
+        <TabsContent value="details" className="mt-4">
+          <Accordion type="multiple" className="space-y-2">
+            <AccordionItem value="personal" className="border rounded-lg px-4">
+              <AccordionTrigger className="text-base font-semibold gap-2 hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-primary" /> Personal Information
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <InfoRow label="Name with Initials" value={formData.nameWithInitials} />
+                <InfoRow label="Full Name" value={formData.name} />
+                <InfoRow icon={Mail} label="Email" value={formData.email} onEdit={() => setContactChangeType('email')} />
+                <InfoRow icon={Phone} label="Phone" value={formData.phone} onEdit={() => setContactChangeType('phone')} />
+                <InfoRow icon={Calendar} label="Date of Birth" value={formData.dateOfBirth} />
+                <InfoRow label="Gender" value={formData.gender} />
+                <InfoRow label="NIC" value={formData.nic} />
+                <InfoRow label="Birth Cert. No" value={formData.birthCertificateNo} />
+                <InfoRow icon={Shield} label="User Type" value={userTypeDisplay} />
+              </AccordionContent>
+            </AccordionItem>
 
-          {/* Address */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-primary" /> Address
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <InfoRow label="Address Line 1" value={formData.addressLine1} />
-              <InfoRow label="Address Line 2" value={formData.addressLine2} />
-              <InfoRow label="City" value={formData.city} />
-              <InfoRow label="District" value={formData.district} />
-              <InfoRow label="Province" value={formData.province} />
-              <InfoRow label="Postal Code" value={formData.postalCode} />
-              <InfoRow label="Country" value={formData.country} />
-            </CardContent>
-          </Card>
+            <AccordionItem value="address" className="border rounded-lg px-4">
+              <AccordionTrigger className="text-base font-semibold gap-2 hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-primary" /> Address
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <InfoRow label="Address Line 1" value={formData.addressLine1} />
+                <InfoRow label="Address Line 2" value={formData.addressLine2} />
+                <InfoRow label="City" value={formData.city} />
+                <InfoRow label="District" value={formData.district} />
+                <InfoRow label="Province" value={formData.province} />
+                <InfoRow label="Postal Code" value={formData.postalCode} />
+                <InfoRow label="Country" value={formData.country} />
+              </AccordionContent>
+            </AccordionItem>
 
-          {/* Professional */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Briefcase className="h-4 w-4 text-primary" /> Professional
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <InfoRow icon={Briefcase} label="Occupation" value={formData.occupation} />
-              <InfoRow label="Workplace" value={formData.workplace} />
-              <InfoRow icon={Phone} label="Work Phone" value={formData.workPhone} />
-              <InfoRow icon={GraduationCap} label="Education" value={formData.educationLevel} />
-            </CardContent>
-          </Card>
+            <AccordionItem value="professional" className="border rounded-lg px-4">
+              <AccordionTrigger className="text-base font-semibold gap-2 hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-primary" /> Professional
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <InfoRow icon={Briefcase} label="Occupation" value={formData.occupation} />
+                <InfoRow label="Workplace" value={formData.workplace} />
+                <InfoRow icon={Phone} label="Work Phone" value={formData.workPhone} />
+                <InfoRow icon={GraduationCap} label="Education" value={formData.educationLevel} />
+              </AccordionContent>
+            </AccordionItem>
 
-          {/* Account */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-primary" /> Account
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <InfoRow icon={CreditCard} label="Plan" value={formData.subscriptionPlan || 'FREE'} />
-              <InfoRow icon={Languages} label="Language" value={langDisplay} />
-            </CardContent>
-          </Card>
+            <AccordionItem value="account" className="border rounded-lg px-4">
+              <AccordionTrigger className="text-base font-semibold gap-2 hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-primary" /> Account
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <InfoRow icon={CreditCard} label="Plan" value={formData.subscriptionPlan || 'FREE'} />
+                <InfoRow icon={Languages} label="Language" value={langDisplay} />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </TabsContent>
 
         <TabsContent value="security" className="mt-4">
@@ -599,6 +623,30 @@ const Profile = () => {
           Logout
         </Button>
       </div>
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        isOpen={showImagePreview}
+        onClose={() => setShowImagePreview(false)}
+        imageUrl={currentImageUrl}
+        title="Profile Photo"
+      />
+      {/* Contact Change Dialog */}
+      <ContactChangeDialog
+        open={contactChangeType !== null}
+        onClose={() => setContactChangeType(null)}
+        type={contactChangeType || 'phone'}
+        currentValue={contactChangeType === 'email' ? formData.email : formData.phone}
+        onSuccess={(newValue) => {
+          if (contactChangeType === 'email') {
+            setFormData(prev => ({ ...prev, email: newValue }));
+            if (userData) setUserData({ ...userData, email: newValue });
+          } else {
+            setFormData(prev => ({ ...prev, phone: newValue }));
+            if (userData) setUserData({ ...userData, phone: newValue });
+          }
+          setContactChangeType(null);
+        }}
+      />
     </div>
   );
 };

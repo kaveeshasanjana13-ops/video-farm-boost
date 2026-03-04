@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { X, Save, Video, MapPin } from 'lucide-react';
+import { Save, Video, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { lectureApi } from '@/api/lecture.api';
@@ -34,10 +34,10 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
         <CardContent>
           <Button onClick={onClose} className="w-full">Close</Button>
         </CardContent>
-      </Card>
-    );
+      </Card>);
+
   }
-  
+
   const pad = (n: number) => String(n).padStart(2, '0');
   const toInputDateTime = (value: any): string => {
     if (!value) return '';
@@ -96,7 +96,7 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
         classId: lecture.classId,
         subjectId: lecture.subjectId
       });
-      
+
       toast({
         title: "Success",
         description: "Lecture updated successfully"
@@ -116,7 +116,7 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
   };
 
   const handleInputChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   return (
@@ -128,7 +128,7 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
             <CardDescription>Update lecture details and information</CardDescription>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="h-4 w-4" />
+            
           </Button>
         </div>
       </CardHeader>
@@ -138,12 +138,12 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
               <div>
                 <Label htmlFor="title">Title *</Label>
                 <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => handleInputChange('title', e.target.value)}
-                  placeholder="Enter lecture title"
-                  required
-                />
+                id="title"
+                value={formData.title}
+                onChange={(e) => handleInputChange('title', e.target.value)}
+                placeholder="Enter lecture title"
+                required />
+
               </div>
                   <div>
                     <Label htmlFor="status">Status</Label>
@@ -165,34 +165,34 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
             <div>
               <Label htmlFor="description">Description *</Label>
               <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
-                placeholder="Enter lecture description"
-                required
-              />
+              id="description"
+              value={formData.description}
+              onChange={(e) => handleInputChange('description', e.target.value)}
+              placeholder="Enter lecture description"
+              required />
+
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="startTime">Start Time *</Label>
                 <Input
-                  id="startTime"
-                  type="datetime-local"
-                  value={formData.startTime}
-                  onChange={(e) => handleInputChange('startTime', e.target.value)}
-                  required
-                />
+                id="startTime"
+                type="datetime-local"
+                value={formData.startTime}
+                onChange={(e) => handleInputChange('startTime', e.target.value)}
+                required />
+
               </div>
               <div>
                 <Label htmlFor="endTime">End Time *</Label>
                 <Input
-                  id="endTime"
-                  type="datetime-local"
-                  value={formData.endTime}
-                  onChange={(e) => handleInputChange('endTime', e.target.value)}
-                  required
-                />
+                id="endTime"
+                type="datetime-local"
+                value={formData.endTime}
+                onChange={(e) => handleInputChange('endTime', e.target.value)}
+                required />
+
               </div>
             </div>
 
@@ -200,21 +200,21 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
               <div>
                 <Label htmlFor="venue">Venue</Label>
                 <Input
-                  id="venue"
-                  value={formData.venue}
-                  onChange={(e) => handleInputChange('venue', e.target.value)}
-                  placeholder="Enter venue"
-                />
+                id="venue"
+                value={formData.venue}
+                onChange={(e) => handleInputChange('venue', e.target.value)}
+                placeholder="Enter venue" />
+
               </div>
               <div>
                 <Label htmlFor="maxParticipants">Max Participants</Label>
                 <Input
-                  id="maxParticipants"
-                  type="number"
-                  value={formData.maxParticipants}
-                  onChange={(e) => handleInputChange('maxParticipants', parseInt(e.target.value))}
-                  min="1"
-                />
+                id="maxParticipants"
+                type="number"
+                value={formData.maxParticipants}
+                onChange={(e) => handleInputChange('maxParticipants', parseInt(e.target.value))}
+                min="1" />
+
               </div>
             </div>
 
@@ -224,61 +224,61 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
                 <div>
                   <Label htmlFor="meetingLink">Meeting Link</Label>
                   <Input
-                    id="meetingLink"
-                    value={formData.meetingLink}
-                    onChange={(e) => handleInputChange('meetingLink', e.target.value)}
-                    placeholder="https://meet.example.com/..."
-                  />
+                  id="meetingLink"
+                  value={formData.meetingLink}
+                  onChange={(e) => handleInputChange('meetingLink', e.target.value)}
+                  placeholder="https://meet.example.com/..." />
+
                 </div>
                 <div>
                   <Label htmlFor="meetingId">Meeting ID</Label>
                   <Input
-                    id="meetingId"
-                    value={formData.meetingId}
-                    onChange={(e) => handleInputChange('meetingId', e.target.value)}
-                    placeholder="Meeting ID"
-                  />
+                  id="meetingId"
+                  value={formData.meetingId}
+                  onChange={(e) => handleInputChange('meetingId', e.target.value)}
+                  placeholder="Meeting ID" />
+
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="meetingPassword">Meeting Password</Label>
                   <Input
-                    id="meetingPassword"
-                    value={formData.meetingPassword}
-                    onChange={(e) => handleInputChange('meetingPassword', e.target.value)}
-                    placeholder="Meeting password"
-                  />
+                  id="meetingPassword"
+                  value={formData.meetingPassword}
+                  onChange={(e) => handleInputChange('meetingPassword', e.target.value)}
+                  placeholder="Meeting password" />
+
                 </div>
                 <div>
                   <Label htmlFor="recordingUrl">Recording URL</Label>
                   <Input
-                    id="recordingUrl"
-                    value={formData.recordingUrl}
-                    onChange={(e) => handleInputChange('recordingUrl', e.target.value)}
-                    placeholder="Recording URL"
-                  />
+                  id="recordingUrl"
+                  value={formData.recordingUrl}
+                  onChange={(e) => handleInputChange('recordingUrl', e.target.value)}
+                  placeholder="Recording URL" />
+
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-center space-x-2">
                   <input
-                    type="checkbox"
-                    id="isRecorded"
-                    checked={formData.isRecorded}
-                    onChange={(e) => handleInputChange('isRecorded', e.target.checked)}
-                    className="rounded"
-                  />
+                  type="checkbox"
+                  id="isRecorded"
+                  checked={formData.isRecorded}
+                  onChange={(e) => handleInputChange('isRecorded', e.target.checked)}
+                  className="rounded" />
+
                   <Label htmlFor="isRecorded">Session is recorded</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <input
-                    type="checkbox"
-                    id="isActive"
-                    checked={formData.isActive}
-                    onChange={(e) => handleInputChange('isActive', e.target.checked)}
-                    className="rounded"
-                  />
+                  type="checkbox"
+                  id="isActive"
+                  checked={formData.isActive}
+                  onChange={(e) => handleInputChange('isActive', e.target.checked)}
+                  className="rounded" />
+
                   <Label htmlFor="isActive">Lecture is active</Label>
                 </div>
               </div>
@@ -295,8 +295,8 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
             </div>
           </form>
         </CardContent>
-      </Card>
-  );
+      </Card>);
+
 };
 
 export default UpdateLectureForm;

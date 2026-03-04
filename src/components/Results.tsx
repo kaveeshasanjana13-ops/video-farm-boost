@@ -163,10 +163,6 @@ const Results = () => {
       
       setResultsData(filteredData);
       setDataLoaded(true);
-      toast({
-        title: "Data Loaded",
-        description: `Successfully loaded ${filteredData.length} results.`
-      });
     } catch (error) {
       toast({
         title: "Load Failed",

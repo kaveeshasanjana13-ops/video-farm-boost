@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useRefreshWithCooldown } from '@/hooks/useRefreshWithCooldown';
-import MUITable from '@/components/ui/mui-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Filter, Plus, Calendar, Clock, BookOpen, FileText, Upload, ExternalLink, BarChart3, Eye, Edit, Users } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { RefreshCw, Filter, Plus, Calendar, Clock, BookOpen, FileText, Upload, ExternalLink, BarChart3, Eye, Edit, Users, CheckCircle, AlertCircle, MessageSquare, Download, ChevronDown, ChevronUp, LayoutGrid, Table2 } from 'lucide-react';
+import Paper from '@mui/material/Paper';
+import MuiTable from '@mui/material/Table';
+import MuiTableBody from '@mui/material/TableBody';
+import MuiTableCell from '@mui/material/TableCell';
+import MuiTableContainer from '@mui/material/TableContainer';
+import MuiTableHead from '@mui/material/TableHead';
+import MuiTablePagination from '@mui/material/TablePagination';
+import MuiTableRow from '@mui/material/TableRow';
 import { useAuth, type UserRole } from '@/contexts/AuthContext';
 import { AccessControl } from '@/utils/permissions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -15,9 +23,10 @@ import CreateHomeworkForm from '@/components/forms/CreateHomeworkForm';
 import UpdateHomeworkForm from '@/components/forms/UpdateHomeworkForm';
 import SubmitHomeworkForm from '@/components/forms/SubmitHomeworkForm';
 import HomeworkDetailsDialog from '@/components/forms/HomeworkDetailsDialog';
-import { DataCardView } from '@/components/ui/data-card-view';
 import { useNavigate } from 'react-router-dom';
 import { homeworkApi } from '@/api/homework.api';
+import { cn } from '@/lib/utils';
+import { CustomToggle } from '@/components/ui/custom-toggle';
 
 interface HomeworkProps {
   apiLevel?: 'institute' | 'class' | 'subject';
@@ -55,6 +64,9 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
 
   // Filter states
   const [showFilters, setShowFilters] = useState(false);
+  const [viewMode] = useState<'card' | 'table'>(() => {
+    return (localStorage.getItem('viewMode') as 'card' | 'table') || 'card';
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -95,6 +107,14 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
     // For Teachers, add teacherId parameter
     if (userRole === 'Teacher' && user?.id) {
       params.teacherId = user.id;
+    }
+
+    // For students, include submissions and references in one call
+    if (userRole === 'Student') {
+      params.includeSubmissions = true;
+      params.includeReferences = true;
+    } else if (userRole === 'InstituteAdmin' || userRole === 'Teacher') {
+      params.includeReferences = true;
     }
 
     // Add filter parameters
@@ -279,194 +299,94 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
   const canEdit = instituteRole === 'Teacher' ? true : AccessControl.hasPermission(instituteRole, 'edit-homework');
   const canDelete = instituteRole === 'Teacher' ? true : AccessControl.hasPermission(instituteRole, 'delete-homework');
   const isStudent = instituteRole === 'Student';
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const homeworkColumns = [
-    { key: 'id', header: 'ID', render: (value: any) => value || 'N/A' },
-    { key: 'title', header: 'Title' },
-    { key: 'description', header: 'Description' },
-    { 
-      key: 'teacher', 
-      header: 'Teacher', 
-      render: (value: any) => value ? (
-        <div className="flex flex-col gap-0.5">
-          <span className="font-medium">{value.name || 'N/A'}</span>
-          {value.phone && <span className="text-xs text-muted-foreground">{value.phone}</span>}
-          {value.email && <span className="text-xs text-muted-foreground">{value.email}</span>}
-        </div>
-      ) : 'N/A'
-    },
-    { key: 'startDate', header: 'Start Date', render: (value: string) => value ? new Date(value).toLocaleDateString() : 'N/A' },
-    { key: 'endDate', header: 'End Date', render: (value: string) => value ? new Date(value).toLocaleDateString() : 'N/A' },
-    ...((['InstituteAdmin', 'Teacher', 'Student'] as UserRole[]).includes(instituteRole) ? [{
-      key: 'referenceLink', 
-      header: 'Reference', 
-      render: (value: string, row: any) => value ? (
-        <Button
-          size="sm"
-          variant="default"
-          className="bg-blue-900 hover:bg-blue-800 text-white"
-          onClick={() => window.open(value, '_blank')}
-        >
-          <FileText className="h-3 w-3 mr-1" />
-          Reference
-        </Button>
-      ) : (
-        <span className="text-gray-400">No reference</span>
-      )
-    }] : []),
-    ...(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher' ? [{
-      key: 'submissions',
-      header: 'Submissions',
-      render: (value: any, row: any) => (
-        <Button
-          size="sm"
-          variant="default"
-          onClick={() => handleViewSubmissions(row)}
-        >
-          <Users className="h-3 w-3 mr-1" />
-          View
-        </Button>
-      )
-    }] : [])
-  ];
-
-  // Custom actions based on user role
-  const customActions = [
-    // Actions for InstituteAdmin and Teacher
-    ...((instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') ? [
-      {
-        label: '',
-        action: (homework: any) => handleEditHomework(homework),
-        icon: <Edit className="h-4 w-4" />,
-        variant: 'outline' as const,
-        tooltip: 'Edit homework'
-      }
-    ] : []),
-    
-    // Actions for Students - disable submit when parent is viewing
-    ...((instituteRole === 'Student' && !isViewingAsParent) ? [
-      {
-        label: 'Submit',
-        action: (homework: any) => handleSubmitHomework(homework),
-        icon: <Upload className="h-3 w-3" />,
-        variant: 'default' as const,
-        className: 'bg-primary hover:bg-primary/90 text-primary-foreground'
-      }
-    ] : [])
-  ];
+  const toggleExpand = (id: number) => {
+    setExpandedId(prev => prev === id ? null : id);
+  };
 
   const getTitle = () => {
     const contexts = [];
-    
-    if (selectedInstitute) {
-      contexts.push(selectedInstitute.name);
-    }
-    
-    if (selectedClass) {
-      contexts.push(selectedClass.name);
-    }
-    
-    if (selectedSubject) {
-      contexts.push(selectedSubject.name);
-    }
-    
+    if (selectedInstitute) contexts.push(selectedInstitute.name);
+    if (selectedClass) contexts.push(selectedClass.name);
+    if (selectedSubject) contexts.push(selectedSubject.name);
     let title = 'Homework';
-    if (contexts.length > 0) {
-      title += ` (${contexts.join(' → ')})`;
-    }
-    
+    if (contexts.length > 0) title += ` (${contexts.join(' → ')})`;
     return title;
   };
 
-  // Filter the homework based on local filters for mobile view
   const filteredHomework = homeworkData.filter(homework => {
     const matchesSearch = !searchTerm || 
       Object.values(homework).some(value => 
         String(value).toLowerCase().includes(searchTerm.toLowerCase())
       );
-    
+    const isActive = homework.isActive !== undefined ? homework.isActive : true;
+    // Students should only see active homework
+    if (isStudent && !isActive) return false;
     const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'active' && homework.isActive) ||
-      (statusFilter === 'inactive' && !homework.isActive);
-    
+      (statusFilter === 'active' && isActive) ||
+      (statusFilter === 'inactive' && !isActive);
     return matchesSearch && matchesStatus;
   });
 
+  const getSubmissionStatus = (hw: any) => {
+    const submissions = hw.mySubmissions || [];
+    if (submissions.length === 0) return 'not_submitted';
+    const latest = submissions[0];
+    if (latest.isCorrected || latest.teacherCorrectionFileUrl || latest.remarks) return 'corrected';
+    return 'submitted';
+  };
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
       {!dataLoaded ? (
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-            {getTitle()}
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <h2 className="text-2xl font-bold mb-4">{getTitle()}</h2>
+          <p className="text-muted-foreground mb-6">
             {instituteRole === 'Student' && (!currentInstituteId || !currentClassId || !currentSubjectId)
               ? 'Please select institute, class, and subject to view homework.'
-              : 'Click the button below to load homework data'
-            }
+              : 'Click the button below to load homework data'}
           </p>
           <Button 
             onClick={() => handleLoadData(false)} 
             disabled={isLoading || (instituteRole === 'Student' && (!currentInstituteId || !currentClassId || !currentSubjectId))}
-            className="bg-blue-600 hover:bg-blue-700"
           >
             {isLoading ? (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Loading Data...
-              </>
+              <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Loading Data...</>
             ) : (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Load Data
-              </>
+              <><RefreshCw className="h-4 w-4 mr-2" /> Load Data</>
             )}
           </Button>
         </div>
       ) : (
         <>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                {getTitle()}
-              </h1>
+              <h1 className="text-xl sm:text-3xl font-bold">{getTitle()}</h1>
               {lastRefresh && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                   Last refreshed: {lastRefresh.toLocaleTimeString()}
                 </p>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center gap-2"
-              >
-                <Filter className="h-4 w-4" />
-                Filters
+              <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
+                <Filter className="h-4 w-4 mr-1" /> Filters
               </Button>
               <Button 
                 onClick={handleRefreshData} 
                 disabled={isLoading || isRefreshing || !canRefresh}
                 variant="outline"
                 size="sm"
-                title={!canRefresh ? `Please wait ${cooldownRemaining} seconds` : 'Refresh data from server'}
+                title={!canRefresh ? `Please wait ${cooldownRemaining} seconds` : 'Refresh data'}
               >
                 {isLoading || isRefreshing ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Refreshing...
-                  </>
+                  <><RefreshCw className="h-4 w-4 mr-1 animate-spin" /> Refreshing...</>
                 ) : !canRefresh ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Wait ({cooldownRemaining}s)
-                  </>
+                  <><RefreshCw className="h-4 w-4 mr-1" /> Wait ({cooldownRemaining}s)</>
                 ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh Data
-                  </>
+                  <><RefreshCw className="h-4 w-4 mr-1" /> Refresh</>
                 )}
               </Button>
             </div>
@@ -474,27 +394,16 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
 
           {/* Filter Controls */}
           {showFilters && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-muted/50 rounded-xl border">
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                  Search Homework
-                </label>
-                <Input
-                  placeholder="Search homework..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
-                />
+                <label className="text-sm font-medium mb-1 block">Search Homework</label>
+                <Input placeholder="Search homework..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
-              
+              {!isStudent && (
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                  Status
-                </label>
+                <label className="text-sm font-medium mb-1 block">Status</label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
@@ -502,64 +411,278 @@ const Homework = ({ apiLevel = 'institute' }: HomeworkProps) => {
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="flex items-end col-span-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setStatusFilter('all');
-                  }}
-                  className="w-full"
-                >
+              )}
+              <div className="flex items-end col-span-1 sm:col-span-2">
+                <Button variant="outline" onClick={() => { setSearchTerm(''); setStatusFilter('all'); }} className="w-full">
                   Clear Filters
                 </Button>
               </div>
             </div>
           )}
 
-          {/* Add Create Button for InstituteAdmin and Teacher */}
+          {/* Create Button */}
           {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && canAdd && (
-            <div className="flex justify-end mb-4">
-              <Button 
-                onClick={() => setIsCreateDialogOpen(true)}
-                className="flex items-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Create Homework
+            <div className="flex justify-end">
+              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Create Homework
               </Button>
             </div>
           )}
 
-          {/* MUI Table View - All Screen Sizes */}
-          <MUITable
-            title=""
-            data={homeworkData}
-            columns={homeworkColumns.map(col => ({
-              id: col.key,
-              label: col.header,
-              minWidth: 170,
-              format: col.render
-            }))}
-            onAdd={canAdd ? () => setIsCreateDialogOpen(true) : undefined}
-            onEdit={canEdit && !isStudent ? handleEditHomework : undefined}
-            customActions={customActions}
-            page={page}
-            rowsPerPage={rowsPerPage}
-            totalCount={totalCount}
-            onPageChange={(newPage: number) => {
-              setPage(newPage);
-              handleLoadData(false);
-            }}
-            onRowsPerPageChange={(newRowsPerPage: number) => {
-              setRowsPerPage(newRowsPerPage);
-              setPage(0);
-              handleLoadData(false);
-            }}
-            sectionType="homework"
-            allowEdit={canEdit && !isStudent}
-            allowDelete={canDelete && !isStudent}
-          />
+          {/* Homework List */}
+          {filteredHomework.length === 0 ? (
+            <div className="text-center py-12">
+              <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium mb-1">No Homework Found</h3>
+              <p className="text-muted-foreground text-sm">No homework assignments match your criteria.</p>
+            </div>
+          ) : viewMode === 'table' ? (
+            <Paper sx={{ width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 96px)' }}>
+              <MuiTableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                <MuiTable stickyHeader aria-label="homework table">
+                  <MuiTableHead>
+                    <MuiTableRow>
+                      <MuiTableCell sx={{ fontWeight: 'bold', backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}>Title</MuiTableCell>
+                      <MuiTableCell sx={{ fontWeight: 'bold', backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}>Start Date</MuiTableCell>
+                      <MuiTableCell sx={{ fontWeight: 'bold', backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}>Due Date</MuiTableCell>
+                      <MuiTableCell sx={{ fontWeight: 'bold', backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}>Teacher</MuiTableCell>
+                      {isStudent && <MuiTableCell sx={{ fontWeight: 'bold', backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}>Status</MuiTableCell>}
+                      <MuiTableCell sx={{ fontWeight: 'bold', backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}>Active</MuiTableCell>
+                      {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && (
+                        <MuiTableCell align="center" sx={{ fontWeight: 'bold', backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}>Submissions</MuiTableCell>
+                      )}
+                      <MuiTableCell align="center" sx={{ fontWeight: 'bold', backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}>Actions</MuiTableCell>
+                    </MuiTableRow>
+                  </MuiTableHead>
+                  <MuiTableBody>
+                    {filteredHomework
+                      .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                      .map((hw) => {
+                      const status = isStudent ? getSubmissionStatus(hw) : null;
+                      return (
+                        <MuiTableRow hover key={hw.id}>
+                          <MuiTableCell sx={{ fontWeight: 500, maxWidth: 200 }}>{hw.title}</MuiTableCell>
+                          <MuiTableCell>{hw.startDate ? new Date(hw.startDate).toLocaleDateString() : '-'}</MuiTableCell>
+                          <MuiTableCell>{hw.endDate ? new Date(hw.endDate).toLocaleDateString() : '-'}</MuiTableCell>
+                          <MuiTableCell>{hw.teacher?.name || '-'}</MuiTableCell>
+                          {isStudent && (
+                            <MuiTableCell>
+                              {status === 'not_submitted' && <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-xs">Pending</Badge>}
+                              {status === 'submitted' && <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50 dark:bg-blue-950/30 text-xs">Submitted</Badge>}
+                              {status === 'corrected' && <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50 dark:bg-green-950/30 text-xs">Corrected</Badge>}
+                            </MuiTableCell>
+                          )}
+                          <MuiTableCell>
+                            <Badge variant={hw.isActive ? 'default' : 'secondary'} className="text-xs">{hw.isActive ? 'Active' : 'Inactive'}</Badge>
+                          </MuiTableCell>
+                          {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && (
+                            <MuiTableCell align="center">
+                              <Button size="sm" variant="outline" onClick={() => handleViewSubmissions(hw)} title="View Submissions">
+                                <Users className="h-4 w-4 mr-1" /> View Submissions
+                              </Button>
+                            </MuiTableCell>
+                          )}
+                          <MuiTableCell align="center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => handleViewHomework(hw)} title="View"><Eye className="h-4 w-4" /></Button>
+                              {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && (
+                                <>
+                                  {canEdit && <Button size="sm" variant="ghost" onClick={() => handleEditHomework(hw)} title="Edit"><Edit className="h-4 w-4" /></Button>}
+                                  {canDelete && <Button size="sm" variant="destructive" onClick={() => handleDeleteHomework(hw)} title="Delete" className="h-8 px-3 text-xs">Delete</Button>}
+                                </>
+                              )}
+                              {isStudent && !isViewingAsParent && <Button size="sm" variant="ghost" onClick={() => handleSubmitHomework(hw)} title="Submit"><Upload className="h-4 w-4" /></Button>}
+                            </div>
+                          </MuiTableCell>
+                        </MuiTableRow>
+                      );
+                    })}
+                    {filteredHomework.length === 0 && (
+                      <MuiTableRow>
+                        <MuiTableCell colSpan={isStudent ? 8 : 8} align="center">
+                          <div className="py-8 text-muted-foreground text-sm">No records found</div>
+                        </MuiTableCell>
+                      </MuiTableRow>
+                    )}
+                  </MuiTableBody>
+                </MuiTable>
+              </MuiTableContainer>
+              <MuiTablePagination
+                rowsPerPageOptions={[25, 50, 100]}
+                component="div"
+                count={filteredHomework.length}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                onPageChange={(_, newPage) => setPage(newPage)}
+                onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+                sx={{ flexShrink: 0, borderTop: '1px solid hsl(var(--border))' }}
+              />
+            </Paper>
+          ) : (
+            <div className="space-y-2">
+              {filteredHomework.map((hw) => {
+                const isExpanded = expandedId === hw.id;
+                const status = isStudent ? getSubmissionStatus(hw) : null;
+                
+                return (
+                  <Card 
+                    key={hw.id} 
+                    className={cn(
+                      "rounded-xl border transition-all duration-200 overflow-hidden",
+                      isExpanded && "ring-1 ring-primary/20 shadow-md"
+                    )}
+                  >
+                    <button
+                      onClick={() => toggleExpand(hw.id)}
+                      className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+                          <BookOpen className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold text-sm sm:text-base truncate">{hw.title}</h3>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {hw.endDate && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                Due: {new Date(hw.endDate).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        {isStudent && status === 'not_submitted' && (
+                          <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-950/30 text-xs">
+                            <AlertCircle className="h-3 w-3 mr-1" /> Pending
+                          </Badge>
+                        )}
+                        {isStudent && status === 'submitted' && (
+                          <Badge variant="outline" className="text-blue-600 border-blue-300 bg-blue-50 dark:bg-blue-950/30 text-xs">
+                            <Clock className="h-3 w-3 mr-1" /> Submitted
+                          </Badge>
+                        )}
+                        {isStudent && status === 'corrected' && (
+                          <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50 dark:bg-green-950/30 text-xs">
+                            <CheckCircle className="h-3 w-3 mr-1" /> Corrected
+                          </Badge>
+                        )}
+                        {!hw.isActive && (
+                          <Badge variant="secondary" className="text-xs">Inactive</Badge>
+                        )}
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <CardContent className="px-4 pb-4 pt-0 space-y-4 border-t">
+                        {hw.description && (
+                          <p className="text-sm text-muted-foreground pt-3">{hw.description}</p>
+                        )}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                          {hw.startDate && (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Start Date</span>
+                              <span className="flex items-center gap-1"><Calendar className="h-3 w-3 text-muted-foreground" />{new Date(hw.startDate).toLocaleDateString()}</span>
+                            </div>
+                          )}
+                          {hw.endDate && (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Due Date</span>
+                              <span className="flex items-center gap-1"><Calendar className="h-3 w-3 text-muted-foreground" />{new Date(hw.endDate).toLocaleDateString()}</span>
+                            </div>
+                          )}
+                          {hw.teacher && (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Teacher</span>
+                              <span>{hw.teacher.name || 'N/A'}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {isStudent && (hw.mySubmissions || []).length > 0 && (() => {
+                          const latest = hw.mySubmissions[0];
+                          return (
+                            <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
+                              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">My Submission</h4>
+                              <div className="flex flex-wrap gap-2">
+                                {(latest.fileUrl || latest.driveViewUrl) && (
+                                  <Button size="sm" variant="outline" className="text-xs h-7 border-green-500 text-green-700 hover:bg-green-50 dark:text-green-400 dark:border-green-700 dark:hover:bg-green-950" onClick={() => window.open(latest.fileUrl || latest.driveViewUrl, '_blank')}>
+                                    <Eye className="h-3 w-3 mr-1" /> My File
+                                  </Button>
+                                )}
+                                {latest.teacherCorrectionFileUrl && (
+                                  <Button size="sm" variant="outline" className="text-xs h-7 border-red-500 text-red-700 hover:bg-red-50 dark:text-red-400 dark:border-red-700 dark:hover:bg-red-950" onClick={() => window.open(latest.teacherCorrectionFileUrl, '_blank')}>
+                                    <Download className="h-3 w-3 mr-1" /> Correction
+                                  </Button>
+                                )}
+                              </div>
+                              {latest.remarks && (
+                                <p className="text-xs text-muted-foreground flex items-start gap-1">
+                                  <MessageSquare className="h-3 w-3 mt-0.5 shrink-0" />{latest.remarks}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {hw.referenceLink && (
+                          <Button size="sm" variant="outline" className="border-blue-500 text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-700 dark:hover:bg-blue-950" onClick={() => window.open(hw.referenceLink, '_blank')}>
+                            <FileText className="h-3 w-3 mr-1" /> References
+                          </Button>
+                        )}
+
+                        <div className="flex flex-wrap gap-2 pt-2 border-t">
+                          <Button size="sm" variant="outline" onClick={() => handleViewHomework(hw)}>
+                            <Eye className="h-3 w-3 mr-1" /> Details
+                          </Button>
+                          {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => handleViewSubmissions(hw)}>
+                                <Users className="h-3 w-3 mr-1" /> Submissions
+                              </Button>
+                              {canEdit && (
+                                <Button size="sm" variant="outline" onClick={() => handleEditHomework(hw)}>
+                                  <Edit className="h-3 w-3 mr-1" /> Edit
+                                </Button>
+                              )}
+                              {canDelete && (
+                                <Button size="sm" variant="destructive" onClick={() => handleDeleteHomework(hw)}>
+                                  Delete
+                                </Button>
+                              )}
+                            </>
+                          )}
+                          {isStudent && !isViewingAsParent && (() => {
+                            const hasSubmission = (hw.mySubmissions || []).length > 0;
+                            if (hasSubmission) {
+                              const latest = hw.mySubmissions[0];
+                              const status = latest.status || (latest.teacherCorrectionFileUrl ? 'Corrected' : 'Submitted');
+                              return (
+                                <Badge variant="secondary" className="text-xs h-7 px-3 flex items-center gap-1 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                                  <CheckCircle className="h-3 w-3" /> {status}
+                                </Badge>
+                              );
+                            }
+                            return (
+                              <Button size="sm" onClick={() => handleSubmitHomework(hw)}>
+                                <Upload className="h-3 w-3 mr-1" /> Submit
+                              </Button>
+                            );
+                          })()}
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 

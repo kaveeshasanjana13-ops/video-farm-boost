@@ -130,6 +130,46 @@ class NotificationApiService {
   async markAllSystemAsRead(): Promise<void> {
     return apiClient.post('/push-notifications/system/mark-all-read');
   }
+
+  // ─── Unified Inbox (All Notifications) ───
+
+  /**
+   * GET /push-notifications/my — Unified inbox across all scopes
+   */
+  async getMyNotifications(
+    options?: {
+      page?: number;
+      limit?: number;
+      isRead?: boolean;
+      scope?: 'GLOBAL' | 'INSTITUTE' | 'CLASS' | 'SUBJECT';
+      instituteId?: string;
+      search?: string;
+    }
+  ): Promise<PaginatedNotifications> {
+    const params: Record<string, any> = {};
+    if (options?.page) params.page = options.page;
+    if (options?.limit) params.limit = options.limit;
+    if (options?.isRead !== undefined) params.isRead = options.isRead;
+    if (options?.scope) params.scope = options.scope;
+    if (options?.instituteId) params.instituteId = options.instituteId;
+    if (options?.search) params.search = options.search;
+
+    return apiClient.get<PaginatedNotifications>('/push-notifications/my', params);
+  }
+
+  /**
+   * GET /push-notifications/my/unread-count — Total unread across all scopes
+   */
+  async getMyUnreadCount(): Promise<UnreadCount> {
+    return apiClient.get<UnreadCount>('/push-notifications/my/unread-count');
+  }
+
+  /**
+   * POST /push-notifications/my/mark-all-read — Mark all read across all scopes
+   */
+  async markAllMyNotificationsAsRead(): Promise<{ success: boolean; updatedCount: number }> {
+    return apiClient.post('/push-notifications/my/mark-all-read');
+  }
 }
 
 export const notificationApiService = new NotificationApiService();

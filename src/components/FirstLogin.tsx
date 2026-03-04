@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -6,11 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { Badge } from '@/components/ui/badge';
-import { Eye, EyeOff, Phone, Mail, CheckCircle2, ArrowLeft, User, Shield, Lock, ChevronRight, Loader2, Hash } from 'lucide-react';
+import { Eye, EyeOff, Phone, Mail, CheckCircle2, ArrowLeft, User, Shield, Lock, ChevronRight, Loader2, Hash, Camera, X, Upload } from 'lucide-react';
 import surakshaLogo from '@/assets/suraksha-logo.png';
 import loginIllustration from '@/assets/login-illustration.png';
 import { useToast } from '@/hooks/use-toast';
+import { Progress } from '@/components/ui/progress';
 import { tokenStorageService } from '@/services/tokenStorageService';
+import { getBaseUrl } from '@/contexts/utils/auth.api';
 import {
   type AnnotatedField,
   type VerifyOtpResponse,
@@ -40,8 +43,46 @@ interface FirstLoginProps {
 // ============= COMPONENT =============
 
 const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // ── Derive step from URL ──
+  const getStepFromPath = useCallback((): FlowStep => {
+    const path = location.pathname;
+    if (path.includes('/activate/verify')) return 'verify-otp';
+    if (path.includes('/activate/profile')) return 'complete-profile';
+    return 'identifier'; // /activate/identify or default
+  }, [location.pathname]);
+
+  const step = getStepFromPath();
+
+  // Additional verify is a sub-state of the verify route
+  const [isAdditionalVerify, setIsAdditionalVerify] = useState(false);
+  const effectiveStep: FlowStep = (step === 'verify-otp' && isAdditionalVerify) ? 'additional-verify' : step;
+
+  // Navigation helper
+  const navigateToStep = (target: FlowStep) => {
+    switch (target) {
+      case 'identifier':
+        navigate('/activate/identify', { replace: true });
+        setIsAdditionalVerify(false);
+        break;
+      case 'verify-otp':
+        navigate('/activate/verify', { replace: true });
+        setIsAdditionalVerify(false);
+        break;
+      case 'additional-verify':
+        navigate('/activate/verify', { replace: true });
+        setIsAdditionalVerify(true);
+        break;
+      case 'complete-profile':
+        navigate('/activate/profile', { replace: true });
+        setIsAdditionalVerify(false);
+        break;
+    }
+  };
+
   // ── Flow state ──
-  const [step, setStep] = useState<FlowStep>('identifier');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -79,6 +120,14 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // ── Profile image upload ──
+  const [profileImage, setProfileImage] = useState<File | null>(null);
+  const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null);
+  const [profileImageRelativePath, setProfileImageRelativePath] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState(0);
+  const [imageUploadMessage, setImageUploadMessage] = useState('');
 
   // ── Inline email verification on profile step (when email exists but unverified) ──
   const [inlineEmailOtp, setInlineEmailOtp] = useState('');
@@ -140,7 +189,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
         title: 'OTP Sent',
         description: `Code sent via ${data.otpSentVia === 'phone' ? 'SMS' : 'email'} to ${data.maskedDestination}`,
       });
-      setStep('verify-otp');
+      navigateToStep('verify-otp');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -232,9 +281,9 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
             setAdditionalInput('');
           }
         }
-        setStep('additional-verify');
+        navigateToStep('additional-verify');
       } else {
-        setStep('complete-profile');
+        navigateToStep('complete-profile');
       }
 
       toast({ title: 'Verified!', description: data.message });
@@ -305,7 +354,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
         setAdditionalOtpSent(false);
         setAdditionalOtpTimer(0);
       } else {
-        setStep('complete-profile');
+        navigateToStep('complete-profile');
       }
     } catch (err: any) {
       setError(err.message);
@@ -416,7 +465,10 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
 
     setIsLoading(true);
     try {
-      const submitData = { ...formData, password, confirmPassword };
+      const submitData: Record<string, any> = { ...formData, password, confirmPassword };
+      if (profileImageRelativePath) {
+        submitData.imageUrl = profileImageRelativePath;
+      }
       const data = await completeFirstLogin(submitData, firstLoginToken);
 
       // Store real tokens
@@ -438,6 +490,101 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // ============= PROFILE IMAGE UPLOAD =============
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('Invalid image type. Allowed: JPEG, PNG, WebP, GIF');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image too large. Maximum size: 5MB');
+      return;
+    }
+
+    setProfileImage(file);
+    setProfileImagePreview(URL.createObjectURL(file));
+    setProfileImageRelativePath(null);
+    // Auto-upload
+    handleImageUpload(file);
+  };
+
+  const handleImageUpload = async (file: File) => {
+    if (!firstLoginToken) return;
+    setImageUploading(true);
+    setImageUploadProgress(0);
+    setImageUploadMessage('Getting upload URL...');
+    try {
+      const baseUrl = getBaseUrl();
+
+      // Step 1: Generate signed URL
+      setImageUploadProgress(20);
+      const signedRes = await fetch(
+        `${baseUrl}/upload/generate-signed-url`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${firstLoginToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            folder: 'profile-images',
+            fileName: file.name,
+            contentType: file.type,
+            fileSize: file.size,
+          }),
+        }
+      );
+      if (!signedRes.ok) {
+        const err = await signedRes.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to get upload URL');
+      }
+      const signedData = await signedRes.json();
+      const { uploadUrl, relativePath } = signedData.data;
+      const headers = signedData.instructions?.headers || {};
+
+      // Step 2: Upload to cloud storage
+      setImageUploadProgress(50);
+      setImageUploadMessage('Uploading image...');
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': headers['Content-Type'] || file.type,
+          'x-goog-content-length-range': headers['x-goog-content-length-range'] || '0,5242880',
+        },
+        body: file,
+      });
+      if (!uploadRes.ok) {
+        throw new Error('Upload failed: ' + uploadRes.statusText);
+      }
+
+      setImageUploadProgress(100);
+      setImageUploadMessage('Upload complete!');
+      setProfileImageRelativePath(relativePath);
+      toast({ title: 'Image Uploaded', description: 'Profile image uploaded successfully.' });
+    } catch (err: any) {
+      setError(err.message || 'Image upload failed');
+      setProfileImage(null);
+      setProfileImagePreview(null);
+      setProfileImageRelativePath(null);
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setProfileImage(null);
+    setProfileImagePreview(null);
+    setProfileImageRelativePath(null);
+    setImageUploadProgress(0);
+    setImageUploadMessage('');
   };
 
   // ============= FORM HELPERS =============
@@ -467,7 +614,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
     field: AnnotatedField,
     section: 'profile' | 'student' | 'parent'
   ) => {
-    if (key === 'id') return null;
+    if (key === 'id' || key === 'nic' || key === 'addressLine2') return null;
 
     const label = key
       .replace(/([A-Z])/g, ' $1')
@@ -771,19 +918,18 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
     ? steps
     : steps.filter(s => s.key !== 'additional-verify');
 
-  const stepIndex = activeSteps.findIndex(s => s.key === step);
+  const stepIndex = activeSteps.findIndex(s => s.key === effectiveStep);
 
   const handleBack = () => {
     setError('');
-    if (step === 'identifier') {
+    if (effectiveStep === 'identifier') {
       onBack();
-    } else if (step === 'verify-otp') {
-      setStep('identifier');
+    } else if (effectiveStep === 'additional-verify') {
+      navigateToStep('verify-otp');
+    } else if (effectiveStep === 'verify-otp') {
+      navigateToStep('identifier');
       setOtp('');
-    } else if (step === 'additional-verify') {
-      // Don't go back from additional verify — would lose the JWT
-      setStep('verify-otp');
-    } else if (step === 'complete-profile') {
+    } else if (effectiveStep === 'complete-profile') {
       // Don't go back — too much state
       onBack();
     }
@@ -794,14 +940,14 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
   return (
     <div className="min-h-[100dvh] flex flex-col md:flex-row overflow-x-hidden">
       {/* Top Illustration - Mobile Only */}
-      <div className="block md:hidden w-full relative h-28 shrink-0">
+      <div className="block md:hidden w-full relative h-48 shrink-0">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
         <img src={loginIllustration} alt="Education illustration" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
       </div>
 
       {/* Left Side - Form */}
-      <div className="w-full md:w-1/2 lg:w-2/5 flex flex-col items-center justify-start md:justify-center px-4 py-3 sm:p-6 md:p-8 bg-background -mt-6 md:mt-0 rounded-t-[2rem] md:rounded-none relative z-10 flex-1 md:min-h-screen overflow-y-auto">
-        <div className="w-full max-w-md space-y-2 md:space-y-4">
+      <div className="w-full md:w-1/2 lg:w-2/5 flex flex-col items-center justify-start md:justify-center px-4 py-3 sm:p-6 md:p-8 bg-background -mt-10 md:mt-0 rounded-t-[3rem] md:rounded-none relative z-10 flex-1 md:min-h-screen overflow-y-auto">
+        <div className="w-full max-w-md space-y-2 md:space-y-4 pt-4 md:pt-0">
 
           {/* Logo and Header */}
           <div className="space-y-0.5 text-center">
@@ -813,17 +959,17 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
             </div>
             <h1 className="text-base md:text-2xl font-bold text-foreground">Activate Your Account</h1>
             <p className="text-xs text-muted-foreground">
-              {step === 'identifier' && 'Enter your registered phone, email, or student ID'}
-              {step === 'verify-otp' && `Verify your ${otpChannel === 'phone' ? 'phone' : 'email'}`}
-              {step === 'additional-verify' && `Verify your ${additionalType}`}
-              {step === 'complete-profile' && 'Complete your profile to get started'}
+              {effectiveStep === 'identifier' && 'Enter your registered phone, email, or student ID'}
+              {effectiveStep === 'verify-otp' && `Verify your ${otpChannel === 'phone' ? 'phone' : 'email'}`}
+              {effectiveStep === 'additional-verify' && `Verify your ${additionalType}`}
+              {effectiveStep === 'complete-profile' && 'Complete your profile to get started'}
             </p>
           </div>
 
           {/* Step Indicator */}
           <div className="flex items-center justify-center gap-0 px-2">
             {activeSteps.map((s, i) => {
-              const isActive = step === s.key;
+              const isActive = effectiveStep === s.key;
               const isDone = i < stepIndex;
               return (
                 <React.Fragment key={s.key}>
@@ -857,7 +1003,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
               )}
 
               {/* =============== STEP 1: IDENTIFIER INPUT =============== */}
-              {step === 'identifier' && (
+              {effectiveStep === 'identifier' && (
                 <form onSubmit={handleInitiate} className="space-y-3 md:space-y-4">
                   <div className="text-center">
                     <div className={`mx-auto w-12 h-12 rounded-xl flex items-center justify-center mb-2 bg-primary/10 text-primary`}>
@@ -909,7 +1055,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
               )}
 
               {/* =============== STEP 2: VERIFY INITIAL OTP =============== */}
-              {step === 'verify-otp' && (
+              {effectiveStep === 'verify-otp' && (
                 <form onSubmit={handleVerifyOtp} className="space-y-3 md:space-y-4">
                   <div className="text-center">
                     <p className="text-xs md:text-sm text-muted-foreground">
@@ -948,7 +1094,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
               )}
 
               {/* =============== STEP 3: ADDITIONAL VERIFICATION =============== */}
-              {step === 'additional-verify' && (
+              {effectiveStep === 'additional-verify' && (
                 <div className="space-y-3 md:space-y-4">
                   <div className="text-center">
                     <p className="text-xs md:text-sm text-muted-foreground">
@@ -1017,7 +1163,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
               )}
 
               {/* =============== STEP 4: COMPLETE PROFILE =============== */}
-              {step === 'complete-profile' && (
+              {effectiveStep === 'complete-profile' && (
                 <form onSubmit={handleCompleteProfile} className="space-y-4">
 
                   {/* Verifiable contacts */}
@@ -1034,6 +1180,77 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                       </div>
                     </div>
                   )}
+
+                  {/* Profile Image Upload */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Camera className="h-3.5 w-3.5 text-primary" /> Profile Photo <span className="text-muted-foreground font-normal">(Optional)</span>
+                    </p>
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        {profileImagePreview ? (
+                          <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-primary/20">
+                            <img src={profileImagePreview} alt="Profile preview" className="w-full h-full object-cover" />
+                            {!imageUploading && (
+                              <button
+                                type="button"
+                                onClick={handleRemoveImage}
+                                className="absolute top-0 right-0 bg-destructive text-destructive-foreground rounded-full p-0.5"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
+                            {imageUploading && (
+                              <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <label className="w-20 h-20 rounded-full border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:border-primary/50 transition-colors">
+                            <Upload className="h-5 w-5 text-muted-foreground" />
+                            <span className="text-[9px] text-muted-foreground mt-0.5">Upload</span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,image/gif"
+                              className="hidden"
+                              onChange={handleImageSelect}
+                            />
+                          </label>
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        {profileImageRelativePath && (
+                          <p className="text-xs text-success flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Image uploaded successfully
+                          </p>
+                        )}
+                        {imageUploading && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">{imageUploadMessage}</p>
+                            <Progress value={imageUploadProgress} className="h-1.5" />
+                          </div>
+                        )}
+                        {!profileImagePreview && !imageUploading && (
+                          <p className="text-[10px] text-muted-foreground">
+                            JPEG, PNG, WebP, or GIF. Max 5MB.<br />
+                            Image will be reviewed by admin.
+                          </p>
+                        )}
+                        {profileImagePreview && !imageUploading && !profileImageRelativePath && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => profileImage && handleImageUpload(profileImage)}
+                          >
+                            Retry Upload
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Personal Information */}
                   <div className="space-y-2">

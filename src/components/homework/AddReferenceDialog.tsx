@@ -157,7 +157,8 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
       });
 
       onSuccess(reference);
-      handleClose();
+      // Reset form but keep dialog open so user can add more references
+      resetForm();
     } catch (error: any) {
       console.error('Upload failed:', error);
       toast({
@@ -198,7 +199,8 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
       });
 
       onSuccess(reference);
-      handleClose();
+      // Reset form but keep dialog open so user can add more references
+      resetForm();
     } catch (error: any) {
       console.error('Link creation failed:', error);
       toast({
@@ -289,7 +291,8 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
       });
 
       onSuccess(reference);
-      handleClose();
+      // Reset form but keep dialog open so user can add more references
+      resetForm();
     } catch (error: any) {
       console.error('Drive reference creation failed:', error);
       toast({
@@ -506,7 +509,7 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
 
         <DialogFooter className="mt-4">
           <Button variant="outline" onClick={handleClose} disabled={isLoading}>
-            Cancel
+            Done
           </Button>
           <Button 
             onClick={handleSubmit} 

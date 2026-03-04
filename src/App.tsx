@@ -36,6 +36,8 @@ import CardDemo from "@/pages/CardDemo";
 import ExamResults from "@/pages/ExamResults";
 import CreateExamResults from "@/pages/CreateExamResults";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import UpdateNotification from "@/components/UpdateNotification";
+import NotificationNavigator from "@/components/NotificationNavigator";
 import Transport from "@/pages/Transport";
 import TransportAttendance from "@/pages/TransportAttendance";
 import MyChildren from "@/pages/MyChildren";
@@ -47,6 +49,7 @@ import CardManagement from "@/pages/CardManagement";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import GoogleAuthCallback from "@/pages/GoogleAuthCallback";
 import ActiveSessionsPage from "@/pages/ActiveSessions";
+import ActivateAccount from "@/pages/ActivateAccount";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -100,7 +103,7 @@ const App = () => {
         StatusBar.setStyle({ style: Style.Dark }).catch((err: any) => {
           console.warn('StatusBar.setStyle not available:', err);
         });
-        StatusBar.setBackgroundColor({ color: '#1976D2' }).catch((err: any) => {
+        StatusBar.setBackgroundColor({ color: '#FFFFFF' }).catch((err: any) => {
           console.warn('StatusBar.setBackgroundColor not available:', err);
         });
       }).catch((err) => {
@@ -161,12 +164,19 @@ const App = () => {
               <Sonner />
               <ErrorToaster />
               <NotificationToast />
+              <UpdateNotification />
+              <NotificationNavigator />
               <Routes>
                 {/* Main Routes - All handled by Index/AppContent */}
                 <Route path="/" element={<Index />} />
 
                 {/* Google Drive OAuth - backend redirects back here with query params */}
                 <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
+
+                {/* Activate Account Routes (First Login Flow) */}
+                <Route path="/activate/identify" element={<ActivateAccount />} />
+                <Route path="/activate/verify" element={<ActivateAccount />} />
+                <Route path="/activate/profile" element={<ActivateAccount />} />
 
                 {/* Hierarchical Routes with Context */}
                 <Route path="/institute/:instituteId/*" element={<Index />} />
@@ -199,7 +209,7 @@ const App = () => {
                 <Route path="/classes" element={<Index />} />
                 <Route path="/subjects" element={<Index />} />
                 <Route path="/attendance" element={<Index />} />
-                <Route path="/daily-attendance" element={<Index />} />
+                
                 <Route path="/lectures" element={<Index />} />
                 <Route path="/free-lectures" element={<Index />} />
                 <Route path="/live-lectures" element={<Index />} />
@@ -224,6 +234,7 @@ const App = () => {
                 <Route path="/sms" element={<Index />} />
                 <Route path="/notifications" element={<Index />} />
                 <Route path="/institute-notifications" element={<Index />} />
+                <Route path="/all-notifications" element={<Index />} />
                 <Route path="/setup-guide" element={<Index />} />
                 <Route path="/verify-image" element={<Index />} />
                 <Route path="/enroll-class" element={<Index />} />
@@ -236,6 +247,13 @@ const App = () => {
                 <Route path="/teacher-homework" element={<Index />} />
                 <Route path="/teacher-exams" element={<Index />} />
                 <Route path="/teacher-lectures" element={<Index />} />
+                <Route path="/calendar-management" element={<Index />} />
+                <Route path="/calendar-view" element={<Index />} />
+                <Route path="/today-dashboard" element={<Index />} />
+                <Route path="/admin-attendance" element={<Index />} />
+                <Route path="/parent-attendance" element={<Index />} />
+                <Route path="/class-calendar" element={<Index />} />
+                <Route path="/device-management" element={<Index />} />
 
                 {/* Dedicated Page Routes (must be protected) */}
                 <Route

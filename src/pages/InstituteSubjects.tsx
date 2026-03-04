@@ -374,6 +374,13 @@ const InstituteSubjects = () => {
       )
     },
     {
+      key: 'id',
+      header: 'Subject ID',
+      format: (_: any, row: Subject) => (
+        <span className="font-mono text-sm font-semibold">{row.id || 'N/A'}</span>
+      )
+    },
+    {
       key: 'code',
       header: 'Code',
       format: (_: any, row: Subject) => (

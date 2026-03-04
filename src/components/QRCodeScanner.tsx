@@ -14,6 +14,8 @@ import { ArrowLeft, Camera, QrCode, UserCheck, CheckCircle, MapPin, Monitor, Use
 import jsQR from 'jsqr';
 import { getAttendanceUrl, getBaseUrl } from '@/contexts/utils/auth.api';
 import { Capacitor } from '@capacitor/core';
+import { useTodayCalendarEvents, DEFAULT_EVENT_ID } from '@/hooks/useTodayCalendarEvents';
+import EventSelector from '@/components/attendance/EventSelector';
 
 interface MarkAttendanceRequest {
   instituteId: string;
@@ -60,12 +62,16 @@ const QRCodeScanner = () => {
   const [location, setLocation] = useState<{ latitude: number; longitude: number; address: string } | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [status, setStatus] = useState<"PRESENT" | "ABSENT" | "LATE" | "EXCUSED">('PRESENT');
+  const [selectedEventId, setSelectedEventId] = useState(DEFAULT_EVENT_ID);
   const [attendanceNotification, setAttendanceNotification] = useState<AttendanceNotification | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const animationRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Fetch today's calendar events for the event selector
+  const calendarInfo = useTodayCalendarEvents(currentInstituteId, currentClassId);
 
   // Check if user has permission - InstituteAdmin, Teacher, and AttendanceMarker can mark attendance
   const hasPermission = userRole === 'InstituteAdmin' || userRole === 'Teacher' || userRole === 'AttendanceMarker';
@@ -373,12 +379,18 @@ const QRCodeScanner = () => {
 
       const headers = getApiHeaders();
       
-      const requestBody: MarkAttendanceRequest = {
+      const requestBody: MarkAttendanceRequest & { eventId?: string; date?: string } = {
         instituteId: currentInstituteId,
         studentId: studentIdValue.trim(),
         status: status,
-        location: location?.address
+        location: location?.address,
+        date: calendarInfo.currentDate,
       };
+
+      // Send eventId — use selected event or omit for default
+      if (selectedEventId !== DEFAULT_EVENT_ID) {
+        requestBody.eventId = selectedEventId;
+      }
 
       // Only include classId if it has a valid value
       if (currentClassId) {
@@ -424,9 +436,12 @@ const QRCodeScanner = () => {
 
       const result: MarkAttendanceResponse = await response.json();
       console.log('=== QR ATTENDANCE SUCCESS ===');
-      console.log('API Call Completed Successfully');
       console.log('Result:', JSON.stringify(result, null, 2));
-      console.log('===========================');
+
+      // Update event picker from response's availableEvents
+      if ((result as any).availableEvents) {
+        calendarInfo.updateFromResponse((result as any).availableEvents);
+      }
 
       if (result.success && result.data?.student) {
         // ✅ RECORD ATTENDANCE LOCALLY TO PREVENT DUPLICATES
@@ -762,6 +777,17 @@ const QRCodeScanner = () => {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Event Selector */}
+              <EventSelector
+                events={calendarInfo.events}
+                selectedEventId={selectedEventId}
+                onEventChange={setSelectedEventId}
+                loading={calendarInfo.loading}
+                dayType={calendarInfo.dayType}
+                isAttendanceExpected={calendarInfo.isAttendanceExpected}
+                compact
+              />
 
               {/* Student ID Input */}
               <div className="space-y-2">

@@ -58,6 +58,11 @@ class PushNotificationService {
   private foregroundCallbacks: ((payload: NotificationPayload) => void)[] = [];
   private notificationClickCallbacks: ((payload: NotificationPayload) => void)[] = [];
 
+  // Cold-start: notification tapped when app was killed.
+  // The native listener fires before React mounts, so we store the URL here
+  // and the useNotificationNavigation hook drains it after mounting.
+  private pendingNavigationUrl: string | null = null;
+
   constructor() {
     // Initialize native listeners if on native platform
     if (isNativePlatform) {
@@ -110,7 +115,17 @@ class PushNotificationService {
           },
           data: notification.data as NotificationPayload['data']
         };
-        this.notificationClickCallbacks.forEach(cb => cb(payload));
+
+        const targetUrl = (notification.data?.actionUrl as string | undefined) || '/notifications';
+
+        if (this.notificationClickCallbacks.length > 0) {
+          // React is already mounted — navigate immediately
+          this.notificationClickCallbacks.forEach(cb => cb(payload));
+        } else {
+          // Cold start: React not mounted yet — store for later
+          console.log('📱 Cold start notification tap — storing pending URL:', targetUrl);
+          this.pendingNavigationUrl = targetUrl;
+        }
       });
       this.nativeListeners.push(() => actionListener.remove());
 
@@ -406,7 +421,8 @@ class PushNotificationService {
   }
 
   /**
-   * Listen for notification click/tap actions (mainly for native)
+   * Listen for notification click/tap actions (native foreground/background + web).
+   * For cold-start taps use getPendingNavigationUrl() on hook mount instead.
    */
   onNotificationClick(callback: (payload: NotificationPayload) => void): () => void {
     this.notificationClickCallbacks.push(callback);
@@ -416,6 +432,22 @@ class PushNotificationService {
         this.notificationClickCallbacks.splice(index, 1);
       }
     };
+  }
+
+  /**
+   * Returns the actionUrl stored during a cold-start notification tap
+   * (i.e. the notification was tapped before React mounted).
+   * Call clearPendingNavigationUrl() after reading.
+   */
+  getPendingNavigationUrl(): string | null {
+    return this.pendingNavigationUrl;
+  }
+
+  /**
+   * Clear the pending navigation URL after it has been consumed.
+   */
+  clearPendingNavigationUrl(): void {
+    this.pendingNavigationUrl = null;
   }
 
   /**

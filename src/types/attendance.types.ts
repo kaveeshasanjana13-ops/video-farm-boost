@@ -3,6 +3,18 @@
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'left' | 'left_early' | 'left_lately';
 
+// Marking method used to record attendance
+export type MarkingMethod = 'qr' | 'barcode' | 'rfid/nfc' | 'manual' | 'system';
+
+// User type auto-detected by backend
+export type AttendanceUserType = 
+  | 'STUDENT' 
+  | 'TEACHER' 
+  | 'INSTITUTE_ADMIN' 
+  | 'ATTENDANCE_MARKER' 
+  | 'PARENT' 
+  | 'NOT_ENROLLED';
+
 // Status display configuration for consistent UI across all components
 export const ATTENDANCE_STATUS_CONFIG: Record<AttendanceStatus, {
   label: string;
@@ -66,6 +78,13 @@ export interface AttendanceSummary {
   attendanceRate: number;
 }
 
+// Extended institute summary with additional fields
+export interface InstituteAttendanceSummary extends AttendanceSummary {
+  uniqueStudents?: number;
+  totalClasses?: number;
+  totalSubjects?: number;
+}
+
 // Helper function to get status config with fallback
 export const getAttendanceStatusConfig = (status: string) => {
   const normalizedStatus = status?.toLowerCase() as AttendanceStatus;
@@ -95,6 +114,25 @@ export const ALL_ATTENDANCE_STATUSES: AttendanceStatus[] = [
   'left_lately'
 ];
 
+// All marking methods
+export const ALL_MARKING_METHODS: MarkingMethod[] = [
+  'qr',
+  'barcode',
+  'rfid/nfc',
+  'manual',
+  'system'
+];
+
+// All attendance user types
+export const ALL_ATTENDANCE_USER_TYPES: AttendanceUserType[] = [
+  'STUDENT',
+  'TEACHER',
+  'INSTITUTE_ADMIN',
+  'ATTENDANCE_MARKER',
+  'PARENT',
+  'NOT_ENROLLED'
+];
+
 // Chart colors for visualization
 export const ATTENDANCE_CHART_COLORS = {
   present: '#10b981',
@@ -104,3 +142,261 @@ export const ATTENDANCE_CHART_COLORS = {
   left_early: '#ec4899',
   left_lately: '#6366f1'
 };
+
+// ============= ATTENDANCE RECORD INTERFACES =============
+
+export interface AttendanceRecord {
+  attendanceId?: string;
+  id?: string;
+  studentId: string;
+  studentName?: string;
+  userId?: string;
+  userName?: string;
+  instituteId: string;
+  instituteName?: string;
+  classId?: string;
+  className?: string;
+  subjectId?: string;
+  subjectName?: string;
+  date?: string;
+  markedAt?: string;
+  status: AttendanceStatus;
+  location?: string;
+  address?: string;
+  markingMethod?: MarkingMethod;
+  markedBy?: string;
+  eventId?: string;
+  eventTitle?: string;
+  calendarDayId?: string;
+  userType?: AttendanceUserType;
+  remarks?: string;
+}
+
+// ============= MARK ATTENDANCE PAYLOADS =============
+
+export interface MarkAttendancePayload {
+  studentId: string;
+  studentName?: string;
+  instituteId: string;
+  instituteName: string;
+  classId?: string;
+  className?: string;
+  subjectId?: string;
+  subjectName?: string;
+  date: string;
+  location?: string;
+  status: AttendanceStatus;
+  remarks?: string;
+  address?: string;
+  markingMethod?: MarkingMethod;
+  eventId?: string;
+  deviceUid?: string; // Registered device UID — triggers device validation
+  // userType is auto-detected by backend — do NOT send
+}
+
+export interface BulkAttendancePayload {
+  instituteId: string;
+  instituteName: string;
+  classId?: string;
+  className?: string;
+  subjectId?: string;
+  subjectName?: string;
+  date?: string;
+  eventId?: string;
+  location?: string;
+  markingMethod?: MarkingMethod;
+  students: {
+    studentId: string;
+    studentName?: string;
+    status: AttendanceStatus;
+    remarks?: string;
+  }[];
+}
+
+export interface MarkByCardPayload {
+  studentCardId: string;
+  instituteId: string;
+  instituteName: string;
+  classId?: string;
+  className?: string;
+  subjectId?: string;
+  subjectName?: string;
+  address: string;
+  markingMethod: MarkingMethod;
+  status: AttendanceStatus;
+  date?: string;
+  eventId?: string;
+}
+
+export interface BulkCardAttendancePayload {
+  instituteId: string;
+  instituteName: string;
+  classId?: string;
+  className?: string;
+  subjectId?: string;
+  subjectName?: string;
+  address: string;
+  markingMethod: MarkingMethod;
+  students: {
+    studentCardId: string;
+    status: AttendanceStatus;
+  }[];
+}
+
+export interface MarkByInstituteCardPayload {
+  instituteCardId: string;
+  instituteId: string;
+  instituteName: string;
+  classId?: string;
+  className?: string;
+  subjectId?: string;
+  subjectName?: string;
+  address: string;
+  markingMethod: MarkingMethod;
+  status: AttendanceStatus;
+  date?: string;
+  eventId?: string;
+  location?: string;
+}
+
+// ============= RESPONSE INTERFACES =============
+
+export interface AvailableEvent {
+  id: string;
+  eventType: string;
+  title: string;
+  isDefault: boolean;
+  isAttendanceTracked: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+}
+
+export interface MarkAttendanceResponse {
+  success: boolean;
+  message: string;
+  attendanceId?: string;
+  date?: string;
+  eventId?: string | null;
+  calendarDayId?: string | null;
+  availableEvents?: AvailableEvent[];
+  imageUrl?: string;
+  status?: string;
+  name?: string;
+  userType?: string;
+}
+
+export interface BulkAttendanceResponse {
+  success: boolean;
+  message: string;
+  totalProcessed?: number;
+  action?: string;
+  date?: string;
+  eventId?: string | null;
+  calendarDayId?: string | null;
+  availableEvents?: AvailableEvent[];
+  summary: {
+    successful: number;
+    failed: number;
+    total: number;
+  };
+  results: {
+    studentId?: string;
+    studentCardId?: string;
+    studentName?: string;
+    success: boolean;
+    attendanceId?: string;
+    error?: string;
+  }[];
+  records?: any[];
+}
+
+export interface MarkByCardResponse {
+  success: boolean;
+  message: string;
+  attendanceId?: string;
+  studentId?: string;
+  studentCardId?: string;
+  studentName?: string;
+}
+
+export interface MarkByInstituteCardResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    studentId: string;
+    studentName: string;
+    instituteCardId: string;
+    userIdByInstitute?: string;
+    imageUrl?: string;
+    isInstituteImage?: boolean;
+    imageVerificationStatus?: string;
+    status: AttendanceStatus;
+    markedAt: string;
+    location?: string;
+  };
+}
+
+export interface CardUserResponse {
+  success: boolean;
+  message: string;
+  data: {
+    userId: string;
+    userName: string;
+    instituteCardId: string;
+    userIdByInstitute?: string;
+    imageUrl?: string;
+    isInstituteImage?: boolean;
+    imageVerificationStatus?: string;
+    userType?: AttendanceUserType;
+    className?: string;
+    classId?: string;
+    subjectId?: string;
+  };
+}
+
+export interface AttendancePagination {
+  currentPage: number;
+  totalPages: number;
+  totalRecords: number;
+  recordsPerPage: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+export interface AttendanceQueryResponse {
+  success: boolean;
+  message?: string;
+  pagination?: AttendancePagination;
+  dateRange?: {
+    startDate: string;
+    endDate: string;
+    totalDays: number;
+  };
+  data: AttendanceRecord[];
+  summary?: AttendanceSummary | InstituteAttendanceSummary;
+  studentInfo?: {
+    studentId: string;
+    studentCardId?: string;
+    studentName: string;
+    instituteName?: string;
+    className?: string;
+  };
+  instituteInfo?: {
+    instituteId: string;
+    instituteName: string;
+  };
+  classInfo?: {
+    instituteId: string;
+    instituteName: string;
+    classId: string;
+    className: string;
+  };
+  subjectInfo?: {
+    instituteId: string;
+    instituteName: string;
+    classId: string;
+    className: string;
+    subjectId: string;
+    subjectName: string;
+  };
+}

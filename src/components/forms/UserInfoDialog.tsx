@@ -25,7 +25,7 @@ const UserInfoDialog: React.FC<UserInfoDialogProps> = ({ open, onClose, user }) 
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md mx-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold text-center">User Information</DialogTitle>
         </DialogHeader>

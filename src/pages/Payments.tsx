@@ -100,12 +100,6 @@ const Payments = () => {
       setAllPayments(data.payments);
       filterPaymentsByStatus(data.payments, activeTab);
       
-      if (showToast) {
-        toast({
-          title: "Data Loaded",
-          description: `Successfully loaded ${data.payments.length} payment records.`
-        });
-      }
     } catch (error) {
       console.error('Error loading payment history:', error);
       if (showToast) {

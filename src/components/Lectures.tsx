@@ -3,8 +3,11 @@ import MUITable from '@/components/ui/mui-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CustomToggle } from '@/components/ui/custom-toggle';
+import { Card, CardContent } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Filter, Plus, Calendar, Clock, MapPin, Video, Users, ExternalLink, CheckCircle } from 'lucide-react';
+import { RefreshCw, Filter, Plus, Calendar, Clock, MapPin, Video, Users, ExternalLink, CheckCircle, ChevronDown, LayoutList, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserRole } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
@@ -38,6 +41,10 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [viewMode] = useState<'card' | 'table'>(() => {
+    return (localStorage.getItem('viewMode') as 'card' | 'table') || 'card';
+  });
+  const [expandedLecture, setExpandedLecture] = useState<string | null>(null);
 
   const userRole = useInstituteRole();
   
@@ -321,13 +328,13 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
   });
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
       {!hasAttemptedLoad ? (
-        <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+        <div className="text-center py-8 sm:py-12">
+          <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-3 sm:mb-4">
             {getTitle()}
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 px-2">
             {userRole === 'Student' && (!currentInstituteId || !currentClassId || !currentSubjectId)
               ? 'Please select institute, class, and subject to view lectures.'
               : 'Click the button below to load lectures data'
@@ -336,12 +343,13 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
           <Button 
             onClick={() => handleLoadData(false)} 
             disabled={isLoading || (userRole === 'Student' && (!currentInstituteId || !currentClassId || !currentSubjectId))}
-            className="bg-blue-600 hover:bg-blue-700"
+            size="lg"
+            className="w-full sm:w-auto"
           >
             {isLoading ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Loading Data...
+                Loading...
               </>
             ) : (
               <>
@@ -353,24 +361,33 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
         </div>
       ) : (
         <>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                {getTitle()}
-              </h1>
-              {lastRefresh && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Last refreshed: {lastRefresh.toLocaleTimeString()}
+          {/* Header */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl sm:text-3xl font-bold text-foreground truncate">
+                  Lectures
+                </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 truncate">
+                  {selectedInstitute?.name}{selectedClass ? ` → ${selectedClass.name}` : ''}{selectedSubject ? ` → ${selectedSubject.name}` : ''}
                 </p>
-              )}
+                {lastRefresh && (
+                  <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+                    Updated: {lastRefresh.toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            
+            {/* Action bar */}
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center gap-2"
+                className="h-8 px-2.5 text-xs sm:text-sm sm:h-9 sm:px-3"
               >
-                <Filter className="h-4 w-4" />
+                <Filter className="h-3.5 w-3.5 mr-1" />
                 Filters
               </Button>
               <Button 
@@ -378,28 +395,20 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
                 disabled={isLoading}
                 variant="outline"
                 size="sm"
+                className="h-8 px-2.5 text-xs sm:text-sm sm:h-9 sm:px-3"
               >
-                {isLoading ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Refreshing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh Data
-                  </>
-                )}
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
+                {isLoading ? 'Loading...' : 'Refresh'}
               </Button>
             </div>
           </div>
 
           {/* Filter Controls */}
           {showFilters && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 bg-muted/50 rounded-xl border border-border">
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                  Search Lectures
+                <label className="text-xs sm:text-sm font-medium text-muted-foreground mb-1 block">
+                  Search
                 </label>
                 <Input
                   placeholder="Search lectures..."
@@ -461,19 +470,83 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
 
           {/* Add Create Button for InstituteAdmin and Teacher */}
           {['InstituteAdmin', 'Teacher'].includes(userRole) && canAdd && (
-            <div className="flex justify-end mb-4">
+            <div className="flex justify-end">
               <Button 
                 onClick={() => setIsCreateDialogOpen(true)}
-                className="flex items-center gap-2"
+                size="sm"
+                className="h-8 text-xs sm:h-9 sm:text-sm"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-3.5 w-3.5 mr-1" />
                 Create Lecture
               </Button>
             </div>
           )}
 
-           {/* MUI Table View - All Screen Sizes */}
-          <MUITable
+           {/* View Content */}
+          {viewMode === 'card' ? (
+            <div className="space-y-2">
+              {filteredLectures.length === 0 ? (
+                <Card className="p-8 text-center"><p className="text-sm text-muted-foreground">No lectures found</p></Card>
+              ) : (
+                filteredLectures.map((item: any) => {
+                  const isOpen = expandedLecture === (item.id || item._id);
+                  const recUrl = item.recordingUrl || item.recording_url;
+                  const isYouTubeOrDrive = (url: string) => url.includes('youtube.com') || url.includes('youtu.be') || url.includes('drive.google.com');
+                  return (
+                    <Collapsible key={item.id || item._id} open={isOpen} onOpenChange={() => setExpandedLecture(isOpen ? null : (item.id || item._id))}>
+                      <CollapsibleTrigger asChild>
+                        <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{item.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {item.startTime ? new Date(item.startTime).toLocaleDateString() : 'No date'}
+                                {' • '}
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{item.lectureType}</Badge>
+                                {' '}
+                                <Badge variant={item.status === 'scheduled' ? 'default' : item.status === 'completed' ? 'secondary' : 'destructive'} className="text-[10px] px-1.5 py-0">{item.status}</Badge>
+                              </p>
+                            </div>
+                            <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                          </CardContent>
+                        </Card>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="px-4 pb-4 pt-1 space-y-2 border-x border-b rounded-b-2xl bg-muted/30">
+                          {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
+                          {item.venue && <p className="text-xs"><span className="font-medium">Venue:</span> {item.venue}</p>}
+                          <p className="text-xs"><span className="font-medium">Start:</span> {item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</p>
+                          <p className="text-xs"><span className="font-medium">End:</span> {item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}</p>
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            {item.meetingLink && (
+                              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-7 text-xs" onClick={() => window.open(item.meetingLink, '_blank')}>
+                                <ExternalLink className="h-3 w-3 mr-1" />Join
+                              </Button>
+                            )}
+                            {recUrl && (
+                              <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => {
+                                if (isYouTubeOrDrive(recUrl)) { setVideoPreviewUrl(recUrl); setVideoPreviewTitle(item.title || 'Recording'); }
+                                else { window.open(recUrl, '_blank'); }
+                              }}>
+                                <Video className="h-3 w-3 mr-1" />Recording
+                              </Button>
+                            )}
+                            {canEdit && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleEditLecture(item)}>Edit</Button>
+                            )}
+                            {canDelete && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/30" onClick={() => handleDeleteLecture(item)}>Delete</Button>
+                            )}
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+           <MUITable
             title=""
             data={lecturesData}
             columns={lecturesColumns.map(col => ({
@@ -494,6 +567,7 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
             allowEdit={userRole === 'InstituteAdmin' || userRole === 'Teacher'}
             allowDelete={canDelete}
           />
+          )}
         </>
       )}
 

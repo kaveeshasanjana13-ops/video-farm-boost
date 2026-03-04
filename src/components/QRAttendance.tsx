@@ -14,8 +14,12 @@ import jsQR from 'jsqr';
 import { childAttendanceApi, MarkAttendanceByCardRequest, MarkAttendanceRequest } from '@/api/childAttendance.api';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { buildAttendanceAddress } from '@/utils/attendanceAddress';
+import { attendanceScanLog } from '@/utils/attendanceScanLog';
 import { AttendanceStatus, ALL_ATTENDANCE_STATUSES, ATTENDANCE_STATUS_CONFIG } from '@/types/attendance.types';
 import { Capacitor } from '@capacitor/core';
+import { useTodayCalendarEvents, DEFAULT_EVENT_ID } from '@/hooks/useTodayCalendarEvents';
+import EventSelector from '@/components/attendance/EventSelector';
+import MobileScannerOverlay from '@/components/MobileScannerOverlay';
 
 // Dynamic import to avoid crash on web where the plugin isn't available
 let CapacitorBarcodeScanner: any = null;
@@ -59,11 +63,18 @@ const QRAttendance = () => {
   const [location, setLocation] = useState<{ latitude: number; longitude: number; address: string } | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [status, setStatus] = useState<AttendanceStatus>('present');
+  const [selectedEventId, setSelectedEventId] = useState(DEFAULT_EVENT_ID);
   const [attendanceAlerts, setAttendanceAlerts] = useState<AttendanceAlert[]>([]);
   const [showMethodDialog, setShowMethodDialog] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<'qr' | 'barcode' | 'rfid/nfc'>('qr');
   const [studentImagesMap, setStudentImagesMap] = useState<Map<string, string>>(new Map());
   const [isManualProcessing, setIsManualProcessing] = useState(false);
+
+  // Fetch today's calendar events
+  const calendarInfo = useTodayCalendarEvents(
+    currentInstituteId,
+    selectedClass?.id?.toString()
+  );
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [lastMarkedStudent, setLastMarkedStudent] = useState<{ name: string; status: AttendanceStatus } | null>(null);
   const [isNativeScanning, setIsNativeScanning] = useState(false); // Track native scanner state
@@ -480,6 +491,9 @@ const QRAttendance = () => {
       setCameraError(null);
       console.log('✅ Camera stopped successfully');
       
+      // Start 15-min auto-cleanup countdown for scan log
+      attendanceScanLog.endSession();
+      
       addAlert({
         type: 'success',
         message: '📱 Camera stopped'
@@ -523,8 +537,14 @@ const QRAttendance = () => {
         instituteName: selectedInstitute.name,
         address,
         markingMethod: selectedMethod,
-        status: status
+        status: status,
+        date: calendarInfo.currentDate,
       };
+
+      // Send eventId — use selected event or omit for default
+      if (selectedEventId !== DEFAULT_EVENT_ID) {
+        request.eventId = selectedEventId;
+      }
 
       // Include class data if selected
       if (selectedClass) {
@@ -543,15 +563,31 @@ const QRAttendance = () => {
 
       const result = await childAttendanceApi.markAttendanceByCard(request);
 
+      // Update event picker from response's availableEvents
+      const responseAny = result as any;
+      if (responseAny.availableEvents) {
+        calendarInfo.updateFromResponse(responseAny.availableEvents);
+      }
+
       if (result.success) {
-        const responseData = (result as any).data || result;
-        const studentName = responseData.studentName || (result as any).studentName || 'Student';
+        const responseData = responseAny.data || result;
+        const studentName = responseData.studentName || responseAny.studentName || 'Student';
         const studentIdFromResponse = responseData.studentId || studentCardId.trim();
-        const imageUrl = responseData.imageUrl || (result as any).imageUrl || studentImagesMap.get(studentIdFromResponse);
+        const imageUrl = responseData.imageUrl || responseAny.imageUrl || studentImagesMap.get(studentIdFromResponse);
         const dateStr = responseData.date ? new Date(responseData.date).toLocaleDateString() : new Date().toLocaleDateString();
         const timeStr = responseData.time || new Date().toLocaleTimeString();
         const attendanceStatus = responseData.status || request.status;
         
+        // Log to scan log for the overlay cards
+        attendanceScanLog.add({
+          success: true,
+          studentName,
+          studentId: studentIdFromResponse,
+          studentCardId: studentCardId.trim(),
+          imageUrl,
+          status: attendanceStatus,
+        });
+
         toast({
           title: attendanceStatus === 'present' ? 'Attendance Marked ✓' : 'Attendance Marked',
           description: `${studentName} - ${attendanceStatus.toUpperCase()} - ${dateStr} ${timeStr}`,
@@ -592,6 +628,13 @@ const QRAttendance = () => {
         errorMessage = error.message;
       }
       
+      // Log failure to scan log
+      attendanceScanLog.add({
+        success: false,
+        studentCardId: studentCardId.trim(),
+        errorMessage,
+      });
+
       addAlert({
         type: 'error',
         message: `❌ ${errorMessage}`
@@ -638,8 +681,14 @@ const QRAttendance = () => {
         instituteName: selectedInstitute.name,
         address,
         markingMethod: 'manual',
-        status: status
+        status: status,
+        date: calendarInfo.currentDate,
       };
+
+      // Send eventId — use selected event or omit for default
+      if (selectedEventId !== DEFAULT_EVENT_ID) {
+        request.eventId = selectedEventId;
+      }
 
       // Only include class data if a class is selected
       if (selectedClass) {
@@ -670,6 +719,12 @@ const QRAttendance = () => {
       console.log('=========================================');
 
       const result = await childAttendanceApi.markAttendance(request);
+
+      // Update event picker from response's availableEvents
+      const manualResponseAny = result as any;
+      if (manualResponseAny.availableEvents) {
+        calendarInfo.updateFromResponse(manualResponseAny.availableEvents);
+      }
 
       if (result.success) {
         const responseData = (result as any).data || result;
@@ -941,9 +996,18 @@ const QRAttendance = () => {
                           ))}
                        </SelectContent>
                      </Select>
-                   </div>
-                 </div>
-                 
+                    </div>
+                    <EventSelector
+                      events={calendarInfo.events}
+                      selectedEventId={selectedEventId}
+                      onEventChange={setSelectedEventId}
+                      loading={calendarInfo.loading}
+                      dayType={calendarInfo.dayType}
+                      isAttendanceExpected={calendarInfo.isAttendanceExpected}
+                      compact
+                    />
+                  </div>
+                  
                  <div className="text-center py-16">
                    <Camera className="h-20 w-20 mx-auto mb-6 text-muted-foreground" />
                    <p className="text-xl font-medium mb-3">Ready to Scan</p>
@@ -1140,6 +1204,16 @@ const QRAttendance = () => {
                    </SelectContent>
                  </Select>
                </div>
+
+               <EventSelector
+                 events={calendarInfo.events}
+                 selectedEventId={selectedEventId}
+                 onEventChange={setSelectedEventId}
+                 loading={calendarInfo.loading}
+                 dayType={calendarInfo.dayType}
+                 isAttendanceExpected={calendarInfo.isAttendanceExpected}
+                 compact
+               />
                
                <div className="space-y-2">
                  <Input
@@ -1241,6 +1315,19 @@ const QRAttendance = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Scanner Overlay - renders on top when scanning */}
+      <MobileScannerOverlay
+        isActive={isScanning}
+        onClose={stopCamera}
+        scanMethod={selectedMethod}
+        status={status}
+        onStatusChange={(value) => setStatus(value)}
+        markedCount={markedCount}
+        videoRef={videoRef as React.RefObject<HTMLVideoElement>}
+        canvasRef={canvasRef as React.RefObject<HTMLCanvasElement>}
+        cameraError={cameraError}
+      />
     </div>
   );
 };

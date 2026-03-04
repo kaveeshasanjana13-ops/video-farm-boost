@@ -84,7 +84,7 @@ const PaymentSubmissionsDialog: React.FC<PaymentSubmissionsDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto w-[95vw] sm:w-full">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto w-full sm:w-[95vw]">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-base sm:text-lg">
             <FileText className="h-4 w-4 sm:h-5 sm:w-5" />

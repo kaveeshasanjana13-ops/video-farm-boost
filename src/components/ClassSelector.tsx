@@ -780,7 +780,7 @@ const ClassSelector = () => {
             className={`grid grid-cols-1 sm:grid-cols-2 ${sidebarCollapsed ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-x-3 gap-y-8 sm:gap-x-4 sm:gap-y-10 pt-3 md:pt-6 mb-8`}
           >
             {filteredClasses.map(classItem => (
-              <div key={classItem.id} className="relative flex w-full flex-col rounded-lg bg-card bg-clip-border text-card-foreground shadow-sm hover:shadow-md transition-all duration-300">
+              <div key={classItem.id} className="relative flex w-full flex-col rounded-lg bg-card bg-clip-border text-card-foreground shadow-sm hover:shadow-md transition-all duration-300 border-2 border-primary/30 hover:border-primary/60">
                 {/* Verification Status Banner for Students */}
                 {effectiveRole === 'Student' && classItem.isVerified === false && (
                   <div className="absolute top-0 left-0 right-0 z-10 bg-amber-500/90 text-white text-[10px] font-medium py-0.5 px-2 rounded-t-lg text-center">

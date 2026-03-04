@@ -4,8 +4,11 @@ import MUITable from '@/components/ui/mui-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CustomToggle } from '@/components/ui/custom-toggle';
+import { Card, CardContent } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Filter, Plus, Calendar, Clock, FileText, CheckCircle, ExternalLink, BarChart3, Eye } from 'lucide-react';
+import { RefreshCw, Filter, Plus, Calendar, Clock, FileText, CheckCircle, ExternalLink, BarChart3, Eye, ChevronDown, LayoutList, LayoutGrid } from 'lucide-react';
 import { useAuth, type UserRole } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { AccessControl } from '@/utils/permissions';
@@ -47,6 +50,10 @@ const Exams = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [viewMode] = useState<'card' | 'table'>(() => {
+    return (localStorage.getItem('viewMode') as 'card' | 'table') || 'card';
+  });
+  const [expandedExam, setExpandedExam] = useState<string | null>(null);
   const userRole = useInstituteRole();
 
   // Memoize default params to prevent unnecessary re-renders
@@ -343,13 +350,13 @@ const Exams = ({
     }
     return 'Click the button below to load exams data';
   };
-  return <div className="container mx-auto p-6 space-y-6">
-      {!hasAttemptedLoad ? <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+  return <div className="container mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
+      {!hasAttemptedLoad ? <div className="text-center py-8 sm:py-12">
+          <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-3 sm:mb-4">
             {getTitle()}
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Click the button below to load exams data
+          <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 px-2">
+            {getLoadButtonMessage()}
           </p>
           <Button
             onClick={() => handleLoadData(false)}
@@ -359,54 +366,57 @@ const Exams = ({
           >
             {isLoading ? <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Loading Data...
+                Loading...
               </> : <>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Load Data
               </>}
           </Button>
         </div> : <>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                {getTitle()}
-              </h1>
-              {lastRefresh && <p className="text-sm text-muted-foreground mt-2">
-                  Last refreshed: {lastRefresh.toLocaleTimeString()}
-                </p>}
+          {/* Header */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl sm:text-3xl font-bold text-foreground truncate">
+                  Exams
+                </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 truncate">
+                  {selectedInstitute?.name}{selectedClass ? ` → ${selectedClass.name}` : ''}{selectedSubject ? ` → ${selectedSubject.name}` : ''}
+                </p>
+                {lastRefresh && <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+                    Updated: {lastRefresh.toLocaleTimeString()}
+                  </p>}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
-                <Filter className="h-4 w-4" />
+            
+            {/* Action bar */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="h-8 px-2.5 text-xs sm:text-sm sm:h-9 sm:px-3">
+                <Filter className="h-3.5 w-3.5 mr-1" />
                 Filters
               </Button>
-              <Button onClick={handleRefreshData} disabled={isLoading} variant="outline" size="sm">
-                {isLoading ? <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    Refreshing...
-                  </> : <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh Data
-                  </>}
+              <Button onClick={handleRefreshData} disabled={isLoading} variant="outline" size="sm" className="h-8 px-2.5 text-xs sm:text-sm sm:h-9 sm:px-3">
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
+                {isLoading ? 'Loading...' : 'Refresh'}
               </Button>
             </div>
           </div>
 
           {/* Filter Controls */}
-          {showFilters && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border">
+          {showFilters && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 bg-muted/50 rounded-xl border border-border">
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                  Search Exams
+                <label className="text-xs sm:text-sm font-medium text-muted-foreground mb-1 block">
+                  Search
                 </label>
-                <Input placeholder="Search exams..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full" />
+                <Input placeholder="Search exams..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full h-8 sm:h-9 text-sm" />
               </div>
               
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                <label className="text-xs sm:text-sm font-medium text-muted-foreground mb-1 block">
                   Status
                 </label>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-8 sm:h-9 text-sm">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -420,11 +430,11 @@ const Exams = ({
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                <label className="text-xs sm:text-sm font-medium text-muted-foreground mb-1 block">
                   Type
                 </label>
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-8 sm:h-9 text-sm">
                     <SelectValue placeholder="Type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -447,21 +457,90 @@ const Exams = ({
             </div>}
 
            {/* Add Create Buttons for InstituteAdmin and Teacher */}
-           {(userRole === 'InstituteAdmin' || userRole === 'Teacher') && canAdd && <div className="flex justify-end gap-2 mb-4">
-                
-                <Button onClick={() => setIsCreateDialogOpen(true)} className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
+           {(userRole === 'InstituteAdmin' || userRole === 'Teacher') && canAdd && <div className="flex justify-end">
+                <Button onClick={() => setIsCreateDialogOpen(true)} size="sm" className="h-8 text-xs sm:h-9 sm:text-sm">
+                  <Plus className="h-3.5 w-3.5 mr-1" />
                   Create Exam
                 </Button>
               </div>}
 
-           {/* MUI Table View - All Screen Sizes */}
+           {/* View Content */}
+          {viewMode === 'card' ? (
+            <div className="space-y-2">
+              {filteredExams.length === 0 ? (
+                <Card className="p-8 text-center"><p className="text-sm text-muted-foreground">No exams found</p></Card>
+              ) : (
+                filteredExams.map((item: any) => {
+                  const isOpen = expandedExam === (item.id || item._id);
+                  return (
+                    <Collapsible key={item.id || item._id} open={isOpen} onOpenChange={() => setExpandedExam(isOpen ? null : (item.id || item._id))}>
+                      <CollapsibleTrigger asChild>
+                        <Card className="cursor-pointer hover:shadow-md transition-shadow">
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-sm truncate">{item.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {item.scheduleDate ? new Date(item.scheduleDate).toLocaleDateString() : 'No date'}
+                                {' • '}
+                                <Badge variant={item.examType === 'online' ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">{item.examType}</Badge>
+                                {' '}
+                                <Badge variant={item.status === 'scheduled' ? 'default' : item.status === 'completed' ? 'outline' : 'destructive'} className="text-[10px] px-1.5 py-0">{item.status}</Badge>
+                              </p>
+                            </div>
+                            <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                          </CardContent>
+                        </Card>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="px-4 pb-4 pt-1 space-y-2 border-x border-b rounded-b-2xl bg-muted/30">
+                          {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
+                          <p className="text-xs"><span className="font-medium">Total Marks:</span> {item.totalMarks || 'N/A'}</p>
+                          <p className="text-xs"><span className="font-medium">Passing Marks:</span> {item.passingMarks || 'N/A'}</p>
+                          <p className="text-xs"><span className="font-medium">Duration:</span> {item.durationMinutes ? `${item.durationMinutes} min` : 'N/A'}</p>
+                          {item.venue && <p className="text-xs"><span className="font-medium">Venue:</span> {item.venue}</p>}
+                          <p className="text-xs"><span className="font-medium">Start:</span> {item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</p>
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            {item.examLink && (
+                              <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => window.open(item.examLink, '_blank')}>
+                                <ExternalLink className="h-3 w-3 mr-1" />Exam Link
+                              </Button>
+                            )}
+                            <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => handleViewResults(item)}>
+                              <Eye className="h-3 w-3 mr-1" />Results
+                            </Button>
+                            {(userRole === 'InstituteAdmin' || userRole === 'Teacher') && canAdd && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
+                                if (!currentInstituteId || !currentClassId || !currentSubjectId) {
+                                  toast({ title: "Missing Context", description: "Please select institute, class, and subject first", variant: "destructive" });
+                                  return;
+                                }
+                                navigate(`/institute/${currentInstituteId}/class/${currentClassId}/subject/${currentSubjectId}/exam/${item.id}/create-results`);
+                              }}>
+                                <BarChart3 className="h-3 w-3 mr-1" />Create Results
+                              </Button>
+                            )}
+                            {canEdit && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleEditExam(item)}>Edit</Button>
+                            )}
+                            {canDelete && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/30" onClick={() => handleDeleteExam(item)}>Delete</Button>
+                            )}
+                          </div>
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  );
+                })
+              )}
+            </div>
+          ) : (
           <MUITable title="" data={examsData} columns={examsColumns.map(col => ({
         id: col.key,
         label: col.header,
         minWidth: 170,
         format: col.render
-      }))} onAdd={canAdd ? () => setIsCreateDialogOpen(true) : undefined} onEdit={userRole === 'InstituteAdmin' || userRole === 'Teacher' ? handleEditExam : undefined} onView={undefined} page={pagination.page} rowsPerPage={pagination.limit} totalCount={pagination.totalCount} onPageChange={setPage} onRowsPerPageChange={setLimit} rowsPerPageOptions={[25, 50, 100]} sectionType="exams" allowEdit={userRole === 'InstituteAdmin' || userRole === 'Teacher'} allowDelete={canDelete} />
+      }))} onAdd={canAdd ? () => setIsCreateDialogOpen(true) : undefined} onEdit={userRole === 'InstituteAdmin' || userRole === 'Teacher' ? handleEditExam : undefined} onDelete={canDelete ? handleDeleteExam : undefined} onView={undefined} page={pagination.page} rowsPerPage={pagination.limit} totalCount={pagination.totalCount} onPageChange={setPage} onRowsPerPageChange={setLimit} rowsPerPageOptions={[25, 50, 100]} sectionType="exams" allowEdit={userRole === 'InstituteAdmin' || userRole === 'Teacher'} allowDelete={canDelete} />
+          )}
         </>}
 
       {/* Create Dialog */}

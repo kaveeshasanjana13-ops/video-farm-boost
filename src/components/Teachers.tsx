@@ -178,10 +178,6 @@ const Teachers = () => {
         
         setTeachersData(transformedData);
         setDataLoaded(true);
-        toast({
-          title: "Data Loaded",
-          description: `Successfully loaded ${transformedData.length} teachers from institute.`
-        });
         
         return;
       }
@@ -215,10 +211,6 @@ const Teachers = () => {
       
       setTeachersData(filteredData);
       setDataLoaded(true);
-      toast({
-        title: "Data Loaded",
-        description: `Successfully loaded ${filteredData.length} teachers.`
-      });
     } catch (error) {
       console.error('Error loading teachers:', error);
       toast({

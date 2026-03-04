@@ -6,7 +6,7 @@ import { DataCardView } from '@/components/ui/data-card-view';
 import { useAuth, type UserRole } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { getImageUrl } from '@/utils/imageUrlHelper';
-import { BookOpen, Clock, CheckCircle, RefreshCw, User, School, ChevronLeft, ChevronRight, LogIn } from 'lucide-react';
+import { BookOpen, Clock, CheckCircle, RefreshCw, User, School, ChevronLeft, ChevronRight, LogIn, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getBaseUrl } from '@/contexts/utils/auth.api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -87,6 +87,7 @@ const SubjectSelector = () => {
   const [subjectsData, setSubjectsData] = useState<SubjectCardData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [enrollmentLoaded, setEnrollmentLoaded] = useState(false);
   const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
 
   // Enrollment state
@@ -239,6 +240,7 @@ const SubjectSelector = () => {
 
         // For students, fetch their enrolled subjects to determine enrollment status
         if (instituteRole === 'Student') {
+          setEnrollmentLoaded(false);
           try {
             const studentUserId = isViewingAsParent && selectedChild ? selectedChild.id : user.id;
             const enrolledResult = await enhancedCachedClient.get(
@@ -263,7 +265,11 @@ const SubjectSelector = () => {
             setPendingSubjects(pendingIds);
           } catch (enrollErr) {
             console.error('Failed to fetch student enrollment status:', enrollErr);
+          } finally {
+            setEnrollmentLoaded(true);
           }
+        } else {
+          setEnrollmentLoaded(true);
         }
       } else {
         // Handle the original response for other roles
@@ -303,8 +309,9 @@ const SubjectSelector = () => {
 
   // Auto-load subjects when class changes (uses cache if available)
   useEffect(() => {
-    if (currentInstituteId && selectedClass?.id && !dataLoaded) {
-      console.log('Auto-loading subjects from cache for class:', selectedClass.id);
+    if (currentInstituteId && selectedClass?.id) {
+      console.log('Auto-loading subjects for class:', selectedClass.id);
+      setDataLoaded(false);
       fetchSubjectsByRole(1, pageSize);
     }
   }, [currentInstituteId, selectedClass?.id]);
@@ -396,6 +403,10 @@ const SubjectSelector = () => {
         title: "Enrollment Submitted",
         description: result.message || "Awaiting verification by teacher or admin."
       });
+      
+      // CRITICAL: Immediately refetch subjects to update enrollment status
+      // This ensures the UI (select subject button, enroll button) updates instantly
+      fetchSubjectsByRole(currentPage, pageSize, true);
     } catch (error: any) {
       console.error('Enrollment error:', error);
       toast({
@@ -470,7 +481,7 @@ const SubjectSelector = () => {
               return (
                 <div 
                   key={subject.id} 
-                  className="relative flex w-full flex-col rounded-lg bg-card bg-clip-border text-card-foreground shadow-sm hover:shadow-md transition-all duration-300"
+                  className="relative flex w-full flex-col rounded-lg bg-card bg-clip-border text-card-foreground shadow-sm hover:shadow-md transition-all duration-300 border-2 border-primary/30 hover:border-primary/60"
                 >
                   {/* Subject Image - Gradient Header */}
                   <div className="relative mx-3 -mt-5 h-28 overflow-hidden rounded-lg bg-clip-border text-white shadow-md shadow-primary/30 bg-gradient-to-r from-primary to-primary/80">
@@ -544,7 +555,11 @@ const SubjectSelector = () => {
                     
                     {/* Select Subject button - for students, only enabled if enrolled & verified */}
                     {instituteRole === 'Student' ? (
-                      enrolledSubjects.has(subject.id) ? (
+                      !enrollmentLoaded ? (
+                        <div className="w-full flex justify-center py-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : enrolledSubjects.has(subject.id) ? (
                         <button 
                           onClick={() => handleSelectSubject(subject)}
                           className="w-full select-none rounded-md bg-primary py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:shadow-md hover:shadow-primary/30 active:opacity-90"

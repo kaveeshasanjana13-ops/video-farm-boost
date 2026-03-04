@@ -14,7 +14,7 @@ export const useAppNavigation = () => {
     let route = '';
     
     // Pages that are always global (no context prefix)
-    const globalPages = ['my-children', 'transport', 'profile', 'settings', 'appearance', 'id-cards', 'card-demo', 'payments', 'system-payment'];
+    const globalPages = ['my-children', 'transport', 'settings', 'appearance', 'id-cards', 'card-demo', 'payments', 'system-payment'];
     
     if (globalPages.includes(page)) {
       const routeMap: Record<string, string> = {

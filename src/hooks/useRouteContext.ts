@@ -121,13 +121,29 @@ export const useRouteContext = () => {
 
     // 3) Non-child routes: Institute context must follow the URL params
     if (!isInstituteRoute) {
-      // When leaving /institute/... routes (e.g. to /dashboard), clear stale selections.
-      if (latestInstitute) {
-        setSelectedInstitute(null); // also clears class/subject
-      } else {
-        // Safety: if institute already null but class/subject linger, clear them.
-        if (latestClass) setSelectedClass(null);
-        if (latestSubject) setSelectedSubject(null);
+      // Some standalone pages depend on the current context (institute/class/subject)
+      // and should NOT clear selections when navigated to.
+      const contextPreservingPaths = [
+        '/payment-submissions',
+        '/my-submissions',
+        '/subject-payment-submissions',
+        '/class-calendar',
+        '/device-management',
+        '/admin-attendance',
+        '/calendar-management',
+        '/calendar-view',
+      ];
+      const shouldPreserveContext = contextPreservingPaths.some(p => path.startsWith(p));
+      
+      if (!shouldPreserveContext) {
+        // When leaving /institute/... routes (e.g. to /dashboard), clear stale selections.
+        if (latestInstitute) {
+          setSelectedInstitute(null); // also clears class/subject
+        } else {
+          // Safety: if institute already null but class/subject linger, clear them.
+          if (latestClass) setSelectedClass(null);
+          if (latestSubject) setSelectedSubject(null);
+        }
       }
       return;
     }
@@ -298,8 +314,13 @@ export const useRouteContext = () => {
         });
 
         fetchInProgressRef.current[fetchKey] = true;
-        cachedApiClient.get(`/institutes/${urlInstituteIdLocal}/classes/${urlClassIdLocal}`)
-          .then(classData => {
+        // Fetch all classes for the institute and find the matching one
+        cachedApiClient.get(`/institute-classes/institute/${urlInstituteIdLocal}?page=1&limit=100`)
+          .then((response: any) => {
+            const classes = Array.isArray(response) ? response : (response?.data || []);
+            const classData = classes.find((c: any) => 
+              String(c.id) === urlClassIdLocal || String(c.classId) === urlClassIdLocal
+            );
             if (classData) {
               setSelectedClass({
                 id: classData.id || classData.classId || urlClassIdLocal,
@@ -313,7 +334,7 @@ export const useRouteContext = () => {
             }
           })
           .catch((error) => {
-            console.error('Error loading class:', error);
+            console.warn('Error loading class from institute-classes:', error);
           })
           .finally(() => {
             fetchInProgressRef.current[fetchKey] = false;
@@ -329,11 +350,18 @@ export const useRouteContext = () => {
         }
 
         fetchInProgressRef.current[fetchKey] = true;
-        cachedApiClient.get(`/classes/${urlClassIdLocal}/subjects/${urlSubjectIdLocal}`)
-          .then(subject => {
-            if (subject) {
+        // Fetch subjects for the class and find the matching one
+        cachedApiClient.get(`/institutes/${urlInstituteIdLocal}/classes/${urlClassIdLocal}/subjects`)
+          .then((response: any) => {
+            const subjects = Array.isArray(response) ? response : (response?.data || []);
+            const subjectItem = subjects.find((s: any) => {
+              const subId = s.subjectId || s.subject?.id || s.id;
+              return String(subId) === urlSubjectIdLocal;
+            });
+            if (subjectItem) {
+              const subject = subjectItem.subject || subjectItem;
               setSelectedSubject({
-                id: subject.id || subject.subjectId,
+                id: subject.id || subjectItem.subjectId || urlSubjectIdLocal,
                 name: subject.name || subject.subjectName,
                 code: subject.code,
                 description: subject.description,
@@ -342,7 +370,7 @@ export const useRouteContext = () => {
             }
           })
           .catch((error) => {
-            console.error('Error loading subject:', error);
+            console.warn('Error loading subject from class subjects:', error);
           })
           .finally(() => {
             fetchInProgressRef.current[fetchKey] = false;

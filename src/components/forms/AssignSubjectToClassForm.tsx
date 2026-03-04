@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useToast } from '@/hooks/use-toast';
 import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { tokenStorageService } from '@/services/tokenStorageService';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
 
@@ -103,10 +104,10 @@ const AssignSubjectToClassForm: React.FC<AssignSubjectToClassFormProps> = ({
   };
 
   const getAuthToken = () => {
-    const token = localStorage.getItem('access_token') || 
-                  localStorage.getItem('token') || 
-                  localStorage.getItem('authToken');
-    return token;
+    return tokenStorageService.getAccessTokenSync() || 
+           localStorage.getItem('access_token') || 
+           localStorage.getItem('token') || 
+           localStorage.getItem('authToken');
   };
 
   const getApiHeaders = () => {

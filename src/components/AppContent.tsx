@@ -92,6 +92,14 @@ import CreateExamResults from '@/pages/CreateExamResults';
 import InstituteSubjects from '@/pages/InstituteSubjects';
 import TeacherEnrollmentManagement from '@/pages/TeacherEnrollmentManagement';
 import NotificationsPage from '@/pages/NotificationsPage';
+import AllNotificationsPage from '@/pages/AllNotificationsPage';
+import CalendarManagementPage from '@/components/calendar/CalendarManagementPage';
+import AdminAttendancePage from '@/components/admin-attendance/AdminAttendancePage';
+import CalendarMonthView from '@/components/CalendarMonthView';
+import TodayDashboard from '@/components/TodayDashboard';
+import ParentAttendanceDashboard from '@/components/parent-attendance/ParentAttendanceDashboard';
+import ClassCalendarPage from '@/pages/ClassCalendarPage';
+import DeviceManagement from '@/pages/DeviceManagement';
 
 interface AppContentProps {
   initialPage?: string;
@@ -619,6 +627,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <Profile />;
         case 'settings':
           return <Settings />;
+        case 'all-notifications':
+          return <AllNotificationsPage />;
         case 'notifications':
         case 'institute-notifications':
           return <NotificationsPage />;
@@ -639,7 +649,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       }
       
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications') {
         return <InstituteSelector />;
       }
 
@@ -698,9 +708,17 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <SubjectPaymentSubmissions />;
         case 'my-children':
           return <MyChildren />;
+        case 'all-notifications':
+          return <AllNotificationsPage />;
         case 'notifications':
         case 'institute-notifications':
           return <NotificationsPage />;
+        case 'calendar-view':
+          return <CalendarMonthView />;
+        case 'today-dashboard':
+          return <TodayDashboard />;
+        case 'settings':
+          return <Settings />;
         default:
           return <Dashboard />;
       }
@@ -717,7 +735,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <ParentChildrenSelector />;
       }
 
-      if (!selectedChild && currentPage !== 'parents' && currentPage !== 'profile' && currentPage !== 'appearance') {
+      if (!selectedChild && currentPage !== 'parents' && currentPage !== 'profile' && currentPage !== 'appearance' && currentPage !== 'settings') {
         return <ParentChildrenSelector />;
       }
 
@@ -754,9 +772,25 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <ParentChildrenSelector />;
         case 'appearance':
           return <Appearance />;
+        case 'settings':
+          return <Settings />;
+        case 'all-notifications':
+          return <AllNotificationsPage />;
         case 'notifications':
         case 'institute-notifications':
           return <NotificationsPage />;
+        case 'parent-attendance':
+          return <ParentAttendanceDashboard />;
+        case 'calendar-view':
+          return <CalendarMonthView />;
+        case 'today-dashboard':
+          return <TodayDashboard />;
+        case 'select-institute':
+          return <InstituteSelector useChildId={true} />;
+        case 'select-class':
+          return <ClassSelector />;
+        case 'select-subject':
+          return <SubjectSelector />;
         default:
           return <ParentChildrenSelector />;
       }
@@ -765,7 +799,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     // For Teacher role
     if (userRole === 'Teacher') {
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications') {
         return <InstituteSelector />;
       }
 
@@ -817,9 +851,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         case 'view-grade-classes':
           return <Grading />;
         case 'attendance':
-          return <Attendance />;
         case 'daily-attendance':
-          return <NewAttendance />;
+          return <Attendance />;
         case 'qr-attendance':
           return <QRAttendance />;
         case 'institute-mark-attendance':
@@ -858,9 +891,17 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <SubjectPaymentSubmissions />;
         case 'enrollment-management':
           return <TeacherEnrollmentManagement />;
+        case 'calendar-view':
+          return <CalendarMonthView />;
+        case 'today-dashboard':
+          return <TodayDashboard />;
+        case 'all-notifications':
+          return <AllNotificationsPage />;
         case 'notifications':
         case 'institute-notifications':
           return <NotificationsPage />;
+        case 'settings':
+          return <Settings />;
         default:
           return <Dashboard />;
       }
@@ -869,7 +910,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     // For AttendanceMarker role
     if (userRole === 'AttendanceMarker') {
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'select-institute') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications') {
         return <InstituteSelector />;
       }
 
@@ -885,34 +926,39 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         case 'dashboard':
           return <Dashboard />;
         case 'attendance':
-          return <Attendance />;
         case 'daily-attendance':
-          return <NewAttendance />;
+          return <Attendance />;
         case 'my-attendance':
           return <MyAttendance />;
+        case 'today-dashboard':
+          return <TodayDashboard />;
+        case 'calendar-view':
+          return <CalendarMonthView />;
         case 'attendance-markers':
           return <AttendanceMarkers />;
-      case 'qr-attendance':
-        return <QRAttendance />;
-      case 'rfid-attendance':
-        return <RfidAttendance />;
-      case 'institute-mark-attendance':
-        return <InstituteMarkAttendance />;
+        case 'qr-attendance':
+          return <QRAttendance />;
+        case 'rfid-attendance':
+          return <RfidAttendance />;
+        case 'institute-mark-attendance':
+          return <InstituteMarkAttendance />;
         case 'profile':
           return <Profile />;
         case 'select-institute':
           return <InstituteSelector />;
         case 'select-class':
           return <ClassSelector />;
-      case 'appearance':
-        return <Appearance />;
-      case 'institute-profile':
-        return <InstituteProfile />;
-      case 'settings':
+        case 'appearance':
+          return <Appearance />;
+        case 'institute-profile':
+          return <InstituteProfile />;
+        case 'settings':
           return <Settings />;
-      case 'notifications':
-      case 'institute-notifications':
-        return <NotificationsPage />;
+        case 'all-notifications':
+          return <AllNotificationsPage />;
+        case 'notifications':
+        case 'institute-notifications':
+          return <NotificationsPage />;
         default:
           return <Dashboard />;
       }
@@ -922,6 +968,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     // Pages that don't require class/subject selection
     const pagesWithoutClassRequirement = [
       'profile',
+      'settings',
+      'appearance',
       'transport', 
       'parent-transport', 
       'transport-selection', 
@@ -935,7 +983,15 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       'subject-payments',
       'my-submissions',
       'notifications',
-      'institute-notifications'
+      'institute-notifications',
+      'all-notifications',
+      'calendar-management',
+      'calendar-view',
+      'today-dashboard',
+      'admin-attendance',
+      'parent-attendance',
+      'class-calendar',
+      'device-management'
     ];
     
     console.log('🔍 Student Role - Debug:', { 
@@ -1028,9 +1084,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       case 'view-grade-classes':
         return <Grading />;
       case 'attendance':
-        return <Attendance />;
       case 'daily-attendance':
-        return <NewAttendance />;
+        return <Attendance />;
       case 'attendance-markers':
         return <AttendanceMarkers />;
       case 'qr-attendance':
@@ -1079,6 +1134,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <SMS />;
       case 'sms-history':
         return <SMSHistory />;
+      case 'all-notifications':
+        return <AllNotificationsPage />;
       case 'notifications':
       case 'institute-notifications':
         return <NotificationsPage />;
@@ -1092,6 +1149,20 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <SubjectPaymentSubmissions />;
       case 'enrollment-management':
         return <TeacherEnrollmentManagement />;
+      case 'calendar-management':
+        return <CalendarManagementPage />;
+      case 'calendar-view':
+        return <CalendarMonthView />;
+      case 'today-dashboard':
+        return <TodayDashboard />;
+      case 'admin-attendance':
+        return <AdminAttendancePage />;
+      case 'parent-attendance':
+        return <ParentAttendanceDashboard />;
+      case 'class-calendar':
+        return <ClassCalendarPage />;
+      case 'device-management':
+        return <DeviceManagement />;
       case 'my-children':
         return <MyChildren />;
       case 'child/:childId/dashboard':

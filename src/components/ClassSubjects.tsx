@@ -280,7 +280,8 @@ const ClassSubjects = () => {
     setEnrollmentKeyDialog({ open: true, loading: true, subjectName: subject.name, data: null });
 
     try {
-      const token = localStorage.getItem('access_token');
+      const { tokenStorageService } = await import('@/services/tokenStorageService');
+      const token = await tokenStorageService.getAccessToken();
       const { getBaseUrl } = await import('@/contexts/utils/auth.api');
       const response = await fetch(
         `${getBaseUrl()}/institutes/${instituteId}/classes/${classId}/subjects/${subjectId}/enrollment-key`,
@@ -687,46 +688,39 @@ const ClassSubjects = () => {
 
       {/* Enrollment Key Dialog */}
       <Dialog open={enrollmentKeyDialog.open} onOpenChange={(open) => !open && setEnrollmentKeyDialog(prev => ({ ...prev, open: false }))}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-sm p-6">
           <DialogHeader>
-            <DialogTitle>Enrollment Key - {enrollmentKeyDialog.subjectName}</DialogTitle>
+            <DialogTitle className="text-xl font-bold">Enrollment Key - {enrollmentKeyDialog.subjectName}</DialogTitle>
           </DialogHeader>
           {enrollmentKeyDialog.loading ? (
             <div className="flex items-center justify-center py-8">
               <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : enrollmentKeyDialog.data ? (
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg border bg-muted/50 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-muted-foreground">Subject ID</span>
-                  <span className="text-sm font-semibold">{enrollmentKeyDialog.data.subjectId}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-muted-foreground">Enrollment</span>
-                  <Badge variant={enrollmentKeyDialog.data.enrollmentEnabled ? 'default' : 'secondary'}>
-                    {enrollmentKeyDialog.data.enrollmentEnabled ? 'Enabled' : 'Disabled'}
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-muted-foreground">Enrollment Key</span>
-                  <div className="flex items-center gap-2">
-                    <code className="text-sm font-mono bg-background px-2 py-1 rounded border">
-                      {enrollmentKeyDialog.data.enrollmentKey || '—'}
-                    </code>
-                    {enrollmentKeyDialog.data.enrollmentKey && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => copyEnrollmentKey(enrollmentKeyDialog.data!.enrollmentKey)}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
+            <div className="space-y-4 mt-2">
+              <div className="p-5 bg-muted/60 border border-border rounded-2xl text-center">
+                <div className="text-sm text-muted-foreground mb-3">Subject Enrollment Key</div>
+                <div className="text-4xl font-extrabold font-mono tracking-[0.2em]">
+                  {enrollmentKeyDialog.data.enrollmentKey || '—'}
                 </div>
               </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between py-3 px-4 border-l-4 border-primary bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium text-muted-foreground">Subject ID</span>
+                  <span className="text-sm font-bold">{enrollmentKeyDialog.data.subjectId}</span>
+                </div>
+                <div className="flex items-center justify-between py-3 px-4 border-l-4 border-primary bg-muted/30 rounded-lg">
+                  <span className="text-sm font-medium text-muted-foreground">Enrollment Enabled</span>
+                  <Badge variant={enrollmentKeyDialog.data.enrollmentEnabled ? 'default' : 'secondary'} className="text-xs px-3 py-1">
+                    {enrollmentKeyDialog.data.enrollmentEnabled ? 'Yes' : 'No'}
+                  </Badge>
+                </div>
+              </div>
+              {enrollmentKeyDialog.data.enrollmentKey && (
+                <Button onClick={() => copyEnrollmentKey(enrollmentKeyDialog.data!.enrollmentKey)} className="w-full" size="lg">
+                  Copy Code
+                </Button>
+              )}
             </div>
           ) : null}
         </DialogContent>

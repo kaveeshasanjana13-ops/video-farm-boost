@@ -128,13 +128,17 @@ class AttendanceApiClient {
     this.setCooldown(requestKey);
     
     // Clean up after request completes
-    requestPromise.finally(() => {
-      this.pendingRequests.delete(requestKey);
-      // Clean up cooldown after TTL
-      setTimeout(() => {
-        this.requestCooldown.delete(requestKey);
-      }, this.PENDING_REQUEST_TTL);
-    });
+    requestPromise
+      .finally(() => {
+        this.pendingRequests.delete(requestKey);
+        // Clean up cooldown after TTL
+        setTimeout(() => {
+          this.requestCooldown.delete(requestKey);
+        }, this.PENDING_REQUEST_TTL);
+      })
+      .catch(() => {
+        // prevent unhandled rejection warnings from detached finally chain
+      });
 
     return requestPromise;
   }
@@ -279,7 +283,28 @@ class AttendanceApiClient {
     this.requestCooldown.clear();
   }
 
+  async patch<T = any>(
+    endpoint: string, 
+    body?: any
+  ): Promise<T> {
+    return this.mutate<T>('PATCH', endpoint, body);
+  }
+
+  async delete<T = any>(
+    endpoint: string
+  ): Promise<T> {
+    return this.mutate<T>('DELETE', endpoint);
+  }
+
   async post<T = any>(
+    endpoint: string, 
+    body?: any
+  ): Promise<T> {
+    return this.mutate<T>('POST', endpoint, body);
+  }
+
+  private async mutate<T = any>(
+    method: 'POST' | 'PATCH' | 'DELETE',
     endpoint: string, 
     body?: any
   ): Promise<T> {
@@ -291,20 +316,20 @@ class AttendanceApiClient {
     }
     
     const url = `${this.baseUrl}${endpoint}`;
-    console.log('Making attendance POST request to:', url);
+    console.log(`Making attendance ${method} request to:`, url);
 
     try {
       const response = await fetch(url, {
-        method: 'POST',
+        method,
         headers: {
           ...this.getHeaders(),
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(body),
+        body: body ? JSON.stringify(body) : undefined,
         credentials: 'include' // CRITICAL: Send httpOnly refresh token cookie
       });
 
-      console.log('Attendance POST Response Status:', response.status);
+      console.log(`Attendance ${method} Response Status:`, response.status);
 
       const contentType = response.headers.get('Content-Type') || '';
       
@@ -321,22 +346,22 @@ class AttendanceApiClient {
           errorText = `HTTP ${response.status}: ${response.statusText}`;
         }
         
-        console.error(`Attendance POST Error ${response.status}:`, errorText);
+        console.error(`Attendance ${method} Error ${response.status}:`, errorText);
         
         // Handle 401 - Try to refresh token
         if (response.status === 401) {
           const refreshed = await this.handle401Error();
           
           if (refreshed) {
-            console.log('🔁 Retrying attendance POST with new token...');
+            console.log(`🔁 Retrying attendance ${method} with new token...`);
             const retryResponse = await fetch(url, {
-              method: 'POST',
+              method,
               headers: {
                 ...this.getHeaders(),
                 'Content-Type': 'application/json'
               },
-              body: JSON.stringify(body),
-              credentials: 'include' // CRITICAL: Send httpOnly refresh token cookie
+              body: body ? JSON.stringify(body) : undefined,
+              credentials: 'include'
             });
             
             if (!retryResponse.ok) {
@@ -352,7 +377,7 @@ class AttendanceApiClient {
               retryData = {} as T;
             }
             
-            console.log('✅ POST retry successful after token refresh');
+            console.log(`✅ ${method} retry successful after token refresh`);
             return retryData;
           }
           
@@ -375,11 +400,11 @@ class AttendanceApiClient {
         data = {} as T;
       }
 
-      console.log('Attendance POST request successful for:', endpoint);
+      console.log(`Attendance ${method} request successful for:`, endpoint);
       return data;
 
     } catch (error) {
-      console.error('Attendance POST request failed for:', endpoint, error);
+      console.error(`Attendance ${method} request failed for:`, endpoint, error);
       throw error;
     }
   }

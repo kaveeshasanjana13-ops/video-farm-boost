@@ -186,7 +186,8 @@ export const getSidebarHighlightPage = (pathname: string): string => {
   const sidebarParentMap: Record<string, string> = {
     'rfid-attendance': 'qr-attendance',
     'institute-mark-attendance': 'qr-attendance',
-    'select-institute': 'dashboard', // Highlight 'Select Institutes' (dashboard) when on select-institute page
+    'daily-attendance': 'daily-attendance',
+    'select-institute': 'dashboard',
   };
   
   return sidebarParentMap[basePage] || basePage;

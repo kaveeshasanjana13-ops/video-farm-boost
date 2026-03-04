@@ -58,6 +58,8 @@ export interface MarkAttendanceByCardRequest {
   address: string;
   markingMethod: 'qr' | 'barcode' | 'rfid/nfc';
   status: AttendanceStatus;
+  date?: string;
+  eventId?: string;
 }
 
 export interface MarkAttendanceByCardResponse {
@@ -82,6 +84,8 @@ export interface MarkAttendanceRequest {
   address: string;
   markingMethod: 'manual';
   status: AttendanceStatus;
+  date?: string;
+  eventId?: string;
 }
 
 export interface MarkAttendanceResponse {
@@ -158,6 +162,16 @@ class ChildAttendanceApi {
       status: request.status
     };
 
+    // Include date if provided
+    if (request.date) {
+      requestBody.date = request.date;
+    }
+
+    // Include eventId if provided
+    if (request.eventId) {
+      requestBody.eventId = request.eventId;
+    }
+
     // Only include class data if provided
     if (request.classId && request.className) {
       requestBody.classId = request.classId;
@@ -233,7 +247,7 @@ class ChildAttendanceApi {
     subjectName?: string;
     address: string;
     markingMethod: string;
-    status: 'present' | 'absent' | 'late';
+    status: AttendanceStatus;
     date: string;
     location?: string;
   }): Promise<any> {
@@ -346,8 +360,13 @@ class ChildAttendanceApi {
       address: request.address,
       markingMethod: request.markingMethod,
       status: request.status,
-      date: new Date().toISOString()
+      date: request.date || new Date().toISOString().split('T')[0] // Use provided date or fallback to today
     };
+
+    // Include eventId if provided
+    if (request.eventId) {
+      requestBody.eventId = request.eventId;
+    }
 
     // Only include class data if provided
     if (request.classId && request.className) {

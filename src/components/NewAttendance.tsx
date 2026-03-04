@@ -9,7 +9,7 @@ import { RefreshCw, Search, Filter, Calendar, User, Clock, CheckCircle, MapPin, 
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useToast } from '@/hooks/use-toast';
-import { getAttendanceUrl, getBaseUrl } from '@/contexts/utils/auth.api';
+import { getAttendanceUrl, getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 
 interface AttendanceRecord {
@@ -65,11 +65,15 @@ interface AttendanceResponse {
     totalDays: number;
   };
   data: AttendanceRecord[];
-  summary: {
-    totalPresent: number;
-    totalAbsent: number;
-    totalLate: number;
-    uniqueStudents: number;
+  summary?: {
+    totalPresent?: number;
+    totalAbsent?: number;
+    totalLate?: number;
+    totalLeft?: number;
+    totalLeftEarly?: number;
+    totalLeftLately?: number;
+    attendanceRate?: number;
+    uniqueStudents?: number;
     totalClasses?: number;
     totalSubjects?: number;
   };
@@ -195,16 +199,6 @@ const NewAttendance = () => {
 
   const { hasPermission, endpoint, title } = getPermissionAndEndpoint();
 
-  const getApiHeaders = () => {
-    const token = localStorage.getItem('access_token') || localStorage.getItem('token') || localStorage.getItem('authToken');
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    return headers;
-  };
 
   const loadAttendanceData = async () => {
     if (!hasPermission) {
@@ -227,7 +221,7 @@ const NewAttendance = () => {
 
     setIsLoading(true);
     try {
-      const headers = getApiHeaders();
+      const headers = await getApiHeadersAsync();
       const params = new URLSearchParams({
         startDate,
         endDate,
@@ -264,10 +258,6 @@ const NewAttendance = () => {
       setAttendanceData(result);
       setFilteredRecords(result.data);
       setDataLoaded(true);
-      toast({
-        title: "Data Loaded",
-        description: `Successfully loaded ${result.data.length} attendance records.`
-      });
     } catch (error) {
       console.error('Failed to load attendance data:', error);
       toast({
@@ -280,11 +270,12 @@ const NewAttendance = () => {
     }
   };
 
+  // Auto-load attendance data when component mounts and has permission
   useEffect(() => {
-    if (dataLoaded) {
+    if (hasPermission && endpoint) {
       loadAttendanceData();
     }
-  }, [currentPage, rowsPerPage]);
+  }, [currentPage, rowsPerPage, currentInstituteId, currentClassId, currentSubjectId]);
 
   useEffect(() => {
     if (!attendanceData) return;
@@ -383,25 +374,40 @@ const NewAttendance = () => {
     });
   };
 
-  // Totals for summary cards
+  // Totals for summary cards - use individual records if available, otherwise fall back to API summary
   const totals = useMemo(() => {
     const records = attendanceData?.data ?? [];
-    let totalPresent = 0, totalAbsent = 0, totalLate = 0, totalLeft = 0, totalLeftEarly = 0, totalLeftLately = 0;
-
-    for (const r of records) {
-      if (r.status === 'present') totalPresent += 1;
-      else if (r.status === 'absent') totalAbsent += 1;
-      else if (r.status === 'late') totalLate += 1;
-      else if (r.status === 'left') totalLeft += 1;
-      else if (r.status === 'left_early') totalLeftEarly += 1;
-      else if (r.status === 'left_lately') totalLeftLately += 1;
+    const apiSummary = attendanceData?.summary;
+    
+    if (records.length > 0) {
+      // Count from individual records
+      let totalPresent = 0, totalAbsent = 0, totalLate = 0, totalLeft = 0, totalLeftEarly = 0, totalLeftLately = 0;
+      for (const r of records) {
+        if (r.status === 'present') totalPresent += 1;
+        else if (r.status === 'absent') totalAbsent += 1;
+        else if (r.status === 'late') totalLate += 1;
+        else if (r.status === 'left') totalLeft += 1;
+        else if (r.status === 'left_early') totalLeftEarly += 1;
+        else if (r.status === 'left_lately') totalLeftLately += 1;
+      }
+      const total = totalPresent + totalAbsent + totalLate + totalLeft + totalLeftEarly + totalLeftLately;
+      const attendanceRate = total > 0 ? Math.round((totalPresent / total) * 100) : 0;
+      return { totalPresent, totalAbsent, totalLate, totalLeft, totalLeftEarly, totalLeftLately, total, attendanceRate };
+    } else if (apiSummary && (apiSummary.totalPresent || apiSummary.totalAbsent || apiSummary.totalLate)) {
+      // Fall back to API summary when data array is empty
+      const totalPresent = apiSummary.totalPresent || 0;
+      const totalAbsent = apiSummary.totalAbsent || 0;
+      const totalLate = apiSummary.totalLate || 0;
+      const totalLeft = apiSummary.totalLeft || 0;
+      const totalLeftEarly = apiSummary.totalLeftEarly || 0;
+      const totalLeftLately = apiSummary.totalLeftLately || 0;
+      const total = totalPresent + totalAbsent + totalLate + totalLeft + totalLeftEarly + totalLeftLately;
+      const attendanceRate = apiSummary.attendanceRate != null ? Math.round(apiSummary.attendanceRate) : (total > 0 ? Math.round((totalPresent / total) * 100) : 0);
+      return { totalPresent, totalAbsent, totalLate, totalLeft, totalLeftEarly, totalLeftLately, total, attendanceRate };
     }
-
-    const total = totalPresent + totalAbsent + totalLate + totalLeft + totalLeftEarly + totalLeftLately;
-    const attendanceRate = total > 0 ? Math.round((totalPresent / total) * 100) : 0;
-
-    return { totalPresent, totalAbsent, totalLate, totalLeft, totalLeftEarly, totalLeftLately, total, attendanceRate };
-  }, [attendanceData?.data]);
+    
+    return { totalPresent: 0, totalAbsent: 0, totalLate: 0, totalLeft: 0, totalLeftEarly: 0, totalLeftLately: 0, total: 0, attendanceRate: 0 };
+  }, [attendanceData]);
 
   // Pie chart data
   const pieChartData = useMemo(() => {
@@ -528,27 +534,18 @@ const NewAttendance = () => {
     );
   }
 
-  if (!dataLoaded) {
+  if (!dataLoaded && !isLoading) {
     return (
-      <div className="container mx-auto p-6 space-y-6">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 md:p-8 border border-primary/10">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <div className="absolute bottom-0 left-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-          <div className="relative text-center">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
-                <CalendarDays className="w-6 h-6 text-primary" />
-              </div>
+      <div className="container mx-auto p-6">
+        <div className="flex justify-center py-12">
+          <div className="text-center space-y-4">
+            <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 inline-flex">
+              <CalendarDays className="w-6 h-6 text-primary" />
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight mb-2">{title}</h1>
-            <p className="text-muted-foreground mb-6">{getContextInfo()}</p>
-            <Button onClick={loadAttendanceData} disabled={isLoading} className="gap-2 w-full sm:w-auto" size="lg">
-              {isLoading ? (
-                <><RefreshCw className="h-4 w-4 animate-spin" /> Loading Data...</>
-              ) : (
-                <><RefreshCw className="h-4 w-4" /> Load Attendance Data</>
-              )}
-            </Button>
+            <h2 className="text-xl font-bold">{title}</h2>
+            <p className="text-muted-foreground">{getContextInfo()}</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+            <p className="text-sm text-muted-foreground">Loading attendance data...</p>
           </div>
         </div>
       </div>

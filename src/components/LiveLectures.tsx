@@ -106,10 +106,7 @@ const LiveLectures = ({ apiLevel = 'institute' }: LiveLecturesProps) => {
       setDataLoaded(true);
       setLastRefresh(new Date());
       
-      toast({
-        title: "Data Loaded",
-        description: `Successfully loaded ${lectures.length} lectures.`
-      });
+      
     } catch (error) {
       console.error('Failed to load lectures:', error);
       toast({

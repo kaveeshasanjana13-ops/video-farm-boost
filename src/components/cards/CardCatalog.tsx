@@ -85,14 +85,14 @@ const CardCatalog: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Header with Filters Below */}
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div>
           <h2 className="text-2xl font-bold text-foreground">ID Cards</h2>
           <p className="text-muted-foreground">Browse and order your ID cards</p>
         </div>
         
         {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-5">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -118,26 +118,26 @@ const CardCatalog: React.FC = () => {
 
       {/* Cards Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center pt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-items-center pt-8">
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="relative flex w-80 min-h-[420px] flex-col rounded-xl bg-card text-card-foreground shadow-md"
+              className="relative flex w-72 min-h-[360px] flex-col rounded-xl bg-card text-card-foreground shadow-md"
             >
-              <div className="relative mx-4 -mt-6 h-40 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/80 shadow-lg shadow-primary/20">
+              <div className="relative mx-4 -mt-6 h-32 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/80 shadow-lg shadow-primary/20">
                 <Skeleton className="h-full w-full" />
               </div>
-              <div className="p-6 flex-1 space-y-3">
-                <Skeleton className="h-6 w-3/4" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-                <div className="pt-4 space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-full" />
+              <div className="p-5 flex-1 space-y-2.5">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-3.5 w-full" />
+                <Skeleton className="h-3.5 w-5/6" />
+                <div className="pt-3 space-y-2">
+                  <Skeleton className="h-3.5 w-full" />
+                  <Skeleton className="h-3.5 w-full" />
                 </div>
               </div>
-              <div className="p-6 pt-0">
-                <Skeleton className="h-10 w-full" />
+              <div className="p-5 pt-0">
+                <Skeleton className="h-9 w-full" />
               </div>
             </div>
           ))}
@@ -153,14 +153,14 @@ const CardCatalog: React.FC = () => {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center pt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-items-center pt-8">
           {cards.map((card) => (
             <div
               key={card.id}
-              className="relative flex w-80 min-h-[420px] flex-col rounded-xl bg-card text-card-foreground shadow-md"
+              className="relative flex w-72 min-h-[360px] flex-col rounded-xl bg-card text-card-foreground shadow-md"
             >
               {/* Image / top header */}
-              <div className="relative mx-4 -mt-6 h-40 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/20">
+              <div className="relative mx-4 -mt-6 h-32 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/20">
                 {card.cardImageUrl ? (
                   <img
                     src={card.cardImageUrl}
@@ -170,7 +170,7 @@ const CardCatalog: React.FC = () => {
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center">
-                    <CreditCard className="h-16 w-16 text-primary-foreground/70" />
+                    <CreditCard className="h-12 w-12 text-primary-foreground/70" />
                   </div>
                 )}
 
@@ -180,15 +180,15 @@ const CardCatalog: React.FC = () => {
               </div>
 
               {/* Content */}
-              <div className="p-6 flex-1">
-                <h3 className="mb-2 text-xl font-semibold leading-snug tracking-normal">
+              <div className="p-5 flex-1">
+                <h3 className="mb-2 text-lg font-semibold leading-snug tracking-normal">
                   {card.cardName}
                 </h3>
-                <p className="text-sm text-muted-foreground line-clamp-3">
+                <p className="text-xs text-muted-foreground line-clamp-3">
                   {card.description || 'No description available'}
                 </p>
 
-                <div className="mt-4 space-y-3 text-sm">
+                <div className="mt-3 space-y-2 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground flex items-center gap-1">
                       <Clock className="h-4 w-4" />
@@ -206,13 +206,13 @@ const CardCatalog: React.FC = () => {
                   </div>
 
                   <div className="pt-3 border-t border-border">
-                    <span className="text-2xl font-bold text-primary">{formatPrice(card.price)}</span>
+                    <span className="text-xl font-bold text-primary">{formatPrice(card.price)}</span>
                   </div>
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="p-6 pt-0">
+              <div className="p-5 pt-0">
                 <Button
                   className="w-full"
                   onClick={() => handleOrderClick(card)}

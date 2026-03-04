@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
+import { versionPlugin } from "./vite-plugin-version";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -13,9 +14,10 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     mode === 'development' && componentTagger(),
+    mode === 'production' && versionPlugin(),
   ].filter(Boolean),
   resolve: {
-    dedupe: ["react", "react-dom"],
+    dedupe: ["react", "react-dom", "react/jsx-runtime"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
@@ -28,11 +30,8 @@ export default defineConfig(({ mode }) => ({
         drop_debugger: mode === 'production',
       },
     },
+    sourcemap: mode !== 'production',
     rollupOptions: {
-      external: [
-        '@capacitor/geolocation',
-        '@capacitor/status-bar',
-      ],
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],

@@ -22,6 +22,18 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // Prevent third-party Capacitor/Cordova library lint failures from blocking release builds
+    afterEvaluate {
+        if (it.plugins.hasPlugin('com.android.library')) {
+            android {
+                lint {
+                    abortOnError false
+                    checkReleaseBuilds false
+                }
+            }
+        }
+    }
 }
 
 task clean(type: Delete) {

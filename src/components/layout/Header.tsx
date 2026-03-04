@@ -13,6 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer';
 import surakshaLogo from '@/assets/suraksha-logo.png';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { cachedApiClient } from '@/api/cachedClient';
@@ -20,6 +27,7 @@ import SafeImage from '@/components/ui/SafeImage';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 import { notificationApiService } from '@/services/notificationApiService';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { buildSidebarUrl } from '@/utils/pageNavigation';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -29,13 +37,16 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   const { 
     user, logout, 
     selectedInstitute, setSelectedInstitute, loadUserInstitutes,
-    selectedClass, setSelectedClass, setSelectedSubject,
+    selectedClass, setSelectedClass, selectedSubject, setSelectedSubject,
+    selectedChild, selectedOrganization, selectedTransport,
     currentInstituteId
   } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const effectiveRole = useInstituteRole();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [instituteDrawerOpen, setInstituteDrawerOpen] = useState(false);
+  const [classDrawerOpen, setClassDrawerOpen] = useState(false);
   
   // Institute switcher state
   const [institutes, setInstitutes] = useState<any[]>([]);
@@ -88,13 +99,8 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   React.useEffect(() => {
     const loadUnread = async () => {
       try {
-        if (selectedInstitute?.id) {
-          const result = await notificationApiService.getInstituteUnreadCount(selectedInstitute.id);
-          setUnreadCount(result.unreadCount || 0);
-        } else {
-          const result = await notificationApiService.getSystemUnreadCount();
-          setUnreadCount(result.unreadCount || 0);
-        }
+        const result = await notificationApiService.getMyUnreadCount();
+        setUnreadCount(result.unreadCount || 0);
       } catch { /* silent */ }
     };
     loadUnread();
@@ -224,12 +230,12 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           )}
 
           {showClassSwitcher ? (
-            /* === CLASS SWITCHER === */
-            <DropdownMenu onOpenChange={(open) => { if (open) loadClasses(); }}>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 focus:outline-none hover:bg-muted/50 rounded-lg px-1.5 py-1 transition-colors min-w-0">
-                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <School className="h-4 w-4 text-primary" />
+            /* === CLASS SWITCHER (Bottom Sheet) === */
+            <Drawer open={classDrawerOpen} onOpenChange={(open) => { setClassDrawerOpen(open); if (open) loadClasses(); }}>
+              <DrawerTrigger asChild>
+                <button className="flex items-center gap-2 focus:outline-none hover:bg-muted/50 active:scale-[0.97] rounded-xl px-2 py-1.5 transition-all min-w-0">
+                  <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <School className="h-4.5 w-4.5 text-primary" />
                   </div>
                   <div className="flex flex-col items-start min-w-0">
                     <span className="text-[10px] text-muted-foreground leading-tight truncate max-w-[130px]">
@@ -239,65 +245,67 @@ const Header = ({ onMenuClick }: HeaderProps) => {
                       {selectedClass.name}
                     </h1>
                   </div>
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-0.5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64 z-50 max-h-80 overflow-y-auto">
-                {/* Back to institute selector */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedClass(null);
-                    setSelectedSubject(null);
-                    navigate(`/institute/${selectedInstitute!.id}/select-class`);
-                  }}
-                  className="cursor-pointer text-xs text-muted-foreground gap-2 py-2"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  Back to {selectedInstitute?.shortName || 'Institute'}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                
-                <div className="px-2 py-1.5">
-                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Switch Class
-                  </p>
+              </DrawerTrigger>
+              <DrawerContent className="max-h-[75vh] rounded-t-3xl">
+                <DrawerHeader className="text-left pb-2">
+                  <DrawerTitle className="text-lg font-bold">Switch Class</DrawerTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">{selectedInstitute?.shortName || selectedInstitute?.name || ''}</p>
+                </DrawerHeader>
+                <div className="px-4 pb-6 overflow-y-auto">
+                  <button
+                    onClick={() => {
+                      setClassDrawerOpen(false);
+                      setSelectedClass(null);
+                      setSelectedSubject(null);
+                      navigate(`/institute/${selectedInstitute!.id}/select-class`);
+                    }}
+                    className="w-full flex items-center gap-2 text-xs text-muted-foreground py-3 px-3 rounded-xl hover:bg-muted/60 active:scale-[0.98] transition-all mb-2"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back to {selectedInstitute?.shortName || 'Institute'}
+                  </button>
+                  <div className="h-px bg-border/60 mb-3" />
+                  
+                  {!classesLoaded ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
+                  ) : classes.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">No classes found</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {classes.map((cls) => (
+                        <button
+                          key={cls.id}
+                          onClick={() => { handleSwitchClass(cls); setClassDrawerOpen(false); }}
+                          className={`w-full flex items-center gap-3 py-3.5 px-3.5 rounded-2xl transition-all active:scale-[0.98] ${selectedClass?.id === cls.id ? 'bg-primary/10 border border-primary/20 shadow-sm' : 'hover:bg-muted/50'}`}
+                        >
+                          <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${selectedClass?.id === cls.id ? 'bg-primary/20' : 'bg-muted'}`}>
+                            <School className={`h-5 w-5 ${selectedClass?.id === cls.id ? 'text-primary' : 'text-muted-foreground'}`} />
+                          </div>
+                          <div className="flex flex-col items-start min-w-0">
+                            <span className="text-sm font-medium truncate">{cls.name}</span>
+                            {cls.specialty && <span className="text-[11px] text-muted-foreground">{cls.specialty}</span>}
+                          </div>
+                          {selectedClass?.id === cls.id && (
+                            <span className="ml-auto h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                
-                {!classesLoaded ? (
-                  <div className="p-3 text-center text-xs text-muted-foreground">Loading...</div>
-                ) : classes.length === 0 ? (
-                  <div className="p-3 text-center text-xs text-muted-foreground">No classes found</div>
-                ) : (
-                  classes.map((cls) => (
-                    <DropdownMenuItem
-                      key={cls.id}
-                      onClick={() => handleSwitchClass(cls)}
-                      className={`cursor-pointer flex items-center gap-2.5 py-2.5 ${selectedClass?.id === cls.id ? 'bg-primary/10' : ''}`}
-                    >
-                      <div className="h-7 w-7 rounded bg-muted flex items-center justify-center shrink-0">
-                        <School className="h-3.5 w-3.5 text-muted-foreground" />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-medium truncate">{cls.name}</span>
-                        {cls.specialty && <span className="text-[10px] text-muted-foreground">{cls.specialty}</span>}
-                      </div>
-                      {selectedClass?.id === cls.id && (
-                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                      )}
-                    </DropdownMenuItem>
-                  ))
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </DrawerContent>
+            </Drawer>
           ) : (
-            /* === INSTITUTE SWITCHER (default) === */
-            <DropdownMenu onOpenChange={(open) => { if (open) loadInstitutes(); }}>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 focus:outline-none hover:bg-muted/50 rounded-lg px-1 py-1 transition-colors min-w-0">
+            /* === INSTITUTE SWITCHER (Bottom Sheet) === */
+            <Drawer open={instituteDrawerOpen} onOpenChange={(open) => { setInstituteDrawerOpen(open); if (open) loadInstitutes(); }}>
+              <DrawerTrigger asChild>
+                <button className="flex items-center gap-2 focus:outline-none hover:bg-muted/50 active:scale-[0.97] rounded-xl px-1.5 py-1.5 transition-all min-w-0">
                   <SafeImage 
                     src={selectedInstitute?.logo || surakshaLogo} 
                     alt={selectedInstitute?.shortName ? "Institute logo" : "SurakshaLMS logo"}
-                    className="h-9 w-9 object-contain rounded-lg shrink-0"
+                    className="h-9 w-9 object-contain rounded-xl shrink-0"
                   />
                   <div className="flex flex-col items-start min-w-0">
                     <h1 className="text-sm font-semibold text-foreground truncate leading-tight max-w-[140px]">
@@ -307,38 +315,46 @@ const Header = ({ onMenuClick }: HeaderProps) => {
                       {selectedInstitute?.type || displayRole || ''}
                     </span>
                   </div>
-                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-0.5" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64 z-50 max-h-72 overflow-y-auto">
-                {!institutesLoaded ? (
-                  <div className="p-3 text-center text-xs text-muted-foreground">Loading...</div>
-                ) : institutes.length === 0 ? (
-                  <div className="p-3 text-center text-xs text-muted-foreground">No institutes</div>
-                ) : (
-                  institutes.map((inst) => (
-                    <DropdownMenuItem
-                      key={inst.id}
-                      onClick={() => handleSwitchInstitute(inst)}
-                      className={`cursor-pointer flex items-center gap-2.5 py-2.5 ${selectedInstitute?.id === inst.id ? 'bg-primary/10' : ''}`}
-                    >
-                      <SafeImage 
-                        src={inst.logo || surakshaLogo}
-                        alt={inst.shortName || inst.name}
-                        className="h-7 w-7 object-contain rounded shrink-0"
-                      />
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-medium truncate">{inst.shortName || inst.name}</span>
-                        {inst.type && <span className="text-[10px] text-muted-foreground">{inst.type}</span>}
-                      </div>
-                      {selectedInstitute?.id === inst.id && (
-                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                      )}
-                    </DropdownMenuItem>
-                  ))
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </DrawerTrigger>
+              <DrawerContent className="max-h-[75vh] rounded-t-3xl">
+                <DrawerHeader className="text-left pb-2">
+                  <DrawerTitle className="text-lg font-bold">Switch Institute</DrawerTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Select an institute to manage</p>
+                </DrawerHeader>
+                <div className="px-4 pb-6 overflow-y-auto">
+                  {!institutesLoaded ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
+                  ) : institutes.length === 0 ? (
+                    <div className="p-8 text-center text-sm text-muted-foreground">No institutes</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {institutes.map((inst) => (
+                        <button
+                          key={inst.id}
+                          onClick={() => { handleSwitchInstitute(inst); setInstituteDrawerOpen(false); }}
+                          className={`w-full flex items-center gap-3 py-3.5 px-3.5 rounded-2xl transition-all active:scale-[0.98] ${selectedInstitute?.id === inst.id ? 'bg-primary/10 border border-primary/20 shadow-sm' : 'hover:bg-muted/50'}`}
+                        >
+                          <SafeImage 
+                            src={inst.logo || surakshaLogo}
+                            alt={inst.shortName || inst.name}
+                            className="h-10 w-10 object-contain rounded-xl shrink-0"
+                          />
+                          <div className="flex flex-col items-start min-w-0 flex-1">
+                            <span className="text-sm font-medium text-left line-clamp-2 break-words">{inst.shortName || inst.name}</span>
+                            {inst.type && <span className="text-[11px] text-muted-foreground">{inst.type}</span>}
+                          </div>
+                          {selectedInstitute?.id === inst.id && (
+                            <span className="ml-auto h-2.5 w-2.5 rounded-full bg-primary shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </DrawerContent>
+            </Drawer>
           )}
         </div>
         
@@ -346,18 +362,14 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           {/* Notification Bell */}
           <button
             onClick={() => {
-              if (selectedInstitute?.id) {
-                navigate(`/institute/${selectedInstitute.id}/notifications`);
-              } else {
-                navigate('/notifications');
-              }
+              navigate('/all-notifications');
             }}
-            className="relative p-2 rounded-full hover:bg-muted transition-colors"
+            className="relative p-2.5 rounded-xl hover:bg-muted/60 active:scale-95 transition-all"
             aria-label="Notifications"
           >
             <Bell className="h-5 w-5 text-foreground" />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
+              <span className="absolute -top-0.5 -right-0.5 h-4.5 min-w-4.5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
@@ -387,7 +399,20 @@ const Header = ({ onMenuClick }: HeaderProps) => {
                 <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer text-xs">
+              <DropdownMenuItem
+                onClick={() => {
+                  const context = {
+                    instituteId: selectedInstitute?.id,
+                    classId: selectedClass?.id,
+                    subjectId: selectedSubject?.id,
+                    childId: selectedChild?.id,
+                    organizationId: selectedOrganization?.id,
+                    transportId: selectedTransport?.id,
+                  };
+                  navigate(buildSidebarUrl('profile', context));
+                }}
+                className="cursor-pointer text-xs"
+              >
                 <User className="h-3.5 w-3.5 mr-2" />
                 Profile
               </DropdownMenuItem>

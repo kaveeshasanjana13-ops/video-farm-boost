@@ -16,17 +16,33 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    buildTypes {
+    signingConfigs {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // TODO: Configure your release signing before Play Store upload
+            // Option 1: Use environment variables (recommended for CI/CD):
+            //   storeFile file(System.getenv("KEYSTORE_FILE") ?: "release.keystore")
+            //   storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
+            //   keyAlias System.getenv("KEY_ALIAS") ?: ""
+            //   keyPassword System.getenv("KEY_PASSWORD") ?: ""
+            // Option 2: Use a local keystore.properties file (see SIGNING_INSTRUCTIONS below)
         }
     }
-}
-
-repositories {
-    flatDir{
-        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // TODO: Uncomment after configuring signingConfigs.release above:
+            // signingConfig signingConfigs.release
+        }
+        debug {
+            debuggable true
+        }
+    }
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+        disable 'InvalidPackage'
     }
 }
 

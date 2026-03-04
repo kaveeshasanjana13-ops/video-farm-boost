@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { generateNameWithInitials } from '@/contexts/utils/user.utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 interface Child {
   id: string;
   name: string;
+  nameWithInitials?: string;
   phoneNumber: string;
   relationship: string;
   imageUrl?: string;
@@ -223,8 +225,14 @@ const ParentChildrenSelector = () => {
                     />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                      {child.name}
+                    <h3 className="text-lg font-semibold text-foreground">
+                      {child.nameWithInitials || (() => {
+                        const parts = child.name.split(' ');
+                        if (parts.length >= 2) {
+                          return generateNameWithInitials(parts.slice(0, -1).join(' '), parts[parts.length - 1]);
+                        }
+                        return child.name;
+                      })()}
                     </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
                       Child ID: {child.id}
@@ -245,7 +253,7 @@ const ParentChildrenSelector = () => {
                 </div>
                 
                 <Button className="w-full mt-4">
-                  View {child.name.split(' ')[0]}'s Dashboard
+                  View {(child.nameWithInitials || child.name).split(' ')[0]}'s Dashboard
                 </Button>
               </CardContent>
             </Card>

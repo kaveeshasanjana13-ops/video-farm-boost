@@ -532,38 +532,38 @@ const Classes = () => {
 
           {/* View Enrollment Code Dialog */}
           <Dialog open={isViewCodeDialogOpen} onOpenChange={setIsViewCodeDialogOpen}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-sm p-6">
               <DialogHeader>
-                <DialogTitle>Enrollment Code</DialogTitle>
+                <DialogTitle className="text-xl font-bold">Enrollment Code</DialogTitle>
               </DialogHeader>
-              {enrollmentCodeData && <div className="space-y-4">
-                  <div className="p-4 bg-muted rounded-lg text-center">
-                    <div className="text-sm text-muted-foreground mb-2">Class Enrollment Code</div>
-                    <div className="text-3xl font-bold font-mono tracking-wider">
+              {enrollmentCodeData && <div className="space-y-4 mt-2">
+                  <div className="p-5 bg-muted/60 border border-border rounded-2xl text-center">
+                    <div className="text-sm text-muted-foreground mb-3">Class Enrollment Code</div>
+                    <div className="text-4xl font-extrabold font-mono tracking-[0.2em]">
                       {enrollmentCodeData.enrollmentCode}
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between py-2 px-3 bg-muted/50 rounded">
-                      <span className="text-sm text-muted-foreground">Enrollment Enabled</span>
-                      <Badge variant={enrollmentCodeData.enrollmentEnabled ? "default" : "secondary"}>
+                    <div className="flex items-center justify-between py-3 px-4 border-l-4 border-primary bg-muted/30 rounded-lg">
+                      <span className="text-sm font-medium text-muted-foreground">Enrollment Enabled</span>
+                      <Badge variant={enrollmentCodeData.enrollmentEnabled ? "default" : "secondary"} className="text-xs px-3 py-1">
                         {enrollmentCodeData.enrollmentEnabled ? "Yes" : "No"}
                       </Badge>
                     </div>
-                    <div className="flex items-center justify-between py-2 px-3 bg-muted/50 rounded">
-                      <span className="text-sm text-muted-foreground">Requires Verification</span>
-                      <Badge variant={enrollmentCodeData.requireTeacherVerification ? "default" : "secondary"}>
+                    <div className="flex items-center justify-between py-3 px-4 border-l-4 border-primary bg-muted/30 rounded-lg">
+                      <span className="text-sm font-medium text-muted-foreground">Requires Verification</span>
+                      <Badge variant={enrollmentCodeData.requireTeacherVerification ? "default" : "secondary"} className="text-xs px-3 py-1">
                         {enrollmentCodeData.requireTeacherVerification ? "Yes" : "No"}
                       </Badge>
                     </div>
                   </div>
                   <Button onClick={() => {
-                navigator.clipboard.writeText(enrollmentCodeData.enrollmentCode);
-                toast({
-                  title: "Copied!",
-                  description: "Enrollment code copied to clipboard"
-                });
-              }} className="w-full">
+                    navigator.clipboard.writeText(enrollmentCodeData.enrollmentCode);
+                    toast({
+                      title: "Copied!",
+                      description: "Enrollment code copied to clipboard"
+                    });
+                  }} className="w-full" size="lg">
                     Copy Code
                   </Button>
                 </div>}

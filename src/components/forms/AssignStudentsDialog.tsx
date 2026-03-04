@@ -183,7 +183,7 @@ const AssignStudentsDialog: React.FC<AssignStudentsDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
+      <DialogContent className="max-w-2xl max-h-[90vh] sm:max-h-[80vh] p-0 sm:p-6 gap-0 w-[calc(100%-1rem)] mx-auto sm:w-full rounded-2xl sm:rounded-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />

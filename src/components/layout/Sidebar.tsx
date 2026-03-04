@@ -38,7 +38,9 @@ import {
   MessageSquare,
   Wifi,
   Lock,
-  Bell
+  Bell,
+  Calendar,
+  CalendarDays
 } from 'lucide-react';
 import surakshaLogoSidebar from '@/assets/suraksha-logo-sidebar.png';
 
@@ -131,9 +133,8 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
   // Get menu items based on current selection state
   const getMenuItems = () => {
-    // Parent viewing child's data:
-    // - Before selecting an institute, we show only the "Child Sections" (Select Institute) entry.
-    // - After selecting institute/class/subject, the normal Student menu should be shown (derived from instituteUserType).
+    // Parent viewing child's data before institute selection:
+    // Only "Select Child Institute" section shows via getChildItems()
     if (selectedChild && !selectedInstitute) {
       return [];
     }
@@ -315,14 +316,8 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             icon: Award,
             permission: 'view-exams',
             alwaysShow: false
-          },
-          {
-            id: 'subject-payments',
-            label: `${subjectLabel} Payments`,
-            icon: CreditCard,
-            permission: 'view-payments',
-            alwaysShow: false
           }
+          // Note: subject-payments is now shown in the Payments section via getPaymentItems()
          ];
       }
       // Return empty for any other Student states
@@ -752,6 +747,13 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       if (selectedChild) {
         return [
           {
+            id: 'parent-attendance',
+            label: 'Attendance Dashboard',
+            icon: BarChart3,
+            permission: 'view-dashboard',
+            alwaysShow: true
+          },
+          {
             id: 'child-attendance',
             label: 'Transport Attendance',
             icon: Truck,
@@ -978,35 +980,45 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   };
 
   const getAttendanceItems = () => {
-    // For Student - no additional attendance items needed as they are in main menu
+    // For Student - show today dashboard and calendar view
     if (userRole === 'Student') {
-      return [];
+      if (!selectedInstitute) return [];
+      return [
+        {
+          id: 'today-dashboard',
+          label: 'Today',
+          icon: CalendarDays,
+          permission: 'view-dashboard',
+          alwaysShow: false
+        },
+        {
+          id: 'calendar-view',
+          label: 'Calendar View',
+          icon: Calendar,
+          permission: 'view-dashboard',
+          alwaysShow: false
+        }
+      ];
+    }
+
+    // For Parent - show parent attendance dashboard
+    if (userRole === 'Parent') {
+      if (!selectedChild) return [];
+      return [
+        {
+          id: 'parent-attendance',
+          label: 'Attendance Dashboard',
+          icon: CalendarDays,
+          permission: 'view-dashboard',
+          alwaysShow: true
+        }
+      ];
     }
 
     // For Teacher - show specific attendance items based on selection state
     if (userRole === 'Teacher') {
-      // 3. Teacher with institute and class selected (but no subject)
-      if (selectedInstitute && selectedClass && !selectedSubject) {
-        return [
-          {
-            id: 'daily-attendance',
-            label: 'Daily Attendance',
-            icon: UserCheck,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'qr-attendance',
-            label: 'Mark Attendance',
-            icon: QrCode,
-            permission: 'mark-attendance',
-            alwaysShow: false
-          }
-        ];
-      }
-
-      // 4. Teacher with institute, class, and subject all selected
-      if (selectedInstitute && selectedClass && selectedSubject) {
+      // 3. Teacher with institute and class selected (with or without subject)
+      if (selectedInstitute && selectedClass) {
         return [
           {
             id: 'daily-attendance',
@@ -1051,7 +1063,28 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             icon: QrCode,
             permission: 'mark-attendance',
             alwaysShow: false
-          }
+          },
+          {
+            id: 'calendar-view',
+            label: 'Calendar View',
+            icon: Calendar,
+            permission: 'view-attendance',
+            alwaysShow: false
+          },
+          {
+            id: 'calendar-management',
+            label: 'Calendar',
+            icon: ClipboardList,
+            permission: 'view-dashboard',
+            alwaysShow: false
+          },
+          {
+            id: 'admin-attendance',
+            label: 'Attendance Monitor',
+            icon: BarChart3,
+            permission: 'view-attendance',
+            alwaysShow: false
+          },
         ];
       }
 
@@ -1076,12 +1109,32 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       }
     }
 
+    // For AttendanceMarker with class selected - only Daily Attendance and Mark Attendance
+    if (userRole === 'AttendanceMarker' && selectedInstitute && selectedClass) {
+      return [
+        {
+          id: 'daily-attendance',
+          label: 'Daily Attendance',
+          icon: UserCheck,
+          permission: 'view-attendance',
+          alwaysShow: false
+        },
+        {
+          id: 'qr-attendance',
+          label: 'Mark Attendance',
+          icon: QrCode,
+          permission: 'mark-attendance',
+          alwaysShow: true
+        }
+      ];
+    }
+
     // Default attendance items for other roles
     const attendanceItems = [
       {
-        id: 'daily-attendance',
-        label: 'Daily Attendance',
-        icon: UserCheck,
+        id: 'today-dashboard',
+        label: 'Today',
+        icon: CalendarDays,
         permission: 'view-attendance',
         alwaysShow: false
       },
@@ -1097,7 +1150,14 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         label: 'Mark Attendance',
         icon: QrCode,
         permission: 'mark-attendance',
-        alwaysShow: userRole === 'AttendanceMarker' // Always show for AttendanceMarker
+        alwaysShow: userRole === 'AttendanceMarker'
+      },
+      {
+        id: 'calendar-view',
+        label: 'Calendar View',
+        icon: Calendar,
+        permission: 'view-attendance',
+        alwaysShow: false
       }
     ];
 
@@ -1224,6 +1284,9 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   };
 
   const getMyChildrenItems = () => {
+    // Hide "My Children" when a child is already selected (we're in child context)
+    if (selectedChild) return [];
+    
     // Show "My Children" section when no institute is selected for Parent, User, and UserWithoutStudent roles
     const userType = user?.userType?.toLowerCase();
     const isParentOrUserRole = userType === 'parent' || userType === 'user' || userType === 'user_without_student' || userRole === 'UserWithoutStudent';
@@ -1268,6 +1331,9 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
   };
 
   const getSystemPaymentItems = () => {
+    // Hide system payments when viewing child context
+    if (selectedChild) return [];
+    
     // Show "System Payments" section when no institute is selected
     if (!selectedInstitute) {
       return [
@@ -1371,33 +1437,48 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
    * - After institute selection: Show "Institute Notifications" with admin/teacher CRUD access
    */
   const getNotificationItems = () => {
-    // Before institute selection - show system notifications
-    if (!selectedInstitute) {
-      return [
-        {
-          id: 'notifications',
-          label: 'Notifications',
-          icon: Bell,
-          permission: 'view-dashboard',
-          alwaysShow: true
-        }
-      ];
-    }
-
-    // After institute selection - show institute notifications
-    // Admin/Teacher can also create notifications (handled in the page component)
-    return [
+    // Hide notifications when viewing child context without institute
+    if (selectedChild && !selectedInstitute) return [];
+    
+    const items: any[] = [
       {
-        id: 'institute-notifications',
-        label: 'Institute Notifications',
+        id: 'all-notifications',
+        label: 'All Notifications',
         icon: Bell,
         permission: 'view-dashboard',
         alwaysShow: true
       }
     ];
+
+    // Before institute selection - show system notifications
+    if (!selectedInstitute) {
+      items.push({
+        id: 'notifications',
+        label: 'System Notifications',
+        icon: Bell,
+        permission: 'view-dashboard',
+        alwaysShow: true
+      });
+    }
+
+    // After institute selection - show institute notifications
+    if (selectedInstitute) {
+      items.push({
+        id: 'institute-notifications',
+        label: 'Institute Notifications',
+        icon: Bell,
+        permission: 'view-dashboard',
+        alwaysShow: true
+      });
+    }
+
+    return items;
   };
 
   const getSettingsItems = () => {
+    // Hide settings when viewing child context without institute
+    if (selectedChild && !selectedInstitute) return [];
+    
     // Always show settings if user is logged in
     if (!user) {
       return [];
@@ -1439,6 +1520,14 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         });
       }
 
+      baseItems.push({
+        id: 'settings',
+        label: 'Settings',
+        icon: Settings,
+        permission: 'view-profile',
+        alwaysShow: true
+      });
+
       return baseItems;
     }
 
@@ -1475,6 +1564,14 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           alwaysShow: false
         });
       }
+
+      baseItems.push({
+        id: 'settings',
+        label: 'Settings',
+        icon: Settings,
+        permission: 'view-profile',
+        alwaysShow: true
+      });
 
       return baseItems;
     }
@@ -1513,6 +1610,14 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         });
       }
 
+      baseItems.push({
+        id: 'settings',
+        label: 'Settings',
+        icon: Settings,
+        permission: 'view-profile',
+        alwaysShow: true
+      });
+
       return baseItems;
     }
 
@@ -1548,6 +1653,25 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         });
       }
 
+      // Add Device Management when institute is selected
+      if (selectedInstitute) {
+        baseItems.push({
+          id: 'device-management',
+          label: 'Device Management',
+          icon: Wifi,
+          permission: 'view-profile',
+          alwaysShow: false
+        });
+      }
+
+      baseItems.push({
+        id: 'settings',
+        label: 'Settings',
+        icon: Settings,
+        permission: 'view-profile',
+        alwaysShow: true
+      });
+
       return baseItems;
     }
 
@@ -1564,6 +1688,13 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         id: 'institute-profile',
         label: 'Institute Profile',
         icon: Building2,
+        permission: 'view-profile',
+        alwaysShow: false
+      },
+      {
+        id: 'device-management',
+        label: 'Device Management',
+        icon: Wifi,
         permission: 'view-profile',
         alwaysShow: false
       }] : []),
@@ -1649,7 +1780,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       let allowPush = true;
 
       // Institute-specific pages that require institute selection
-      const instituteSpecificPages = /^(classes|subjects|students|teachers|users|parents|institutes|daily-attendance|qr-attendance|live-lectures|grading|exams|homework|results|lectures|free-lectures|institute-details|institute-users|verify-image|select-class|select-subject|unverified-students)$/i;
+      const instituteSpecificPages = /^(classes|subjects|students|teachers|users|parents|institutes|qr-attendance|live-lectures|grading|exams|homework|results|lectures|free-lectures|institute-details|institute-users|verify-image|select-class|select-subject|unverified-students)$/i;
       
       // Don't show institute-specific pages in sidebar when no institute is selected
       if (!selectedInstitute && instituteSpecificPages.test(currentPage)) {
@@ -1668,7 +1799,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       }
       else if (/attendance/i.test(currentPage)) { target = attendanceItemsDisplay; icon = UserCheck; }
       else if (/(lecture|homework|exam|result|grading)/i.test(currentPage)) { target = systemItemsDisplay; icon = Video; }
-      else if (/(profile|settings|appearance)/i.test(currentPage)) { target = settingsItemsDisplay; icon = Settings; }
+      else if (/(profile|settings|appearance|device-management)/i.test(currentPage)) { target = settingsItemsDisplay; icon = Settings; }
 
       if (allowPush) {
         target.push({ id: currentPage, label, icon, permission: 'view-dashboard', alwaysShow: false });
@@ -1933,8 +2064,8 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                     </>
                   )}
                   
-                  {/* Show sections without "Main" label when no institute selected */}
-                  {!selectedInstitute && menuItemsDisplay.length > 0 && (
+                  {/* Show sections without "Main" label when no institute selected (exclude child context) */}
+                  {!selectedInstitute && !selectedChild && menuItemsDisplay.length > 0 && (
                     <SidebarSection {...sectionProps} title="Select Institute" items={menuItemsDisplay.filter(item => !item.hasOwnProperty('section'))} />
                   )}
                   
@@ -1980,7 +2111,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                   
                   {/* Show Child specific navigation when child is selected */}
                   {childItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Child Sections" items={childItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Select Child Institute" items={childItemsDisplay} />
                   )}
                   
                   {/* Show System Payments section before institute selection */}
@@ -2001,7 +2132,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                   {notificationItemsDisplay.length > 0 && (
                     <SidebarSection 
                       {...sectionProps}
-                      title={selectedInstitute ? "Institute Notifications" : "Notifications"} 
+                      title="Notifications" 
                       items={notificationItemsDisplay} 
                     />
                   )}
