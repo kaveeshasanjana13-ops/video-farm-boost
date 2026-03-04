@@ -111,6 +111,13 @@ const SubmitPaymentDialog: React.FC<SubmitPaymentDialogProps> = ({
     setUploadedRelativePath(null);
     setError(null);
     driveUpload.reset();
+
+    // Auto-upload immediately after file selection
+    if (uploadMethod === 'cloud') {
+      autoUploadToCloud(file);
+    } else {
+      autoUploadToDrive(file);
+    }
   };
 
   const removeFile = () => {
@@ -124,44 +131,37 @@ const SubmitPaymentDialog: React.FC<SubmitPaymentDialogProps> = ({
   };
 
   // Cloud Storage Upload
-  const uploadToCloud = async () => {
-    if (!selectedFile || !order) return;
+  const autoUploadToCloud = async (file: File) => {
+    if (!order) return;
 
     setUploadState('uploading');
     setUploadProgress(10);
     setError(null);
 
     try {
-      // Step 1: Get signed URL
       const uploadData = await userCardApi.getPaymentSlipUploadUrl(order.id, {
-        fileName: selectedFile.name,
-        contentType: selectedFile.type,
+        fileName: file.name,
+        contentType: file.type,
       });
       setUploadProgress(30);
 
-      // Step 2: Upload file directly
       if (uploadData.fields) {
-        // AWS S3 presigned POST
         const formData = new FormData();
         Object.entries(uploadData.fields).forEach(([k, v]) => formData.append(k, v as string));
-        formData.append('file', selectedFile);
+        formData.append('file', file);
         await fetch(uploadData.uploadUrl, { method: 'POST', body: formData });
       } else {
-        // GCS signed PUT
         await fetch(uploadData.uploadUrl, {
           method: 'PUT',
-          headers: { 'Content-Type': selectedFile.type },
-          body: selectedFile,
+          headers: { 'Content-Type': file.type },
+          body: file,
         });
       }
       setUploadProgress(80);
 
-      // Step 3: Verify upload (optional)
       try {
         await userCardApi.verifyPaymentSlipUpload(order.id, uploadData.relativePath);
-      } catch {
-        // Non-critical, continue
-      }
+      } catch { /* Non-critical */ }
       setUploadProgress(100);
       setUploadedRelativePath(uploadData.relativePath);
       setUploadState('success');
@@ -173,14 +173,14 @@ const SubmitPaymentDialog: React.FC<SubmitPaymentDialogProps> = ({
   };
 
   // Google Drive Upload
-  const uploadToDrive = async () => {
-    if (!selectedFile || !order) return;
+  const autoUploadToDrive = async (file: File) => {
+    if (!order) return;
 
     setUploadState('uploading');
     setError(null);
 
     try {
-      const result = await driveUpload.upload(selectedFile, {
+      const result = await driveUpload.upload(file, {
         purpose: 'ID_CARD_PAYMENT',
         referenceType: 'ID_CARD_ORDER',
         referenceId: String(order.id),
@@ -196,14 +196,6 @@ const SubmitPaymentDialog: React.FC<SubmitPaymentDialogProps> = ({
     } catch (err: any) {
       setError(err.message || 'Drive upload failed.');
       setUploadState('error');
-    }
-  };
-
-  const handleUpload = () => {
-    if (uploadMethod === 'cloud') {
-      uploadToCloud();
-    } else {
-      uploadToDrive();
     }
   };
 
@@ -470,19 +462,7 @@ const SubmitPaymentDialog: React.FC<SubmitPaymentDialogProps> = ({
                     </div>
                   )}
 
-                  {/* Upload Button */}
-                  {!isFileUploaded && !isUploading && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="w-full"
-                      onClick={handleUpload}
-                    >
-                      <CloudUpload className="h-4 w-4 mr-1.5" />
-                      Upload {uploadMethod === 'drive' ? 'to Google Drive' : 'to Cloud'}
-                    </Button>
-                  )}
+                  {/* Upload happens automatically */}
 
                   {isFileUploaded && (
                     <p className="text-xs text-primary flex items-center gap-1">
