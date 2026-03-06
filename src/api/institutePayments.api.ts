@@ -164,13 +164,60 @@ export interface MySubmissionsResponse {
   };
 }
 
+export interface PaymentStatsResponse {
+  success: boolean;
+  data: {
+    totalPayments: number;
+    activePayments: number;
+    completedPayments: number;
+    expiredPayments: number;
+    totalExpectedAmount: number;
+    totalCollectedAmount: number;
+    collectionPercentage: string;
+    submissionStats: {
+      totalSubmissions: number;
+      pendingSubmissions: number;
+      verifiedSubmissions: number;
+      rejectedSubmissions: number;
+    };
+  };
+}
+
+export interface MySummaryResponse {
+  success: boolean;
+  data: {
+    totalApplicable: number;
+    totalPaid: number;
+    totalPending: number;
+    totalRejected: number;
+    totalAmountDue: number;
+    totalAmountPaid: number;
+    outstandingBalance: number;
+  };
+}
+
+export interface PendingSubmissionsResponse {
+  success: boolean;
+  data: {
+    submissions: PaymentSubmission[];
+    pagination: {
+      currentPage: number;
+      totalPages: number;
+      totalItems: number;
+      itemsPerPage: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+    };
+  };
+}
+
 export interface CreatePaymentRequest {
   paymentType: string;
   description: string;
   amount: number;
   dueDate: string;
   targetType: 'PARENTS' | 'STUDENTS' | 'BOTH';
-  priority: 'MANDATORY' | 'OPTIONAL';
+  priority: 'MANDATORY' | 'OPTIONAL' | 'DONATION';
   paymentInstructions?: string;
   bankDetails?: {
     bankName: string;
@@ -181,6 +228,8 @@ export interface CreatePaymentRequest {
   lateFeeAmount?: number;
   lateFeeAfterDays?: number;
   reminderDaysBefore?: number;
+  autoReminderEnabled?: boolean;
+  notes?: string;
 }
 
 export interface VerifySubmissionRequest {
@@ -191,12 +240,12 @@ export interface VerifySubmissionRequest {
 
 export interface SubmitPaymentRequest {
   paymentAmount: number;
-  paymentMethod: 'CASH' | 'BANK_TRANSFER' | 'ONLINE' | 'CHEQUE' | 'DD';
+  paymentMethod: 'BANK_TRANSFER' | 'ONLINE_PAYMENT' | 'CASH_DEPOSIT' | 'UPI' | 'CHEQUE';
   transactionReference?: string;
   paymentDate: string;
   paymentRemarks?: string;
   lateFeeApplied?: number;
-  receiptUrl: string; // Now URL instead of file
+  receiptUrl: string;
 }
 
 class InstitutePaymentsApi {
