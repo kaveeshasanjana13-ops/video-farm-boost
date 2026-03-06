@@ -154,9 +154,7 @@ export const useTableData = <T = any>(config: TableDataConfig): UseTableDataRetu
   }, [buildParams, config.endpoint, config.cacheOptions, pagination]);
 
   const refresh = useCallback(() => {
-    // Enable global force refresh on both clients so all data bypasses cache
-    cachedApiClient.enableGlobalForceRefresh(10000);
-    enhancedCachedClient.enableGlobalForceRefresh(10000);
+    // Just force refresh the specific data being loaded
     return loadData(true);
   }, [loadData]);
 
