@@ -124,7 +124,7 @@ const SubmitSubjectPaymentDialog: React.FC<SubmitSubjectPaymentDialogProps> = ({
       });
 
       // Show success with receipt file link
-      const receiptUrl = response.data?.receiptFile;
+      const receiptUrl = (response.data as any)?.receiptFile;
       const displayUrl = receiptUrl ? getImageUrl(receiptUrl) : null;
       toast({
         title: "Success",
