@@ -12,7 +12,6 @@ export interface InstitutePayment {
   targetType: 'PARENTS' | 'STUDENTS' | 'BOTH';
   priority: 'MANDATORY' | 'OPTIONAL' | 'DONATION';
   status: 'ACTIVE' | 'INACTIVE' | 'COMPLETED' | 'EXPIRED';
-  status: 'ACTIVE' | 'INACTIVE';
   paymentInstructions?: string;
   bankDetails?: {
     bankName: string;
