@@ -10,8 +10,8 @@ export interface SubjectPayment {
   createdBy: string;
   title: string;
   description: string;
-  targetType: 'PARENTS' | 'STUDENT';
-  priority: 'MANDATORY' | 'OPTIONAL';
+  targetType: 'PARENTS' | 'STUDENTS';
+  priority: 'MANDATORY' | 'OPTIONAL' | 'DONATION';
   amount: string;
   documentUrl?: string;
   lastDate: string;
