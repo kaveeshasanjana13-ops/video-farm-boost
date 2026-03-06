@@ -230,6 +230,7 @@ const MobileDashboard = () => {
           title: 'Finance & SMS',
           items: [
             { id: 'institute-payments', label: 'Payments', icon: CreditCard, color: nextColor() },
+            { id: 'pending-submissions', label: 'Pending', icon: Clock, color: nextColor() },
             { id: 'sms', label: 'SMS', icon: MessageSquare, color: nextColor() },
             { id: 'sms-history', label: 'SMS Log', icon: MessageSquare, color: nextColor() },
           ],
