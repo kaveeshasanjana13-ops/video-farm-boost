@@ -100,10 +100,10 @@ const App = () => {
     if (Capacitor.isNativePlatform()) {
       // Configure Status Bar (dynamic import to avoid browser errors)
       import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
-        StatusBar.setStyle({ style: Style.Dark }).catch((err: any) => {
+        StatusBar.setStyle({ style: Style.Light }).catch((err: any) => {
           console.warn('StatusBar.setStyle not available:', err);
         });
-        StatusBar.setBackgroundColor({ color: '#FFFFFF' }).catch((err: any) => {
+        StatusBar.setBackgroundColor({ color: '#0039B3' }).catch((err: any) => {
           console.warn('StatusBar.setBackgroundColor not available:', err);
         });
       }).catch((err) => {

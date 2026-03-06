@@ -24,21 +24,21 @@ const config: CapacitorConfig = {
   android: {
     // Disable cleartext (HTTP) traffic — enforce HTTPS only
     allowMixedContent: false,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F0F6FF',
   },
   plugins: {
     SplashScreen: {
       launchShowDuration: 2000,
       launchAutoHide: true,
-      backgroundColor: '#FFFFFF',
+      backgroundColor: '#F0F6FF',
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,
       splashFullScreen: true,
       splashImmersive: true,
     },
     StatusBar: {
-      style: 'dark',
-      backgroundColor: '#FFFFFF',
+      style: 'light',
+      backgroundColor: '#0039B3',
       overlaysWebView: false,
     },
     PushNotifications: {
