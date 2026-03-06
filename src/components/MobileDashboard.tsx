@@ -89,6 +89,13 @@ const MobileDashboard = () => {
             { id: 'institute-lectures', label: 'Lectures', icon: Video, color: nextColor() },
           ],
         });
+        sections.push({
+          title: 'Finance',
+          items: [
+            { id: 'institute-payments', label: 'Payments', icon: CreditCard, color: nextColor() },
+            { id: 'my-submissions', label: 'My Submissions', icon: FileText, color: nextColor() },
+          ],
+        });
       } else if (selectedInstitute && selectedClass && !selectedSubject) {
         sections.push({
           title: 'Navigation',
