@@ -11,7 +11,7 @@ import {
   Users, GraduationCap, UserCheck, BookOpen, School,
   User, Building2, QrCode, Award, Video, FileText, Notebook,
   CreditCard, IdCard, MessageSquare, Bell, ImageIcon,
-  Calendar, CalendarDays, type LucideIcon,
+  Calendar, CalendarDays, Clock, type LucideIcon,
 } from 'lucide-react';
 
 interface DashboardSection {
