@@ -11,7 +11,7 @@ import {
   Users, GraduationCap, UserCheck, BookOpen, School,
   User, Building2, QrCode, Award, Video, FileText, Notebook,
   CreditCard, IdCard, MessageSquare, Bell, ImageIcon,
-  Calendar, CalendarDays, type LucideIcon,
+  Calendar, CalendarDays, Clock, type LucideIcon,
 } from 'lucide-react';
 
 interface DashboardSection {
@@ -89,6 +89,13 @@ const MobileDashboard = () => {
             { id: 'institute-lectures', label: 'Lectures', icon: Video, color: nextColor() },
           ],
         });
+        sections.push({
+          title: 'Finance',
+          items: [
+            { id: 'institute-payments', label: 'Payments', icon: CreditCard, color: nextColor() },
+            { id: 'my-submissions', label: 'My Submissions', icon: FileText, color: nextColor() },
+          ],
+        });
       } else if (selectedInstitute && selectedClass && !selectedSubject) {
         sections.push({
           title: 'Navigation',
@@ -97,6 +104,13 @@ const MobileDashboard = () => {
             { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
             { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
             { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, color: nextColor() },
+          ],
+        });
+        sections.push({
+          title: 'Finance',
+          items: [
+            { id: 'institute-payments', label: 'Payments', icon: CreditCard, color: nextColor() },
+            { id: 'my-submissions', label: 'My Submissions', icon: FileText, color: nextColor() },
           ],
         });
       } else if (selectedInstitute && selectedClass && selectedSubject) {
@@ -216,6 +230,7 @@ const MobileDashboard = () => {
           title: 'Finance & SMS',
           items: [
             { id: 'institute-payments', label: 'Payments', icon: CreditCard, color: nextColor() },
+            { id: 'pending-submissions', label: 'Pending', icon: Clock, color: nextColor() },
             { id: 'sms', label: 'SMS', icon: MessageSquare, color: nextColor() },
             { id: 'sms-history', label: 'SMS Log', icon: MessageSquare, color: nextColor() },
           ],

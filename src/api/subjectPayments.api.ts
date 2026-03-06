@@ -10,8 +10,8 @@ export interface SubjectPayment {
   createdBy: string;
   title: string;
   description: string;
-  targetType: 'PARENTS' | 'STUDENT';
-  priority: 'MANDATORY' | 'OPTIONAL';
+  targetType: 'PARENTS' | 'STUDENTS';
+  priority: 'MANDATORY' | 'OPTIONAL' | 'DONATION';
   amount: string;
   documentUrl?: string;
   lastDate: string;
@@ -92,8 +92,22 @@ export interface SubjectSubmissionsResponse {
   };
 }
 
+export interface SubjectPaymentStatsResponse {
+  totalSubmissions: number;
+  verifiedSubmissions: number;
+  pendingSubmissions: number;
+  rejectedSubmissions: number;
+  verificationRate: string;
+}
+
+export interface SubjectMyStatusResponse {
+  hasSubmission: boolean;
+  submission?: SubjectPaymentSubmission;
+  payment?: SubjectPayment;
+}
+
 class SubjectPaymentsApi {
-  // Get all subject payments for Institute Admin/Teacher
+  // Get all subject payments for Admin/Teacher
   async getSubjectPayments(
     instituteId: string, 
     classId: string, 
@@ -137,6 +151,74 @@ class SubjectPaymentsApi {
     );
   }
 
+  // Get payment details
+  async getPaymentDetails(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    paymentId: string
+  ): Promise<SubjectPayment> {
+    return apiClient.get(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}/payment/${paymentId}`);
+  }
+
+  // Create subject payment (admin/teacher)
+  async createPayment(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    data: {
+      title: string;
+      description?: string;
+      targetType: 'STUDENTS' | 'PARENTS';
+      priority: 'MANDATORY' | 'OPTIONAL' | 'DONATION';
+      amount: number;
+      documentUrl?: string;
+      lastDate: string;
+      notes?: string;
+    }
+  ): Promise<any> {
+    return apiClient.post(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}`, data);
+  }
+
+  // Update subject payment
+  async updatePayment(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    paymentId: string,
+    data: Record<string, any>
+  ): Promise<any> {
+    return apiClient.patch(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}/payment/${paymentId}`, data);
+  }
+
+  // List payments by class (all subjects)
+  async getPaymentsByClass(
+    instituteId: string,
+    classId: string,
+    page: number = 1,
+    limit: number = 50
+  ): Promise<SubjectPaymentsResponse> {
+    return apiClient.get(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/payments`, { page, limit });
+  }
+
+  // List payments by institute (all classes)
+  async getPaymentsByInstitute(
+    instituteId: string,
+    page: number = 1,
+    limit: number = 50
+  ): Promise<SubjectPaymentsResponse> {
+    return apiClient.get(`/institute-class-subject-payments/institute/${instituteId}/payments`, { page, limit });
+  }
+
+  // Get enrolled users for a class/subject
+  async getEnrolledUsers(
+    instituteId: string,
+    classId: string,
+    subjectId: string
+  ): Promise<any> {
+    return apiClient.get(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}/enrolled-users`);
+  }
+
   // Get student's subject payment submissions
   async getMySubjectSubmissions(
     instituteId: string, 
@@ -145,10 +227,10 @@ class SubjectPaymentsApi {
     page: number = 1,
     limit: number = 10
   ): Promise<SubjectSubmissionsResponse> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/my-submissions?page=${page}&limit=${limit}`);
+    return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/my-submissions`, { page, limit });
   }
 
-  // Get all submissions for a specific subject payment (for Admin/Teacher)
+  // Get all submissions for a specific subject payment (admin/teacher)
   async getSubjectPaymentSubmissions(
     instituteId: string, 
     classId: string, 
@@ -158,16 +240,40 @@ class SubjectPaymentsApi {
     return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/payment/${paymentId}/submissions`);
   }
 
-  // Get payment submissions by payment ID only (for simplified access)
+  // Get all submissions (admin/teacher) with status filter
+  async getAllSubmissions(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    params?: { page?: number; limit?: number; status?: string }
+  ): Promise<SubjectSubmissionsResponse> {
+    return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/all-submissions`, params);
+  }
+
+  // Get submission statistics
+  async getSubmissionStats(
+    instituteId: string,
+    classId: string,
+    subjectId: string
+  ): Promise<SubjectPaymentStatsResponse> {
+    return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/stats`);
+  }
+
+  // Get payment submissions by payment ID only
   async getPaymentSubmissions(
     paymentId: string, 
     page: number = 1, 
     limit: number = 50
   ): Promise<SubjectSubmissionsResponse> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/payment/${paymentId}/submissions?page=${page}&limit=${limit}`);
+    return apiClient.get(`/institute-class-subject-payment-submissions/payment/${paymentId}/submissions`, { page, limit });
   }
 
-  // Verify payment submission
+  // Check my submission status for a payment
+  async getMySubmissionStatus(paymentId: string): Promise<SubjectMyStatusResponse> {
+    return apiClient.get(`/institute-class-subject-payment-submissions/payment/${paymentId}/my-status`);
+  }
+
+  // Verify payment submission (admin/teacher)
   async verifyPaymentSubmission(submissionId: string, data: {
     status: 'VERIFIED' | 'REJECTED';
     rejectionReason?: string;
@@ -176,11 +282,11 @@ class SubjectPaymentsApi {
     return apiClient.patch(`/institute-class-subject-payment-submissions/submission/${submissionId}/verify`, data);
   }
 
-  // Submit payment (for students)
+  // Submit payment (student/parent)
   async submitPayment(paymentId: string, data: {
     paymentDate: string;
-    transactionId: string;
     submittedAmount: number;
+    transactionId?: string;
     notes?: string;
     receiptUrl: string;
   }): Promise<{
@@ -189,10 +295,19 @@ class SubjectPaymentsApi {
     data: {
       submissionId: string;
       status: string;
-      receiptFile: string;
     };
   }> {
     return apiClient.post(`/institute-class-subject-payment-submissions/payment/${paymentId}/submit`, data);
+  }
+
+  // Get submission details
+  async getSubmissionDetails(submissionId: string): Promise<any> {
+    return apiClient.get(`/institute-class-subject-payment-submissions/submission/${submissionId}`);
+  }
+
+  // Delete submission (student/parent - pending only)
+  async deleteSubmission(submissionId: string): Promise<{ success: boolean; message: string }> {
+    return apiClient.patch(`/institute-class-subject-payment-submissions/submission/${submissionId}/delete`, {});
   }
 }
 

@@ -1,4 +1,6 @@
 import { apiClient, ApiResponse } from './client';
+import { enhancedCachedClient } from './enhancedCachedClient';
+import { CACHE_TTL } from '@/config/cacheTTL';
 import { getBaseUrl } from '@/contexts/utils/auth.api';
 export interface InstitutePayment {
   id: string;
@@ -7,9 +9,9 @@ export interface InstitutePayment {
   description: string;
   amount: number;
   dueDate: string;
-  targetType: 'PARENTS' | 'STUDENT' | 'BOTH';
-  priority: 'MANDATORY' | 'OPTIONAL';
-  status: 'ACTIVE' | 'INACTIVE';
+  targetType: 'PARENTS' | 'STUDENTS' | 'BOTH';
+  priority: 'MANDATORY' | 'OPTIONAL' | 'DONATION';
+  status: 'ACTIVE' | 'INACTIVE' | 'COMPLETED' | 'EXPIRED';
   paymentInstructions?: string;
   bankDetails?: {
     bankName: string;
@@ -161,13 +163,60 @@ export interface MySubmissionsResponse {
   };
 }
 
+export interface PaymentStatsResponse {
+  success: boolean;
+  data: {
+    totalPayments: number;
+    activePayments: number;
+    completedPayments: number;
+    expiredPayments: number;
+    totalExpectedAmount: number;
+    totalCollectedAmount: number;
+    collectionPercentage: string;
+    submissionStats: {
+      totalSubmissions: number;
+      pendingSubmissions: number;
+      verifiedSubmissions: number;
+      rejectedSubmissions: number;
+    };
+  };
+}
+
+export interface MySummaryResponse {
+  success: boolean;
+  data: {
+    totalApplicable: number;
+    totalPaid: number;
+    totalPending: number;
+    totalRejected: number;
+    totalAmountDue: number;
+    totalAmountPaid: number;
+    outstandingBalance: number;
+  };
+}
+
+export interface PendingSubmissionsResponse {
+  success: boolean;
+  data: {
+    submissions: PaymentSubmission[];
+    pagination: {
+      currentPage: number;
+      totalPages: number;
+      totalItems: number;
+      itemsPerPage: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+    };
+  };
+}
+
 export interface CreatePaymentRequest {
   paymentType: string;
   description: string;
   amount: number;
   dueDate: string;
   targetType: 'PARENTS' | 'STUDENTS' | 'BOTH';
-  priority: 'MANDATORY' | 'OPTIONAL';
+  priority: 'MANDATORY' | 'OPTIONAL' | 'DONATION';
   paymentInstructions?: string;
   bankDetails?: {
     bankName: string;
@@ -178,6 +227,8 @@ export interface CreatePaymentRequest {
   lateFeeAmount?: number;
   lateFeeAfterDays?: number;
   reminderDaysBefore?: number;
+  autoReminderEnabled?: boolean;
+  notes?: string;
 }
 
 export interface VerifySubmissionRequest {
@@ -188,72 +239,95 @@ export interface VerifySubmissionRequest {
 
 export interface SubmitPaymentRequest {
   paymentAmount: number;
-  paymentMethod: 'CASH' | 'BANK_TRANSFER' | 'ONLINE' | 'CHEQUE' | 'DD';
+  paymentMethod: 'BANK_TRANSFER' | 'ONLINE_PAYMENT' | 'CASH_DEPOSIT' | 'UPI' | 'CHEQUE';
   transactionReference?: string;
   paymentDate: string;
   paymentRemarks?: string;
   lateFeeApplied?: number;
-  receiptUrl: string; // Now URL instead of file
+  receiptUrl: string;
 }
 
 class InstitutePaymentsApi {
-  // Get all institute payments (for InstituteAdmin)
+  // Get all institute payments (admin/teacher view)
   async getInstitutePayments(instituteId: string, params?: {
     page?: number;
     limit?: number;
     search?: string;
-    status?: 'ACTIVE' | 'INACTIVE';
-    priority?: 'MANDATORY' | 'OPTIONAL';
-    targetType?: 'PARENTS' | 'STUDENT' | 'BOTH';
+    status?: string;
+    priority?: string;
+    targetType?: string;
+    sortBy?: string;
+    sortOrder?: string;
   }): Promise<InstitutePaymentsResponse> {
-    return apiClient.get(`/institute-payments/institute/${instituteId}/payments`, params);
+    return apiClient.get(`/institute-payments/institute/${instituteId}`, params);
   }
 
-  // Get student's applicable payments (for Student)
+  // Get student/parent's applicable payments
   async getStudentPayments(instituteId: string, params?: {
     page?: number;
     limit?: number;
     search?: string;
-    status?: 'ACTIVE' | 'INACTIVE';
-    priority?: 'MANDATORY' | 'OPTIONAL';
+    status?: string;
+    priority?: string;
   }): Promise<StudentPaymentsResponse> {
     return apiClient.get(`/institute-payments/institute/${instituteId}/my-payments`, params);
   }
 
-  // Get payment submissions for a specific payment (for InstituteAdmin)
+  // Get payment statistics (admin/teacher)
+  async getPaymentStats(instituteId: string): Promise<PaymentStatsResponse> {
+    return apiClient.get(`/institute-payments/institute/${instituteId}/stats`);
+  }
+
+  // Get student/parent payment summary
+  async getMySummary(instituteId: string): Promise<MySummaryResponse> {
+    return apiClient.get(`/institute-payments/institute/${instituteId}/my-summary`);
+  }
+
+  // Update a payment
+  async updatePayment(instituteId: string, paymentId: string, data: Partial<CreatePaymentRequest>): Promise<any> {
+    return apiClient.patch(`/institute-payments/institute/${instituteId}/payment/${paymentId}`, data);
+  }
+
+  // Get payment submissions for a specific payment (admin/teacher)
   async getPaymentSubmissions(
     instituteId: string, 
     paymentId: string, 
     params?: {
       page?: number;
       limit?: number;
-      status?: 'PENDING' | 'VERIFIED' | 'REJECTED';
-      paymentMethod?: 'BANK_TRANSFER' | 'UPI' | 'ONLINE_PAYMENT' | 'CASH_DEPOSIT' | 'CHEQUE';
+      status?: string;
+      paymentMethod?: string;
       paymentDateFrom?: string;
       paymentDateTo?: string;
       submissionDateFrom?: string;
       submissionDateTo?: string;
-      verificationDateFrom?: string;
-      verificationDateTo?: string;
       amountFrom?: number;
       amountTo?: number;
-      studentId?: string;
       studentName?: string;
       search?: string;
       hasLateFee?: boolean;
       hasAttachment?: boolean;
-      sortBy?: 'paymentDate' | 'submissionDate' | 'verificationDate' | 'amount' | 'status' | 'studentName';
-      sortOrder?: 'ASC' | 'DESC';
+      sortBy?: string;
+      sortOrder?: string;
     }
   ): Promise<PaymentSubmissionsResponse> {
     return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/payment/${paymentId}/submissions`, params);
   }
 
-  // Get student's own submissions (for Student)
+  // Get pending submissions across all payments (admin/teacher)
+  async getPendingSubmissions(instituteId: string, params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+  }): Promise<PendingSubmissionsResponse> {
+    return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/pending-submissions`, params);
+  }
+
+  // Get student's own submissions
   async getMySubmissions(instituteId: string, params?: {
     page?: number;
     limit?: number;
-    status?: 'PENDING' | 'VERIFIED' | 'REJECTED';
+    status?: string;
     search?: string;
     paymentDateFrom?: string;
     paymentDateTo?: string;
@@ -261,30 +335,35 @@ class InstitutePaymentsApi {
     return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/my-submissions`, params);
   }
 
-  // Create a new payment (for InstituteAdmin)
-  async createPayment(instituteId: string, data: CreatePaymentRequest): Promise<any> {
-    return apiClient.post(`/institute-payments/institute/${instituteId}/payments`, data);
+  // Get submissions for a specific student (admin/parent)
+  async getStudentSubmissions(instituteId: string, studentId: string, params?: {
+    page?: number;
+    limit?: number;
+  }): Promise<PaymentSubmissionsResponse> {
+    return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/student/${studentId}/submissions`, params);
   }
 
-  // Verify a payment submission with detailed form (for InstituteAdmin)
+  // Get submission details
+  async getSubmissionDetails(instituteId: string, submissionId: string): Promise<any> {
+    return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/submission/${submissionId}`);
+  }
+
+  // Create a new payment (admin/teacher)
+  async createPayment(instituteId: string, data: CreatePaymentRequest): Promise<any> {
+    return apiClient.post(`/institute-payments/institute/${instituteId}`, data);
+  }
+
+  // Verify/reject a payment submission (admin/teacher)
   async verifySubmissionDetailed(instituteId: string, submissionId: string, data: VerifySubmissionRequest): Promise<any> {
     return apiClient.patch(`/institute-payment-submissions/institute/${instituteId}/submission/${submissionId}/verify`, data);
   }
 
-  // Submit a payment (for Student)
+  // Submit a payment (student/parent)
   async submitPayment(instituteId: string, paymentId: string, data: SubmitPaymentRequest): Promise<any> {
-    return apiClient.post(`/institute-payment-submissions/institute/${instituteId}/payment/${paymentId}/submit`, {
-      paymentAmount: data.paymentAmount,
-      paymentMethod: data.paymentMethod,
-      transactionReference: data.transactionReference,
-      paymentDate: data.paymentDate,
-      paymentRemarks: data.paymentRemarks,
-      lateFeeApplied: data.lateFeeApplied,
-      receiptUrl: data.receiptUrl
-    });
+    return apiClient.post(`/institute-payment-submissions/institute/${instituteId}/payment/${paymentId}/submit`, data);
   }
 
-  // Legacy verify method (kept for backward compatibility)
+  // Legacy verify method (backward compatibility)
   async verifySubmission(submissionId: string): Promise<any> {
     return apiClient.patch(`/institute-payment-submissions/${submissionId}/verify`);
   }
