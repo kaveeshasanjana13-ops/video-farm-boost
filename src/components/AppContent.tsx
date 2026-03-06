@@ -86,6 +86,7 @@ import SubjectPayments from '@/pages/SubjectPayments';
 import SubjectSubmissions from '@/pages/SubjectSubmissions';
 import SubjectPaymentSubmissions from '@/pages/SubjectPaymentSubmissions';
 import MySubmissions from '@/pages/MySubmissions';
+import PendingSubmissions from '@/pages/PendingSubmissions';
 import HomeworkSubmissions from '@/pages/HomeworkSubmissions';
 import ExamResults from '@/pages/ExamResults';
 import CreateExamResults from '@/pages/CreateExamResults';
