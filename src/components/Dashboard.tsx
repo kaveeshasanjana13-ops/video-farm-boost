@@ -54,10 +54,9 @@ const Dashboard = () => {
     );
   }
 
-  // Subject-level dashboard - show MobileDashboard on mobile, UnderMaintenance on desktop
+  // Subject-level dashboard
   if (hasSubjectContext) {
-    if (isMobile) return <MobileDashboard />;
-    return <UnderMaintenance />;
+    return <MobileDashboard />;
   }
 
   // Special handling for Parent role - child selector
