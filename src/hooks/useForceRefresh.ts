@@ -1,16 +1,14 @@
 import { useCallback } from 'react';
-import { enhancedCachedClient } from '@/api/enhancedCachedClient';
-import { cachedApiClient } from '@/api/cachedClient';
 
 /**
- * Hook that triggers global force refresh on BOTH cached API clients.
- * Call triggerForceRefresh() before your data loading to ensure
- * all subsequent API calls bypass the cache for the given duration.
+ * Hook for force refresh - now a no-op since individual API calls
+ * handle forceRefresh=true directly without needing global cache bypass.
+ * Kept for backward compatibility.
  */
 export const useForceRefresh = () => {
-  const triggerForceRefresh = useCallback((durationMs: number = 10000) => {
-    enhancedCachedClient.enableGlobalForceRefresh(durationMs);
-    cachedApiClient.enableGlobalForceRefresh(durationMs);
+  const triggerForceRefresh = useCallback((_durationMs: number = 10000) => {
+    // No-op: individual API calls pass forceRefresh=true directly
+    console.log('🔄 Force refresh requested - individual API calls will bypass cache');
   }, []);
 
   return { triggerForceRefresh };

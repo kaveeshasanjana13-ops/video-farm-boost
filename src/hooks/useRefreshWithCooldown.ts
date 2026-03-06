@@ -1,7 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { cachedApiClient } from '@/api/cachedClient';
-import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 
 /**
  * Custom hook to handle refresh with cooldown period
