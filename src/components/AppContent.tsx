@@ -884,6 +884,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <InstituteProfile />;
         case 'institute-payments':
           return <InstitutePayments />;
+        case 'pending-submissions':
+          return <PendingSubmissions />;
         case 'subject-payments':
           return <SubjectPayments />;
         case 'subject-submissions':
