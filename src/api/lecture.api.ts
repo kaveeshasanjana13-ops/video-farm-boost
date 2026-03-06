@@ -15,7 +15,7 @@ export interface Lecture {
   subject?: string;
   startTime?: string;
   endTime?: string;
-  status: 'scheduled' | 'completed' | 'cancelled' | 'in_progress';
+  status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled' | 'postponed';
   meetingLink?: string;
   meetingId?: string;
   meetingPassword?: string;
@@ -37,7 +37,7 @@ export interface LectureCreateData {
   subject?: string;
   startTime?: string | null;
   endTime?: string | null;
-  status: 'scheduled' | 'completed' | 'cancelled' | 'in_progress';
+  status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled' | 'postponed';
   meetingLink?: string | null;
   meetingId?: string | null;
   meetingPassword?: string | null;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useForceRefresh } from '@/hooks/useForceRefresh';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +53,7 @@ interface ApiResponse {
 
 const TeacherClasses = () => {
   const { user, selectedInstitute, setSelectedClass } = useAuth();
+  const { triggerForceRefresh } = useForceRefresh();
   const effectiveRole = useInstituteRole();
   const { toast } = useToast();
   
@@ -146,6 +148,7 @@ const TeacherClasses = () => {
   };
   
   const handleRefresh = () => {
+    triggerForceRefresh();
     fetchTeacherClasses(true); // Force refresh, bypass cache
   };
 

@@ -1,5 +1,6 @@
 // src/components/notifications/SystemNotifications.tsx
 import React, { useState, useEffect, useCallback } from 'react';
+import { useForceRefresh } from '@/hooks/useForceRefresh';
 import { Bell, CheckCheck, RefreshCw } from 'lucide-react';
 import { notificationApiService, Notification } from '@/services/notificationApiService';
 import { DateGroupedNotifications } from './DateGroupedNotifications';
@@ -16,6 +17,7 @@ import { toast } from '@/hooks/use-toast';
  */
 export const SystemNotifications: React.FC = () => {
   const navigate = useNavigate();
+  const { triggerForceRefresh } = useForceRefresh();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -99,6 +101,7 @@ export const SystemNotifications: React.FC = () => {
   };
 
   const handleRefresh = () => {
+    triggerForceRefresh();
     loadNotifications();
     loadUnreadCount();
   };

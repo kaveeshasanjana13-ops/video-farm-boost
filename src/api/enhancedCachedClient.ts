@@ -31,6 +31,10 @@ class EnhancedCachedApiClient {
   private rateLimitedUntil: number = 0;
   private readonly RATE_LIMIT_BACKOFF = 60000; // 60 seconds default backoff
   private backgroundRevalidationPaused: boolean = false;
+  
+  // Global force refresh flag - when set, ALL next GET requests bypass cache
+  private _globalForceRefresh: boolean = false;
+  private _globalForceRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.baseUrl = getBaseUrl();
@@ -185,10 +189,13 @@ class EnhancedCachedApiClient {
     options: EnhancedCacheOptions = {}
   ): Promise<T> {
     const { 
-      forceRefresh = false, 
+      forceRefresh: optionForceRefresh = false, 
       ttl = 30, 
       useStaleWhileRevalidate = true 
     } = options;
+    
+    // Check global force refresh flag
+    const forceRefresh = optionForceRefresh || this._globalForceRefresh;
 
     const requestKey = this.generateRequestKey(endpoint, params);
     
@@ -876,6 +883,38 @@ class EnhancedCachedApiClient {
    */
   async clearInstituteCache(instituteId: string): Promise<void> {
     await secureCache.clearInstituteCache(instituteId);
+  }
+
+  /**
+   * Enable global force refresh - ALL subsequent GET requests will bypass cache
+   * Automatically resets after the specified duration (default 10 seconds)
+   */
+  enableGlobalForceRefresh(durationMs: number = 10000): void {
+    console.log('🔄 Global force refresh ENABLED - all requests will bypass cache');
+    this._globalForceRefresh = true;
+    
+    // Clear any existing timeout
+    if (this._globalForceRefreshTimeout) {
+      clearTimeout(this._globalForceRefreshTimeout);
+    }
+    
+    // Auto-reset after duration
+    this._globalForceRefreshTimeout = setTimeout(() => {
+      this._globalForceRefresh = false;
+      this._globalForceRefreshTimeout = null;
+      console.log('🔄 Global force refresh DISABLED - cache resumed');
+    }, durationMs);
+  }
+
+  /**
+   * Disable global force refresh manually
+   */
+  disableGlobalForceRefresh(): void {
+    this._globalForceRefresh = false;
+    if (this._globalForceRefreshTimeout) {
+      clearTimeout(this._globalForceRefreshTimeout);
+      this._globalForceRefreshTimeout = null;
+    }
   }
 }
 

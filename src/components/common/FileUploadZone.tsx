@@ -163,6 +163,28 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
     }
   }, [navigate, toast]);
 
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > maxFileSize) {
+      toast({
+        title: 'File too large',
+        description: `Please select a file smaller than ${formatFileSize(maxFileSize)}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    setSelectedFile(file);
+    setUploadedResult(null);
+  }, [maxFileSize, toast]);
+
+  const clearFile = useCallback(() => {
+    setSelectedFile(null);
+    setDriveSelectedFile(null);
+    setUploadedResult(null);
+    onClear?.();
+  }, [onClear]);
+
   // Upload via cloud storage (signed URL)
   const uploadViaCloudStorage = useCallback(async (file: File) => {
     setIsUploading(true);
@@ -191,15 +213,33 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
     }
   }, [folder, onUploadComplete, toast]);
 
+  // Handle Drive file selection
+  const handleDriveFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > maxFileSize) {
+      toast({
+        title: 'File too large',
+        description: `Please select a file smaller than ${formatFileSize(maxFileSize)}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+    setDriveSelectedFile(file);
+    setUploadedResult(null);
+  }, [maxFileSize, toast]);
+
   // Upload file to Google Drive via backend-managed token flow
-  const handleDriveUpload = useCallback(async (file: File) => {
+  const handleDriveUpload = useCallback(async () => {
+    if (!driveSelectedFile) return;
     setIsDriveUploading(true);
     setDriveUploadProgress(0);
     try {
       const { uploadAndRegisterFile } = await import('@/lib/driveUpload');
+      // Get the access token so we can pass it to the submission API
       const tokenData = await getValidDriveToken();
       const result = await uploadAndRegisterFile({
-        file,
+        file: driveSelectedFile,
         purpose: drivePurpose,
         referenceType: driveReferenceType,
         referenceId: driveReferenceId,
@@ -215,13 +255,13 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
         method: 'google-drive',
         driveFileId: result.driveFileId,
         accessToken: tokenData.accessToken,
-        fileName: result.fileName || file.name,
-        mimeType: result.mimeType || file.type || 'application/octet-stream',
-        fileSize: file.size,
+        fileName: result.fileName || driveSelectedFile.name,
+        mimeType: result.mimeType || driveSelectedFile.type || 'application/octet-stream',
+        fileSize: driveSelectedFile.size,
       };
       setUploadedResult(uploadResult);
       onUploadComplete(uploadResult);
-      toast({ title: 'Upload complete', description: `${file.name} uploaded to Google Drive` });
+      toast({ title: 'Upload complete', description: `${driveSelectedFile.name} uploaded to Google Drive` });
     } catch (error: any) {
       console.error('Drive upload error:', error);
       if (error.status === 401 || error.message?.includes('401')) {
@@ -250,48 +290,12 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
       setDriveUploadMessage('');
       setDriveUploadProgress(0);
     }
-  }, [drivePurpose, driveReferenceType, driveReferenceId, onUploadComplete, toast]);
+  }, [driveSelectedFile, drivePurpose, driveReferenceType, driveReferenceId, onUploadComplete, toast]);
 
-  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (file.size > maxFileSize) {
-      toast({
-        title: 'File too large',
-        description: `Please select a file smaller than ${formatFileSize(maxFileSize)}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-    setSelectedFile(file);
-    setUploadedResult(null);
-    // Auto-upload immediately
-    uploadViaCloudStorage(file);
-  }, [maxFileSize, toast, uploadViaCloudStorage]);
-
-  const clearFile = useCallback(() => {
-    setSelectedFile(null);
-    setDriveSelectedFile(null);
-    setUploadedResult(null);
-    onClear?.();
-  }, [onClear]);
-
-  const handleDriveFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (file.size > maxFileSize) {
-      toast({
-        title: 'File too large',
-        description: `Please select a file smaller than ${formatFileSize(maxFileSize)}`,
-        variant: 'destructive',
-      });
-      return;
-    }
-    setDriveSelectedFile(file);
-    setUploadedResult(null);
-    // Auto-upload immediately to Drive
-    handleDriveUpload(file);
-  }, [maxFileSize, toast, handleDriveUpload]);
+  const handleUpload = useCallback(async () => {
+    if (!selectedFile) return;
+    await uploadViaCloudStorage(selectedFile);
+  }, [selectedFile, uploadViaCloudStorage]);
 
   const isConnected = driveStatus?.isConnected === true;
 
@@ -417,26 +421,31 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
                   <p className="font-medium text-[10px] sm:text-xs truncate">{selectedFile.name}</p>
                   <p className="text-[9px] text-muted-foreground">{formatFileSize(selectedFile.size)}</p>
                 </div>
-                {isUploading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-                ) : (
-                  <Button
-                    type="button" variant="ghost" size="sm"
-                    onClick={clearFile}
-                    className="h-6 w-6 p-0 hover:text-destructive shrink-0"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                )}
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  onClick={clearFile}
+                  disabled={isUploading}
+                  className="h-6 w-6 p-0 hover:text-destructive shrink-0"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
-              {isUploading && (
-                <div className="space-y-1">
-                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
-                  </div>
-                  <p className="text-[9px] text-muted-foreground text-center">{uploadMessage || 'Uploading...'}</p>
-                </div>
-              )}
+              <Button
+                type="button"
+                onClick={handleUpload}
+                disabled={isUploading || disabled}
+                className="w-full h-8 text-xs"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    {uploadMessage || 'Uploading...'}
+                    {uploadProgress > 0 && <span className="ml-1">({uploadProgress}%)</span>}
+                  </>
+                ) : (
+                  <><Upload className="h-3 w-3 mr-1" /> Upload File</>
+                )}
+              </Button>
             </div>
           )}
         </>
@@ -481,26 +490,31 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
                   <p className="font-medium text-[10px] sm:text-xs truncate">{driveSelectedFile.name}</p>
                   <p className="text-[9px] text-muted-foreground">{formatFileSize(driveSelectedFile.size)}</p>
                 </div>
-                {isDriveUploading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-                ) : (
-                  <Button
-                    type="button" variant="ghost" size="sm"
-                    onClick={() => setDriveSelectedFile(null)}
-                    className="h-6 w-6 p-0 hover:text-destructive shrink-0"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                )}
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  onClick={() => setDriveSelectedFile(null)}
+                  disabled={isDriveUploading}
+                  className="h-6 w-6 p-0 hover:text-destructive shrink-0"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
-              {isDriveUploading && (
-                <div className="space-y-1">
-                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${driveUploadProgress}%` }} />
-                  </div>
-                  <p className="text-[9px] text-muted-foreground text-center">{driveUploadMessage || 'Uploading...'}</p>
-                </div>
-              )}
+              <Button
+                type="button"
+                onClick={handleDriveUpload}
+                disabled={isDriveUploading || disabled}
+                className="w-full h-8 text-xs"
+              >
+                {isDriveUploading ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    {driveUploadMessage || 'Uploading...'}
+                    {driveUploadProgress > 0 && <span className="ml-1">({driveUploadProgress}%)</span>}
+                  </>
+                ) : (
+                  <><CloudUpload className="h-3 w-3 mr-1" /> Upload to Drive</>
+                )}
+              </Button>
             </div>
           )}
 

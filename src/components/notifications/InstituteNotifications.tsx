@@ -1,5 +1,6 @@
 // src/components/notifications/InstituteNotifications.tsx
 import React, { useState, useEffect, useCallback } from 'react';
+import { useForceRefresh } from '@/hooks/useForceRefresh';
 import { Bell, CheckCheck, RefreshCw, Building2 } from 'lucide-react';
 import { notificationApiService, Notification } from '@/services/notificationApiService';
 import { DateGroupedNotifications } from './DateGroupedNotifications';
@@ -27,6 +28,7 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
   instituteName,
 }) => {
   const navigate = useNavigate();
+  const { triggerForceRefresh } = useForceRefresh();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -86,6 +88,7 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
   
   // Handle initial refresh click
   const handleRefresh = () => {
+    triggerForceRefresh();
     if (!initialized) setInitialized(true);
     loadNotifications();
     loadUnreadCount();

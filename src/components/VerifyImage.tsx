@@ -14,7 +14,7 @@ import { RefreshCw, CheckCircle, Eye, XCircle, ImageIcon, ImageOff } from 'lucid
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 import {
   Dialog,
   DialogContent,
@@ -139,15 +139,12 @@ const VerifyImage = () => {
     setVerifyingIds(prev => new Set(prev).add(studentId));
     
     try {
-      const token = localStorage.getItem('access_token');
+      const headers = await getApiHeadersAsync();
       const response = await fetch(
         `${getBaseUrl()}/institute-users/institute/${currentInstituteId}/users/${studentId}/verify-image`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers,
           body: JSON.stringify({ status: 'VERIFIED' })
         }
       );
@@ -196,15 +193,12 @@ const VerifyImage = () => {
     setRejectingIds(prev => new Set(prev).add(selectedStudent.id));
     
     try {
-      const token = localStorage.getItem('access_token');
+      const headers = await getApiHeadersAsync();
       const response = await fetch(
         `${getBaseUrl()}/institute-users/institute/${currentInstituteId}/users/${selectedStudent.id}/verify-image`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
+          headers,
           body: JSON.stringify({ 
             status: 'REJECTED',
             rejectionReason: rejectionReason 

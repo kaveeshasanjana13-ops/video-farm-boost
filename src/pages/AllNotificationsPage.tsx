@@ -1,5 +1,6 @@
 // src/pages/AllNotificationsPage.tsx
 import React, { useState, useEffect, useCallback } from 'react';
+import { useForceRefresh } from '@/hooks/useForceRefresh';
 import { Bell, CheckCheck, RefreshCw, Filter } from 'lucide-react';
 import { notificationApiService, Notification } from '@/services/notificationApiService';
 import { DateGroupedNotifications } from '@/components/notifications/DateGroupedNotifications';
@@ -18,6 +19,7 @@ import { toast } from '@/hooks/use-toast';
  */
 const AllNotificationsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { triggerForceRefresh } = useForceRefresh();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -112,6 +114,7 @@ const AllNotificationsPage: React.FC = () => {
   };
 
   const handleRefresh = () => {
+    triggerForceRefresh();
     loadNotifications();
     loadUnreadCount();
   };

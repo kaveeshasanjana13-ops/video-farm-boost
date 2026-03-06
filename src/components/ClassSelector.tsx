@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useForceRefresh } from '@/hooks/useForceRefresh';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -143,6 +144,7 @@ const ClassSelector = () => {
     selectedChild
   } = useAuth();
   const navigate = useNavigate();
+  const { triggerForceRefresh } = useForceRefresh();
   const {
     toast
   } = useToast();
@@ -611,6 +613,7 @@ const ClassSelector = () => {
   }
   const handleRefreshClick = () => {
     console.log('Manual refresh requested');
+    triggerForceRefresh();
     fetchClassesByRole(currentPage, pageSize, true);
   };
   const handleLoadDataClick = () => {

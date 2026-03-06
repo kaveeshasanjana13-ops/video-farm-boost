@@ -1,10 +1,9 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, Menu, Bell, User } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { buildSidebarUrl } from '@/utils/pageNavigation';
-import { notificationApiService } from '@/services/notificationApiService';
 
 interface BottomNavProps {
   onMenuClick: () => void;
@@ -14,17 +13,6 @@ const BottomNav = ({ onMenuClick }: BottomNavProps) => {
   const { selectedInstitute, selectedClass, selectedSubject, selectedChild, selectedOrganization, selectedTransport } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    const loadUnread = async () => {
-      try {
-        const result = await notificationApiService.getMyUnreadCount();
-        setUnreadCount(result.unreadCount || 0);
-      } catch { /* silent */ }
-    };
-    loadUnread();
-  }, [selectedInstitute?.id]);
 
   const isActive = useCallback((path: string) => {
     if (path === '/dashboard' || path === '/select-institute') {
@@ -54,8 +42,12 @@ const BottomNav = ({ onMenuClick }: BottomNavProps) => {
   }, [selectedInstitute?.id, selectedClass?.id, selectedSubject?.id, selectedChild?.id, selectedOrganization?.id, selectedTransport?.id, navigate]);
 
   const handleNotificationsClick = useCallback(() => {
-    navigate('/all-notifications');
-  }, [navigate]);
+    if (selectedInstitute?.id) {
+      navigate(`/institute/${selectedInstitute.id}/notifications`);
+    } else {
+      navigate('/notifications');
+    }
+  }, [selectedInstitute?.id, navigate]);
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-t border-border/50 pb-safe-bottom">
@@ -78,20 +70,13 @@ const BottomNav = ({ onMenuClick }: BottomNavProps) => {
         <button
           onClick={handleNotificationsClick}
           className={cn(
-            "flex flex-col items-center justify-center flex-1 h-full gap-0.5 transition-colors relative",
-            isActive('/all-notifications') || isActive('/notifications')
+            "flex flex-col items-center justify-center flex-1 h-full gap-0.5 transition-colors",
+            isActive('/notifications')
               ? "text-primary"
               : "text-muted-foreground"
           )}
         >
-          <div className="relative">
-            <Bell className="h-5 w-5" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1.5 -right-2 h-4 min-w-4 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold px-0.5">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </div>
+          <Bell className="h-5 w-5" />
           <span className="text-[10px] font-medium">Alerts</span>
         </button>
 

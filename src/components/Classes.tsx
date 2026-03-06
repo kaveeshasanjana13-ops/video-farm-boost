@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useForceRefresh } from '@/hooks/useForceRefresh';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import MUITable from '@/components/ui/mui-table';
 import { Badge } from '@/components/ui/badge';
@@ -73,6 +74,7 @@ const Classes = () => {
     user,
     selectedInstitute
   } = useAuth();
+  const { triggerForceRefresh } = useForceRefresh();
   const {
     toast
   } = useToast();
@@ -242,6 +244,7 @@ const Classes = () => {
     fetchClasses(false); // Normal load with cache
   };
   const handleRefresh = () => {
+    triggerForceRefresh();
     fetchClasses(true); // Force refresh, bypass cache
   };
   const handleClearFilters = () => {

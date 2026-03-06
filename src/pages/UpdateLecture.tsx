@@ -118,7 +118,7 @@ const UpdateLecture = () => {
         venue: formData.venue || null,
         startTime: formData.startTime ? new Date(formData.startTime).toISOString() : null,
         endTime: formData.endTime ? new Date(formData.endTime).toISOString() : null,
-        status: formData.status as 'scheduled' | 'completed' | 'cancelled' | 'in_progress',
+        status: formData.status as 'scheduled' | 'ongoing' | 'completed' | 'cancelled' | 'postponed',
         meetingLink: formData.meetingLink || null,
         meetingId: formData.meetingId || null,
         meetingPassword: formData.meetingPassword || null,
@@ -214,10 +214,10 @@ const UpdateLecture = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="scheduled">Scheduled</SelectItem>
-                    <SelectItem value="live">Live</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="ongoing">Ongoing</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="postponed">Postponed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

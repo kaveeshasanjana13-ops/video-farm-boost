@@ -67,9 +67,9 @@ const CreateInstituteLectureForm = ({ onClose, onSuccess }: CreateInstituteLectu
         lectureType: formData.lectureType as 'online' | 'physical',
         venue: formData.venue || null,
         subject: formData.subject,
-        startTime: formData.startTime || null,
-        endTime: formData.endTime || null,
-        status: formData.status as 'scheduled' | 'completed' | 'cancelled' | 'in_progress',
+        startTime: formData.startTime ? new Date(formData.startTime).toISOString() : null,
+        endTime: formData.endTime ? new Date(formData.endTime).toISOString() : null,
+        status: formData.status as 'scheduled' | 'completed' | 'cancelled' | 'ongoing' | 'postponed',
         meetingLink: formData.meetingLink || null,
         meetingId: formData.meetingId || null,
         meetingPassword: formData.meetingPassword || null,
@@ -210,9 +210,10 @@ const CreateInstituteLectureForm = ({ onClose, onSuccess }: CreateInstituteLectu
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="scheduled">Scheduled</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="ongoing">Ongoing</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="postponed">Postponed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -16,12 +16,12 @@ import { AccessControl } from '@/utils/permissions';
 import ProfileImageUpload from '@/components/ProfileImageUpload';
 import { apiClient } from '@/api/client';
 import { useToast } from '@/hooks/use-toast';
-import { User, Mail, Phone, MapPin, Calendar, Shield, Lock, Eye, EyeOff, Camera, Briefcase, GraduationCap, CreditCard, Languages, Monitor, Smartphone, Tablet, LogOut, ShieldAlert, RefreshCw, Link2, Pencil } from 'lucide-react';
-import ContactChangeDialog from '@/components/forms/ContactChangeDialog';
+import { User, Mail, Phone, MapPin, Calendar, Shield, Lock, Eye, EyeOff, Camera, Briefcase, GraduationCap, CreditCard, Languages, Monitor, Smartphone, Tablet, LogOut, ShieldAlert, RefreshCw, Link2, Trash2 } from 'lucide-react';
 import { getActiveSessions, revokeSession, revokeAllSessions } from '@/contexts/utils/auth.api';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import ConnectedApps from '@/components/ConnectedApps';
 import CurrentSelection from '@/components/ui/current-selection';
+import DeleteAccountTab from '@/components/profile/DeleteAccountTab';
 
 interface UserData {
   id: string;
@@ -54,20 +54,13 @@ interface UserData {
   language: string;
 }
 
-const InfoRow = ({ icon: Icon, label, value, onEdit }: { icon?: React.ElementType; label: string; value: string; onEdit?: () => void }) => (
+const InfoRow = ({ icon: Icon, label, value }: { icon?: React.ElementType; label: string; value: string }) => (
   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-3 border-b border-border/30 last:border-0">
     <div className="flex items-center gap-2 sm:w-36 shrink-0">
       {Icon && <Icon className="h-4 w-4 text-muted-foreground shrink-0" />}
       <span className="text-xs sm:text-sm text-muted-foreground">{label}</span>
     </div>
-    <div className="flex items-center gap-2 flex-1 min-w-0 pl-6 sm:pl-0">
-      <span className="text-sm font-medium text-foreground break-all flex-1">{value || '—'}</span>
-      {onEdit && (
-        <button onClick={onEdit} className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title={`Change ${label}`}>
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </div>
+    <span className="text-sm font-medium text-foreground break-all pl-6 sm:pl-0">{value || '—'}</span>
   </div>
 );
 
@@ -101,7 +94,7 @@ const Profile = () => {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokingAll, setRevokingAll] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
-  const [contactChangeType, setContactChangeType] = useState<'phone' | 'email' | null>(null);
+
   const loadSessions = async () => {
     setSessionsLoading(true);
     try {
@@ -406,7 +399,7 @@ const Profile = () => {
         setActiveProfileTab(val);
         if (val === 'devices' && sessions.length === 0) loadSessions();
       }}>
-        <TabsList className="w-full grid grid-cols-4 h-11 sm:h-10">
+        <TabsList className="w-full grid grid-cols-5 h-11 sm:h-10">
           <TabsTrigger value="details" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
             <User className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Details</span>
           </TabsTrigger>
@@ -418,6 +411,9 @@ const Profile = () => {
           </TabsTrigger>
           <TabsTrigger value="apps" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
             <Link2 className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Apps</span>
+          </TabsTrigger>
+          <TabsTrigger value="delete-account" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3 text-destructive data-[state=active]:text-destructive">
+            <Trash2 className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Delete</span>
           </TabsTrigger>
         </TabsList>
 
@@ -432,8 +428,8 @@ const Profile = () => {
               <AccordionContent>
                 <InfoRow label="Name with Initials" value={formData.nameWithInitials} />
                 <InfoRow label="Full Name" value={formData.name} />
-                <InfoRow icon={Mail} label="Email" value={formData.email} onEdit={() => setContactChangeType('email')} />
-                <InfoRow icon={Phone} label="Phone" value={formData.phone} onEdit={() => setContactChangeType('phone')} />
+                <InfoRow icon={Mail} label="Email" value={formData.email} />
+                <InfoRow icon={Phone} label="Phone" value={formData.phone} />
                 <InfoRow icon={Calendar} label="Date of Birth" value={formData.dateOfBirth} />
                 <InfoRow label="Gender" value={formData.gender} />
                 <InfoRow label="NIC" value={formData.nic} />
@@ -610,6 +606,10 @@ const Profile = () => {
         <TabsContent value="apps" className="mt-4">
           <ConnectedApps />
         </TabsContent>
+
+        <TabsContent value="delete-account" className="mt-4">
+          <DeleteAccountTab />
+        </TabsContent>
       </Tabs>
 
       {/* Logout Button - Mobile only */}
@@ -629,23 +629,6 @@ const Profile = () => {
         onClose={() => setShowImagePreview(false)}
         imageUrl={currentImageUrl}
         title="Profile Photo"
-      />
-      {/* Contact Change Dialog */}
-      <ContactChangeDialog
-        open={contactChangeType !== null}
-        onClose={() => setContactChangeType(null)}
-        type={contactChangeType || 'phone'}
-        currentValue={contactChangeType === 'email' ? formData.email : formData.phone}
-        onSuccess={(newValue) => {
-          if (contactChangeType === 'email') {
-            setFormData(prev => ({ ...prev, email: newValue }));
-            if (userData) setUserData({ ...userData, email: newValue });
-          } else {
-            setFormData(prev => ({ ...prev, phone: newValue }));
-            if (userData) setUserData({ ...userData, phone: newValue });
-          }
-          setContactChangeType(null);
-        }}
       />
     </div>
   );

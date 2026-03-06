@@ -26,6 +26,10 @@ class CachedApiClient {
   // Global rate limit tracking
   private rateLimitedUntil: number = 0;
   private readonly RATE_LIMIT_BACKOFF = 10000; // 10 seconds default backoff (reduced from 60s)
+  
+  // Global force refresh flag
+  private _globalForceRefresh: boolean = false;
+  private _globalForceRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.baseUrl = getBaseUrl();
@@ -165,10 +169,13 @@ class CachedApiClient {
     options: CachedRequestOptions = {}
   ): Promise<T> {
     const { 
-      forceRefresh = false, 
+      forceRefresh: optionForceRefresh = false, 
       ttl = 30, 
       useStaleWhileRevalidate = true 
     } = options;
+    
+    // Check global force refresh flag
+    const forceRefresh = optionForceRefresh || this._globalForceRefresh;
 
     const requestKey = this.generateRequestKey(endpoint, params, options);
     
@@ -717,6 +724,27 @@ class CachedApiClient {
     }
     
     return {} as T;
+  }
+  /**
+   * Enable global force refresh - ALL subsequent GET requests will bypass cache
+   */
+  enableGlobalForceRefresh(durationMs: number = 10000): void {
+    console.log('🔄 [CachedClient] Global force refresh ENABLED');
+    this._globalForceRefresh = true;
+    if (this._globalForceRefreshTimeout) clearTimeout(this._globalForceRefreshTimeout);
+    this._globalForceRefreshTimeout = setTimeout(() => {
+      this._globalForceRefresh = false;
+      this._globalForceRefreshTimeout = null;
+      console.log('🔄 [CachedClient] Global force refresh DISABLED');
+    }, durationMs);
+  }
+
+  disableGlobalForceRefresh(): void {
+    this._globalForceRefresh = false;
+    if (this._globalForceRefreshTimeout) {
+      clearTimeout(this._globalForceRefreshTimeout);
+      this._globalForceRefreshTimeout = null;
+    }
   }
 }
 

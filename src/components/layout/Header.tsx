@@ -99,8 +99,13 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   React.useEffect(() => {
     const loadUnread = async () => {
       try {
-        const result = await notificationApiService.getMyUnreadCount();
-        setUnreadCount(result.unreadCount || 0);
+        if (selectedInstitute?.id) {
+          const result = await notificationApiService.getInstituteUnreadCount(selectedInstitute.id);
+          setUnreadCount(result.unreadCount || 0);
+        } else {
+          const result = await notificationApiService.getSystemUnreadCount();
+          setUnreadCount(result.unreadCount || 0);
+        }
       } catch { /* silent */ }
     };
     loadUnread();
@@ -362,7 +367,17 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           {/* Notification Bell */}
           <button
             onClick={() => {
-              navigate('/all-notifications');
+              if (selectedInstitute?.id) {
+                const context = {
+                  instituteId: selectedInstitute.id,
+                  classId: selectedClass?.id,
+                  subjectId: selectedSubject?.id,
+                };
+                const url = buildSidebarUrl('institute-notifications', context);
+                navigate(url);
+              } else {
+                navigate('/notifications');
+              }
             }}
             className="relative p-2.5 rounded-xl hover:bg-muted/60 active:scale-95 transition-all"
             aria-label="Notifications"

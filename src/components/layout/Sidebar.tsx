@@ -1017,28 +1017,40 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
     // For Teacher - show specific attendance items based on selection state
     if (userRole === 'Teacher') {
-      // 3. Teacher with institute and class selected (with or without subject)
-      if (selectedInstitute && selectedClass) {
-        return [
-          {
-            id: 'daily-attendance',
-            label: 'Daily Attendance',
-            icon: UserCheck,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'qr-attendance',
-            label: 'Mark Attendance',
-            icon: QrCode,
-            permission: 'mark-attendance',
-            alwaysShow: false
-          }
-        ];
-      }
-
-      // For other teacher states, no attendance items
-      return [];
+      if (!selectedInstitute) return [];
+      
+      // Teacher with institute selected (with or without class)
+      const items = [
+        {
+          id: 'daily-attendance',
+          label: 'Daily Attendance',
+          icon: UserCheck,
+          permission: 'view-attendance',
+          alwaysShow: false
+        },
+        {
+          id: 'qr-attendance',
+          label: 'Mark Attendance',
+          icon: QrCode,
+          permission: 'mark-attendance',
+          alwaysShow: false
+        },
+        {
+          id: 'calendar-view',
+          label: 'Calendar View',
+          icon: Calendar,
+          permission: 'view-attendance',
+          alwaysShow: false
+        },
+        {
+          id: 'today-dashboard',
+          label: 'Today',
+          icon: CalendarDays,
+          permission: 'view-dashboard',
+          alwaysShow: false
+        }
+      ];
+      return items;
     }
 
     // For InstituteAdmin - show specific attendance items based on selection
@@ -1104,13 +1116,27 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             icon: QrCode,
             permission: 'mark-attendance',
             alwaysShow: false
+          },
+          {
+            id: 'calendar-view',
+            label: 'Calendar View',
+            icon: Calendar,
+            permission: 'view-attendance',
+            alwaysShow: false
+          },
+          {
+            id: 'today-dashboard',
+            label: 'Today',
+            icon: CalendarDays,
+            permission: 'view-dashboard',
+            alwaysShow: false
           }
         ];
       }
     }
 
-    // For AttendanceMarker with class selected - only Daily Attendance and Mark Attendance
-    if (userRole === 'AttendanceMarker' && selectedInstitute && selectedClass) {
+    // For AttendanceMarker with institute selected
+    if (userRole === 'AttendanceMarker' && selectedInstitute) {
       return [
         {
           id: 'daily-attendance',
@@ -1125,6 +1151,20 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           icon: QrCode,
           permission: 'mark-attendance',
           alwaysShow: true
+        },
+        {
+          id: 'calendar-view',
+          label: 'Calendar View',
+          icon: Calendar,
+          permission: 'view-attendance',
+          alwaysShow: false
+        },
+        {
+          id: 'today-dashboard',
+          label: 'Today',
+          icon: CalendarDays,
+          permission: 'view-dashboard',
+          alwaysShow: false
         }
       ];
     }

@@ -496,7 +496,7 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
                     <Collapsible key={item.id || item._id} open={isOpen} onOpenChange={() => setExpandedLecture(isOpen ? null : (item.id || item._id))}>
                       <CollapsibleTrigger asChild>
                         <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                          <CardContent className="p-4 flex items-center justify-between">
+                          <CardContent className="p-4 flex items-center justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm truncate">{item.title}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">
@@ -507,7 +507,26 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
                                 <Badge variant={item.status === 'scheduled' ? 'default' : item.status === 'completed' ? 'secondary' : 'destructive'} className="text-[10px] px-1.5 py-0">{item.status}</Badge>
                               </p>
                             </div>
-                            <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                            {/* Quick action buttons visible on card header for Students */}
+                            {userRole === 'Student' && (
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {item.meetingLink && (
+                                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-7 text-xs px-2" onClick={(e) => { e.stopPropagation(); window.open(item.meetingLink, '_blank'); }}>
+                                    <ExternalLink className="h-3 w-3 mr-1" />Join
+                                  </Button>
+                                )}
+                                {recUrl && (
+                                  <Button size="sm" variant="default" className="h-7 text-xs px-2" onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isYouTubeOrDrive(recUrl)) { setVideoPreviewUrl(recUrl); setVideoPreviewTitle(item.title || 'Recording'); }
+                                    else { window.open(recUrl, '_blank'); }
+                                  }}>
+                                    <Video className="h-3 w-3 mr-1" />Rec
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                            <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                           </CardContent>
                         </Card>
                       </CollapsibleTrigger>

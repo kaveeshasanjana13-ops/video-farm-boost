@@ -34,7 +34,6 @@ export type DriveUploadPurpose =
   | 'HOMEWORK_CORRECTION'
   | 'EXAM_SUBMISSION'
   | 'PROFILE_DOCUMENT'
-  | 'ID_CARD_PAYMENT'
   | 'GENERAL';
 
 export interface DriveFolder {

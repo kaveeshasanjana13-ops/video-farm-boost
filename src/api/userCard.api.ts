@@ -42,13 +42,7 @@ export enum OrderStatus {
 
 export enum PaymentType {
   SLIP_UPLOAD = 'SLIP_UPLOAD',
-  VISA_MASTER = 'VISA_MASTER',
-  BANK_TRANSFER = 'BANK_TRANSFER'
-}
-
-export enum UploadMethod {
-  CLOUD_STORAGE = 'CLOUD_STORAGE',
-  GOOGLE_DRIVE = 'GOOGLE_DRIVE'
+  VISA_MASTER = 'VISA_MASTER'
 }
 
 export enum PaymentStatus {
@@ -80,10 +74,6 @@ export interface CardPayment {
   id: number;
   orderId: number;
   submissionUrl: string;
-  uploadMethod: UploadMethod;
-  driveFileId: string | null;
-  driveWebViewLink: string | null;
-  driveFileName: string | null;
   paymentType: PaymentType;
   paymentAmount: number;
   paymentReference: string | null;
@@ -179,37 +169,6 @@ export interface SubmitPaymentRequest {
   paymentType: PaymentType;
   paymentAmount: number;
   paymentReference?: string;
-  notes?: string;
-}
-
-export interface SubmitDrivePaymentRequest {
-  driveFileId: string;
-  driveWebViewLink: string;
-  driveFileName?: string;
-  paymentType: PaymentType;
-  paymentAmount: number;
-  paymentReference?: string;
-  notes?: string;
-}
-
-export interface PaymentSlipUploadUrlRequest {
-  fileName: string;
-  contentType: string;
-}
-
-export interface PaymentSlipUploadUrlResponse {
-  uploadUrl: string;
-  relativePath: string;
-  expiresAt: string;
-  maxFileSize: number;
-  contentType: string;
-  instructions: string;
-  fields?: Record<string, string>;
-}
-
-export interface PaymentSlipViewUrlResponse {
-  viewUrl: string;
-  expiresAt: string;
 }
 
 export interface UpdateCardStatusRequest {
@@ -248,43 +207,11 @@ class UserCardApi {
   }
 
   /**
-   * Submit payment for an order (Cloud Storage)
+   * Submit payment for an order
    */
   async submitPayment(orderId: number, data: SubmitPaymentRequest): Promise<CardPayment> {
-    console.log('💳 Submitting payment for order:', orderId);
+    console.log('💳 Submitting payment for order:', orderId, data);
     return apiClient.post<CardPayment>(`/user-card/orders/${orderId}/payment`, data);
-  }
-
-  /**
-   * Submit payment for an order (Google Drive)
-   */
-  async submitDrivePayment(orderId: number, data: SubmitDrivePaymentRequest): Promise<CardPayment> {
-    console.log('💳 Submitting Drive payment for order:', orderId);
-    return apiClient.post<CardPayment>(`/user-card/orders/${orderId}/payment/drive`, data);
-  }
-
-  /**
-   * Get signed upload URL for payment slip
-   */
-  async getPaymentSlipUploadUrl(orderId: number, data: PaymentSlipUploadUrlRequest): Promise<PaymentSlipUploadUrlResponse> {
-    console.log('📤 Getting upload URL for order:', orderId);
-    return apiClient.post<PaymentSlipUploadUrlResponse>(`/user-card/orders/${orderId}/payment-slip/upload-url`, data);
-  }
-
-  /**
-   * Verify payment slip upload
-   */
-  async verifyPaymentSlipUpload(orderId: number, relativePath: string): Promise<any> {
-    console.log('✅ Verifying upload for order:', orderId);
-    return apiClient.post(`/user-card/orders/${orderId}/payment-slip/verify`, { relativePath });
-  }
-
-  /**
-   * Get signed view URL for payment slip
-   */
-  async getPaymentSlipViewUrl(orderId: number, relativePath: string): Promise<PaymentSlipViewUrlResponse> {
-    console.log('👁️ Getting view URL for order:', orderId);
-    return apiClient.get<PaymentSlipViewUrlResponse>(`/user-card/orders/${orderId}/payment-slip/view-url`, { relativePath });
   }
 
   /**
