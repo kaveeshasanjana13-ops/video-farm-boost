@@ -1146,6 +1146,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <NotificationsPage />;
       case 'institute-payments':
         return <InstitutePayments />;
+      case 'pending-submissions':
+        return <PendingSubmissions />;
       case 'subject-payments':
         return <SubjectPayments />;
       case 'my-submissions':
