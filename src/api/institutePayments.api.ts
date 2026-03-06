@@ -9,8 +9,9 @@ export interface InstitutePayment {
   description: string;
   amount: number;
   dueDate: string;
-  targetType: 'PARENTS' | 'STUDENT' | 'BOTH';
-  priority: 'MANDATORY' | 'OPTIONAL';
+  targetType: 'PARENTS' | 'STUDENTS' | 'BOTH';
+  priority: 'MANDATORY' | 'OPTIONAL' | 'DONATION';
+  status: 'ACTIVE' | 'INACTIVE' | 'COMPLETED' | 'EXPIRED';
   status: 'ACTIVE' | 'INACTIVE';
   paymentInstructions?: string;
   bankDetails?: {
