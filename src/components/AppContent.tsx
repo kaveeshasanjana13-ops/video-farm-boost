@@ -86,6 +86,7 @@ import SubjectPayments from '@/pages/SubjectPayments';
 import SubjectSubmissions from '@/pages/SubjectSubmissions';
 import SubjectPaymentSubmissions from '@/pages/SubjectPaymentSubmissions';
 import MySubmissions from '@/pages/MySubmissions';
+import PendingSubmissions from '@/pages/PendingSubmissions';
 import HomeworkSubmissions from '@/pages/HomeworkSubmissions';
 import ExamResults from '@/pages/ExamResults';
 import CreateExamResults from '@/pages/CreateExamResults';
@@ -698,6 +699,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <Organizations />;
         case 'institute-payments':
           return <InstitutePayments />;
+        case 'pending-submissions':
+          return <PendingSubmissions />;
         case 'subject-payments':
           return <SubjectPayments />;
         case 'subject-submissions':
@@ -881,6 +884,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <InstituteProfile />;
         case 'institute-payments':
           return <InstitutePayments />;
+        case 'pending-submissions':
+          return <PendingSubmissions />;
         case 'subject-payments':
           return <SubjectPayments />;
         case 'subject-submissions':
@@ -1141,6 +1146,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <NotificationsPage />;
       case 'institute-payments':
         return <InstitutePayments />;
+      case 'pending-submissions':
+        return <PendingSubmissions />;
       case 'subject-payments':
         return <SubjectPayments />;
       case 'my-submissions':

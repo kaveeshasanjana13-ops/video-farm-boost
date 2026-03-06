@@ -5,7 +5,7 @@ import { useInstituteRole } from '@/hooks/useInstituteRole';
 import SubjectDashboard from '@/pages/SubjectDashboard';
 import ParentChildrenSelector from './ParentChildrenSelector';
 import { Users } from 'lucide-react';
-import UnderMaintenance from './UnderMaintenance';
+
 import MobileDashboard from './MobileDashboard';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -54,10 +54,9 @@ const Dashboard = () => {
     );
   }
 
-  // Subject-level dashboard - show MobileDashboard on mobile, UnderMaintenance on desktop
+  // Subject-level dashboard
   if (hasSubjectContext) {
-    if (isMobile) return <MobileDashboard />;
-    return <UnderMaintenance />;
+    return <MobileDashboard />;
   }
 
   // Special handling for Parent role - child selector
@@ -77,8 +76,7 @@ const Dashboard = () => {
     );
   }
 
-  // For all roles - show mobile dashboard on mobile, under maintenance on desktop
-  if (isMobile) return <MobileDashboard />;
-  return <UnderMaintenance />;
+  // For all roles - show dashboard grid
+  return <MobileDashboard />;
 };
 export default Dashboard;

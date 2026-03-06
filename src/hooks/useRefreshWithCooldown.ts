@@ -1,7 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { cachedApiClient } from '@/api/cachedClient';
-import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 
 /**
  * Custom hook to handle refresh with cooldown period
@@ -58,9 +56,8 @@ export function useRefreshWithCooldown(cooldownSeconds: number = 10) {
 
     setIsRefreshing(true);
     try {
-      // Enable global force refresh so all API calls bypass cache
-      cachedApiClient.enableGlobalForceRefresh(10000);
-      enhancedCachedClient.enableGlobalForceRefresh(10000);
+      // Just call the refresh function - it passes forceRefresh=true to individual API calls
+      // No global cache bypass needed; cache stays valid for other data
       await refreshFn();
       
       if (options?.successMessage !== false) {
