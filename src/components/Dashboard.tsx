@@ -76,8 +76,7 @@ const Dashboard = () => {
     );
   }
 
-  // For all roles - show mobile dashboard on mobile, under maintenance on desktop
-  if (isMobile) return <MobileDashboard />;
-  return <UnderMaintenance />;
+  // For all roles - show dashboard grid
+  return <MobileDashboard />;
 };
 export default Dashboard;
