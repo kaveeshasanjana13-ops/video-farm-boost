@@ -5,7 +5,7 @@ import { useInstituteRole } from '@/hooks/useInstituteRole';
 import SubjectDashboard from '@/pages/SubjectDashboard';
 import ParentChildrenSelector from './ParentChildrenSelector';
 import { Users } from 'lucide-react';
-import UnderMaintenance from './UnderMaintenance';
+
 import MobileDashboard from './MobileDashboard';
 import { useIsMobile } from '@/hooks/use-mobile';
 
