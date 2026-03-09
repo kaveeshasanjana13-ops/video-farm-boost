@@ -46,12 +46,12 @@ export const DateGroupedNotifications: React.FC<DateGroupedNotificationsProps> =
     <div>
       {groups.map((group) => (
         <div key={group.label}>
-          <div className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm px-4 py-1.5 border-b">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-md px-4 py-2 border-b border-border/40">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
               {group.label}
             </span>
           </div>
-          <div className="divide-y">
+          <div className="divide-y divide-border/30">
             {group.items.map((notification) => (
               <NotificationItem
                 key={notification.id}

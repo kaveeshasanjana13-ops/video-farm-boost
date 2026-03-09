@@ -6,8 +6,7 @@ import SubjectDashboard from '@/pages/SubjectDashboard';
 import ParentChildrenSelector from './ParentChildrenSelector';
 import { Users } from 'lucide-react';
 
-import MobileDashboard from './MobileDashboard';
-import { useIsMobile } from '@/hooks/use-mobile';
+import DesktopDashboard from './dashboard/DesktopDashboard';
 
 const Dashboard = () => {
   const {
@@ -20,7 +19,6 @@ const Dashboard = () => {
   } = useAuth();
 
   const userRole = useInstituteRole();
-  const isMobile = useIsMobile();
   const location = useLocation();
   
   // Check URL path as fallback for subject-level context
@@ -56,7 +54,7 @@ const Dashboard = () => {
 
   // Subject-level dashboard
   if (hasSubjectContext) {
-    return <MobileDashboard />;
+    return <DesktopDashboard />;
   }
 
   // Special handling for Parent role - child selector
@@ -76,7 +74,7 @@ const Dashboard = () => {
     );
   }
 
-  // For all roles - show dashboard grid
-  return <MobileDashboard />;
+  // For all roles - show unified dashboard
+  return <DesktopDashboard />;
 };
 export default Dashboard;

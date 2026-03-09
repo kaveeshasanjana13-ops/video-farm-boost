@@ -13,6 +13,7 @@ import type {
   DeleteCalendarResponse,
   CacheStats,
   CalendarApiResponse,
+  CalendarViewData,
 } from '@/types/calendar.types';
 
 const calendarApi = {
@@ -88,6 +89,14 @@ const calendarApi = {
   getByDate(instituteId: string, date: string) {
     return apiClient.get<CalendarApiResponse<CalendarDay>>(
       `/institutes/${instituteId}/calendar/date/${date}`
+    );
+  },
+
+  /** 9.2c — Get role-aware calendar month view (teacher/student supported) */
+  getCalendarView(instituteId: string, params?: Record<string, any>) {
+    return apiClient.get<CalendarApiResponse<CalendarDay[] | CalendarViewData>>(
+      `/institute/${instituteId}/calendar-view`,
+      params
     );
   },
 

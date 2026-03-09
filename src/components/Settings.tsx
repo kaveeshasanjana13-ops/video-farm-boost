@@ -4,19 +4,24 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { CustomToggle } from '@/components/ui/custom-toggle';
+import InstituteSettingsTab from '@/components/institute-settings/InstituteSettingsTab';
+import InstituteProfileCard from '@/components/institute-settings/InstituteProfileCard';
 
 import { 
   Sun,
   LayoutGrid, 
   Table2,
   Palette,
-  Settings2,
+  Building2,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 const settingsTabs = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'institute', label: 'Institute', icon: Building2 },
+  { id: 'profile', label: 'Institute Profile', icon: User },
 ];
 
 const Settings = () => {
@@ -143,7 +148,13 @@ const Settings = () => {
         </Card>
       )}
 
-      
+      {activeTab === 'institute' && <InstituteSettingsTab />}
+
+      {activeTab === 'profile' && (
+        <div className="max-w-lg">
+          <InstituteProfileCard />
+        </div>
+      )}
     </div>
   );
 };

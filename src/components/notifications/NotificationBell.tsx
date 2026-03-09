@@ -1,8 +1,7 @@
 // src/components/notifications/NotificationBell.tsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Popover,
   PopoverContent,
@@ -11,6 +10,7 @@ import {
 import { notificationApiService, Notification } from '@/services/notificationApiService';
 import { NotificationItem } from './NotificationItem';
 import { useNavigate } from 'react-router-dom';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 import { cn } from '@/lib/utils';
 
 interface NotificationBellProps {
@@ -18,74 +18,31 @@ interface NotificationBellProps {
   className?: string;
 }
 
-/**
- * Notification Bell Component for Header
- * Shows unread count and quick preview of notifications
- */
 export const NotificationBell: React.FC<NotificationBellProps> = ({
   instituteId,
   className,
 }) => {
   const navigate = useNavigate();
+  const { globalUnreadCount, decrementUnread } = useNotificationStore();
   const [open, setOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
-
-  // DISABLED: Unread count API calls commented out to reduce unnecessary API costs
-  // These calls were polling every 30 seconds which is expensive and not needed for basic display
-  // The notification count will only update when user explicitly opens the bell
-  // const loadUnreadCount = useCallback(async () => {
-  //   try {
-  //     if (instituteId) {
-  //       const result = await notificationApiService.getInstituteUnreadCount(instituteId);
-  //       setUnreadCount(result.unreadCount || 0);
-  //     } else {
-  //       const result = await notificationApiService.getSystemUnreadCount();
-  //       setUnreadCount(result.unreadCount || 0);
-  //     }
-  //   } catch (error) {
-  //     console.error('Failed to load unread count:', error);
-  //   }
-  // }, [instituteId]);
 
   const loadRecentNotifications = useCallback(async () => {
     try {
       setLoading(true);
-      if (instituteId) {
-        const result = await notificationApiService.getInstituteNotifications(
-          instituteId,
-          { page: 1, limit: 5 }
-        );
-        setNotifications(result.data || []);
-        // Update unread count from the fetched data instead of separate API call
-        setUnreadCount(result.data?.filter(n => !n.isRead).length || 0);
-      } else {
-        const result = await notificationApiService.getSystemNotifications({
-          page: 1,
-          limit: 5
-        });
-        setNotifications(result.data || []);
-        // Update unread count from the fetched data instead of separate API call
-        setUnreadCount(result.data?.filter(n => !n.isRead).length || 0);
-      }
+      const result = await notificationApiService.getMyNotifications({
+        page: 1,
+        limit: 5,
+      });
+      setNotifications(result.data || []);
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
       setLoading(false);
     }
-  }, [instituteId]);
+  }, []);
 
-  // DISABLED: Polling removed to save API costs
-  // Unread count will be calculated from notifications when user opens the bell
-  // useEffect(() => {
-  //   loadUnreadCount();
-  //   // Poll for new notifications every 30 seconds
-  //   const interval = setInterval(loadUnreadCount, 30000);
-  //   return () => clearInterval(interval);
-  // }, [loadUnreadCount]);
-
-  // Load notifications only when bell is opened (cost-effective approach)
   useEffect(() => {
     if (open) {
       loadRecentNotifications();
@@ -98,7 +55,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
       setNotifications(prev =>
         prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
       );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      decrementUnread();
     } catch (error) {
       console.error('Failed to mark as read:', error);
     }
@@ -113,7 +70,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const handleViewAll = () => {
     setOpen(false);
-    navigate(instituteId ? `/institute/${instituteId}/notifications` : '/notifications');
+    navigate('/all-notifications');
   };
 
   return (
@@ -122,61 +79,76 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         <Button
           variant="ghost"
           size="icon"
-          className={cn('relative', className)}
-          aria-label={`Notifications ${unreadCount > 0 ? `(${unreadCount} unread)` : ''}`}
+          className={cn('relative rounded-xl', className)}
+          aria-label={`Notifications ${globalUnreadCount > 0 ? `(${globalUnreadCount} unread)` : ''}`}
         >
           <Bell className="h-5 w-5" />
-          {unreadCount > 0 && (
-            <Badge
-              variant="destructive"
-              className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-xs"
-            >
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </Badge>
+          {globalUnreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 h-[18px] min-w-[18px] flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1 animate-in zoom-in-50 duration-200">
+              {globalUnreadCount > 99 ? '99+' : globalUnreadCount}
+            </span>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <h4 className="font-semibold">
-            {instituteId ? 'Institute Notifications' : 'Notifications'}
-          </h4>
-          {unreadCount > 0 && (
-            <Badge variant="secondary">{unreadCount} new</Badge>
-          )}
+      <PopoverContent className="w-[340px] sm:w-[380px] p-0 rounded-2xl shadow-xl border-border/50" align="end" sideOffset={8}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-sm">Notifications</h4>
+            {globalUnreadCount > 0 && (
+              <span className="inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                {globalUnreadCount} new
+              </span>
+            )}
+          </div>
         </div>
 
-        <div className="max-h-[400px] overflow-y-auto">
+        {/* List */}
+        <div className="max-h-[360px] overflow-y-auto">
           {loading ? (
-            <div className="p-4 text-center text-muted-foreground">
-              Loading...
+            <div className="p-6 space-y-3">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="flex gap-3 animate-pulse">
+                  <div className="h-10 w-10 rounded-xl bg-muted" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3.5 w-3/4 bg-muted rounded" />
+                    <div className="h-3 w-full bg-muted rounded" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : notifications.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>No notifications</p>
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="h-12 w-12 rounded-2xl bg-muted flex items-center justify-center mb-3">
+                <Bell className="h-6 w-6 text-muted-foreground/50" />
+              </div>
+              <p className="text-sm text-muted-foreground">No notifications yet</p>
+              <p className="text-xs text-muted-foreground/60 mt-0.5">You're all caught up!</p>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-border/40">
               {notifications.map((notification) => (
                 <NotificationItem
                   key={notification.id}
                   notification={notification}
                   onMarkAsRead={handleMarkAsRead}
                   onClick={handleNotificationClick}
+                  compact
                 />
               ))}
             </div>
           )}
         </div>
 
-        <div className="border-t p-2">
+        {/* Footer */}
+        <div className="border-t border-border/50 p-2">
           <Button
             variant="ghost"
-            className="w-full"
+            className="w-full h-9 text-sm font-medium text-primary hover:text-primary hover:bg-primary/5 rounded-xl gap-1.5"
             onClick={handleViewAll}
           >
             View all notifications
+            <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </div>
       </PopoverContent>

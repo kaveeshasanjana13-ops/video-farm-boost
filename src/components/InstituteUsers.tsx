@@ -34,7 +34,7 @@ import AssignUserMethodsDialog from '@/components/forms/AssignUserMethodsDialog'
 import { usersApi, BasicUser } from '@/api/users.api';
 import UserInfoDialog from '@/components/forms/UserInfoDialog';
 import UserOrganizationsDialog from '@/components/forms/UserOrganizationsDialog';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { getBaseUrl, getAccessTokenAsync } from '@/contexts/utils/auth.api';
 import ImagePreviewModal from '@/components/ImagePreviewModal';
 import StudentDetailsDialog from '@/components/forms/StudentDetailsDialog';
 import { uploadWithSignedUrl } from '@/utils/signedUploadHelper';
@@ -426,7 +426,7 @@ const InstituteUsers = () => {
 
       // Step 2: Send relativePath as imageUrl to backend
       console.log('Step 2: Sending relativePath to backend...');
-      const token = localStorage.getItem('access_token');
+      const token = await getAccessTokenAsync();
       const requestBody = {
         imageUrl: relativePath
       };

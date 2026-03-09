@@ -50,6 +50,8 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import GoogleAuthCallback from "@/pages/GoogleAuthCallback";
 import ActiveSessionsPage from "@/pages/ActiveSessions";
 import ActivateAccount from "@/pages/ActivateAccount";
+import CreateAccount from "@/pages/CreateAccount";
+import RegisterInstitute from "@/pages/RegisterInstitute";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -177,6 +179,19 @@ const App = () => {
                 <Route path="/activate/identify" element={<ActivateAccount />} />
                 <Route path="/activate/verify" element={<ActivateAccount />} />
                 <Route path="/activate/profile" element={<ActivateAccount />} />
+
+                {/* Create Account Routes (Public Registration) */}
+                <Route path="/register/step1" element={<CreateAccount />} />
+                <Route path="/register/verify" element={<CreateAccount />} />
+                <Route path="/register/parents" element={<CreateAccount />} />
+                <Route path="/register/details/personal-information" element={<CreateAccount />} />
+                <Route path="/register/details/address" element={<CreateAccount />} />
+                <Route path="/register/details/additional" element={<CreateAccount />} />
+                <Route path="/register/student" element={<CreateAccount />} />
+                <Route path="/register/review" element={<CreateAccount />} />
+
+                {/* Register Institute Routes */}
+                <Route path="/register/institute" element={<RegisterInstitute />} />
 
                 {/* Hierarchical Routes with Context */}
                 <Route path="/institute/:instituteId/*" element={<Index />} />

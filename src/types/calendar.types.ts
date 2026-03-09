@@ -268,6 +268,25 @@ export interface CalendarApiResponse<T> {
   count?: number;
 }
 
+export interface CalendarViewSummary {
+  working: number;
+  holidays: number;
+  weekends: number;
+  exams: number;
+  special: number;
+}
+
+export interface CalendarViewData {
+  userType?: string;
+  attendanceUserType?: string;
+  role?: string;
+  days?: CalendarDay[];
+  calendarDays?: CalendarDay[];
+  items?: CalendarDay[];
+  monthSummary?: Partial<CalendarViewSummary>;
+  [key: string]: unknown;
+}
+
 // ============= DELETE CALENDAR RESPONSE =============
 
 export interface DeleteCalendarResponse {

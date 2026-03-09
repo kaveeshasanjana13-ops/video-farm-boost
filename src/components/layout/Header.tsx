@@ -25,8 +25,8 @@ import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { cachedApiClient } from '@/api/cachedClient';
 import SafeImage from '@/components/ui/SafeImage';
 import { getImageUrl } from '@/utils/imageUrlHelper';
-import { notificationApiService } from '@/services/notificationApiService';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 import { buildSidebarUrl } from '@/utils/pageNavigation';
 
 interface HeaderProps {
@@ -44,7 +44,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const effectiveRole = useInstituteRole();
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { globalUnreadCount: unreadCount, initUnreadCount } = useNotificationStore();
   const [instituteDrawerOpen, setInstituteDrawerOpen] = useState(false);
   const [classDrawerOpen, setClassDrawerOpen] = useState(false);
   
@@ -96,20 +96,10 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     return () => { cancelled = true; };
   }, [selectedInstitute?.id]);
 
+  // Init unread count ONCE on mount
   React.useEffect(() => {
-    const loadUnread = async () => {
-      try {
-        if (selectedInstitute?.id) {
-          const result = await notificationApiService.getInstituteUnreadCount(selectedInstitute.id);
-          setUnreadCount(result.unreadCount || 0);
-        } else {
-          const result = await notificationApiService.getSystemUnreadCount();
-          setUnreadCount(result.unreadCount || 0);
-        }
-      } catch { /* silent */ }
-    };
-    loadUnread();
-  }, [selectedInstitute?.id]);
+    initUnreadCount();
+  }, [initUnreadCount]);
 
   // Reset classes loaded when institute changes
   React.useEffect(() => {

@@ -710,11 +710,25 @@ const Login = ({
                 </Button>
 
                 {/* First Time Login Link */}
-                {useApiLogin && <div className="text-center pt-2">
-                    <span className="text-xs md:text-sm text-muted-foreground">Registered by another one? </span>
-                    <Button type="button" variant="link" onClick={() => loginNavigate('/activate/identify')} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto font-medium">
-                      Activate your account
-                    </Button>
+                {useApiLogin && <div className="text-center pt-2 space-y-1.5">
+                    <div>
+                      <span className="text-xs md:text-sm text-muted-foreground">Registered by another one? </span>
+                      <Button type="button" variant="link" onClick={() => loginNavigate('/activate/identify')} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto font-medium">
+                        Activate your account
+                      </Button>
+                    </div>
+                    <div>
+                      <span className="text-xs md:text-sm text-muted-foreground">New here? </span>
+                      <Button type="button" variant="link" onClick={() => loginNavigate('/register/step1')} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto font-medium">
+                        Create Account
+                      </Button>
+                    </div>
+                    <div>
+                      <span className="text-xs md:text-sm text-muted-foreground">Have an institute? </span>
+                      <Button type="button" variant="link" onClick={() => loginNavigate('/register/institute')} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto font-medium">
+                        Register Institute
+                      </Button>
+                    </div>
                   </div>}
               </form>}
 

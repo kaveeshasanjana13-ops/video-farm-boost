@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
@@ -40,7 +41,8 @@ import {
   Lock,
   Bell,
   Calendar,
-  CalendarDays
+  CalendarDays,
+  ChevronDown
 } from 'lucide-react';
 import surakshaLogoSidebar from '@/assets/suraksha-logo-sidebar.png';
 
@@ -50,51 +52,88 @@ interface SidebarProps {
 }
 
 // Extracted outside Sidebar to prevent re-creation on every render
-const SidebarSection = React.memo(({ title, items, isCollapsed, sidebarHighlightPage, onItemClick, filterFn }: {
+// Sections that should always be expanded (no dropdown)
+const ALWAYS_OPEN_SECTIONS = ['Main', 'Select Institute', 'My Children', 'Select Child Institute'];
+
+const SidebarSection = React.memo(({ title, items, isCollapsed, sidebarHighlightPage, onItemClick, filterFn, sectionIcon }: {
   title: string;
   items: any[];
   isCollapsed: boolean;
   sidebarHighlightPage: string;
   onItemClick: (id: string) => void;
   filterFn: (items: any[]) => any[];
+  sectionIcon?: React.ReactNode;
 }) => {
   const filteredItems = filterFn(items);
-  
   if (filteredItems.length === 0) return null;
 
-  return (
-    <div className="mb-4 sm:mb-6">
-      {!isCollapsed && (
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-3">
-          {title}
-        </h3>
-      )}
-      <div className="space-y-1">
-        {filteredItems.map((item) => (
+  const hasActiveItem = filteredItems.some(item => sidebarHighlightPage === item.id);
+  const alwaysOpen = ALWAYS_OPEN_SECTIONS.includes(title);
+
+  const renderItems = () => (
+    <div className="space-y-0.5">
+      {filteredItems.map((item) => {
+        const isActive = sidebarHighlightPage === item.id;
+        return (
           <Button
             key={item.id}
-            variant={sidebarHighlightPage === item.id ? "secondary" : "ghost"}
-            className={`w-full ${isCollapsed ? 'justify-center px-2' : 'justify-start px-3'} h-9 sm:h-10 text-sm ${
-              sidebarHighlightPage === item.id 
-                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-r-2 border-blue-500' 
+            variant="ghost"
+            className={`w-full ${isCollapsed ? 'justify-center px-2' : 'justify-start px-3'} h-8 text-[13px] font-medium rounded-lg transition-all duration-150 ${
+              isActive
+                ? 'bg-primary/10 text-primary border-l-2 border-primary shadow-sm' 
                 : item.locked 
-                  ? 'text-muted-foreground/50 cursor-not-allowed opacity-60' 
-                  : 'text-foreground/70 hover:bg-muted hover:text-foreground'
+                  ? 'text-muted-foreground/40 cursor-not-allowed' 
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
             onClick={() => !item.locked && onItemClick(item.id)}
             disabled={item.locked}
           >
-            <item.icon className={`${isCollapsed ? '' : 'mr-3'} h-4 w-4 flex-shrink-0`} />
+            <item.icon className={`${isCollapsed ? '' : 'mr-2.5'} h-4 w-4 flex-shrink-0 ${isActive ? 'text-primary' : ''}`} />
             {!isCollapsed && (
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 truncate">
                 {item.label}
-                {item.locked && <Lock className="h-3 w-3" />}
+                {item.locked && <Lock className="h-3 w-3 opacity-50" />}
               </span>
             )}
           </Button>
-        ))}
-      </div>
+        );
+      })}
     </div>
+  );
+
+  // For always-open sections or collapsed sidebar, render flat
+  if (alwaysOpen || isCollapsed) {
+    return (
+      <div className="mb-1">
+        {!isCollapsed && (
+          <h3 className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.08em] mb-1 px-3 pt-2">
+            {title}
+          </h3>
+        )}
+        {renderItems()}
+      </div>
+    );
+  }
+
+  // Collapsible dropdown for other sections
+  return (
+    <Collapsible defaultOpen={hasActiveItem} className="mb-0.5">
+      <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-1.5 group hover:bg-accent/50 rounded-lg transition-colors">
+        <div className="flex items-center gap-2">
+          {sectionIcon && <span className="text-muted-foreground/70">{sectionIcon}</span>}
+          <span className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-[0.06em]">
+            {title}
+          </span>
+          {hasActiveItem && (
+            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+          )}
+        </div>
+        <ChevronDown className="h-3 w-3 text-muted-foreground/50 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pl-1 pt-0.5">
+        {renderItems()}
+      </CollapsibleContent>
+    </Collapsible>
   );
 });
 SidebarSection.displayName = 'SidebarSection';
@@ -1019,8 +1058,28 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     if (userRole === 'Teacher') {
       if (!selectedInstitute) return [];
       
-      // Teacher with institute selected (with or without class)
-      const items = [
+      // Teacher with class or class+subject selected: only Daily Attendance + Mark Attendance
+      if (selectedClass) {
+        return [
+          {
+            id: 'daily-attendance',
+            label: 'Daily Attendance',
+            icon: UserCheck,
+            permission: 'view-attendance',
+            alwaysShow: false
+          },
+          {
+            id: 'qr-attendance',
+            label: 'Mark Attendance',
+            icon: QrCode,
+            permission: 'mark-attendance',
+            alwaysShow: false
+          }
+        ];
+      }
+      
+      // Teacher with only institute selected - show full attendance menu
+      return [
         {
           id: 'daily-attendance',
           label: 'Daily Attendance',
@@ -1050,7 +1109,6 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           alwaysShow: false
         }
       ];
-      return items;
     }
 
     // For InstituteAdmin - show specific attendance items based on selection
@@ -1101,6 +1159,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       }
 
       // For InstituteAdmin with institute and class selected (or all three selected)
+      // Only show Daily Attendance + Mark Attendance
       if (selectedInstitute && selectedClass) {
         return [
           {
@@ -1116,20 +1175,6 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             icon: QrCode,
             permission: 'mark-attendance',
             alwaysShow: false
-          },
-          {
-            id: 'calendar-view',
-            label: 'Calendar View',
-            icon: Calendar,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'today-dashboard',
-            label: 'Today',
-            icon: CalendarDays,
-            permission: 'view-dashboard',
-            alwaysShow: false
           }
         ];
       }
@@ -1137,6 +1182,27 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
 
     // For AttendanceMarker with institute selected
     if (userRole === 'AttendanceMarker' && selectedInstitute) {
+      // With class selected: only Daily Attendance + Mark Attendance
+      if (selectedClass) {
+        return [
+          {
+            id: 'daily-attendance',
+            label: 'Daily Attendance',
+            icon: UserCheck,
+            permission: 'view-attendance',
+            alwaysShow: false
+          },
+          {
+            id: 'qr-attendance',
+            label: 'Mark Attendance',
+            icon: QrCode,
+            permission: 'mark-attendance',
+            alwaysShow: true
+          }
+        ];
+      }
+      
+      // Without class: full attendance menu
       return [
         {
           id: 'daily-attendance',
@@ -1683,11 +1749,19 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           alwaysShow: false
         });
       } else {
-        // Add only Institute Profile when institute is selected (removed Institute Details)
+        // Add Institute Profile when institute is selected
         baseItems.push({
           id: 'institute-profile',
           label: 'Institute Profile',
           icon: IdCard,
+          permission: 'view-profile',
+          alwaysShow: false
+        });
+        // Add Institute Settings for admin
+        baseItems.push({
+          id: 'institute-settings',
+          label: 'Institute Settings',
+          icon: Settings,
           permission: 'view-profile',
           alwaysShow: false
         });
@@ -1962,7 +2036,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       {/* Sidebar */}
       <div className={`
         fixed inset-y-0 right-0 z-50 lg:relative lg:left-0 lg:right-auto
-        ${isCollapsed ? 'w-16' : 'w-72 sm:w-80 lg:w-72'} bg-white dark:bg-gray-800 border-l lg:border-l-0 lg:border-r border-gray-200 dark:border-gray-700
+        ${isCollapsed ? 'w-16' : 'w-72 sm:w-80 lg:w-64'} bg-background border-l lg:border-l-0 lg:border-r border-border
         transform transition-all duration-300 ease-in-out lg:transform-none
         ${isOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
         flex flex-col h-dvh
@@ -1970,20 +2044,20 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         pt-safe-top pb-safe-bottom
       `}>
         {/* Header */}
-        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
           {!isCollapsed && (
-            <div className="flex items-center justify-start space-x-2 min-w-0 flex-1">
+            <div className="flex items-center space-x-2 min-w-0 flex-1">
               <img 
                 src={selectedInstitute?.logo || surakshaLogoSidebar} 
                 alt={selectedInstitute?.logo ? "Institute logo" : "SurakshaLMS logo"}
-                className="h-12 w-12 object-contain rounded flex-shrink-0"
+                className="h-9 w-9 object-contain rounded-lg flex-shrink-0 ring-1 ring-border"
               />
-              <span className="font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate">
+              <span className="font-bold text-sm text-foreground truncate">
                 {selectedInstitute?.shortName || 'SurakshaLMS'}
               </span>
             </div>
           )}
-          <div className={`flex items-center space-x-1 ${isCollapsed ? 'w-full justify-center' : ''}`}>
+          <div className={`flex items-center ${isCollapsed ? 'w-full justify-center' : ''}`}>
             <Button
               variant="ghost"
               size="sm"
@@ -1994,7 +2068,7 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                   setIsCollapsed(!isCollapsed);
                 }
               }}
-              className="h-8 w-8 p-0 hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="h-7 w-7 p-0 hover:bg-accent"
               aria-label={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             >
               <X className="h-4 w-4 lg:hidden" />
@@ -2065,8 +2139,8 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         )}
 
         {/* Navigation */}
-        <ScrollArea className="flex-1 px-2 sm:px-3 py-3 sm:py-4">
-          <div className="space-y-2">
+        <ScrollArea className="flex-1 px-2 py-2">
+          <div className="space-y-0.5">
             {(() => {
               // Shared props for all SidebarSection instances
               const sectionProps = {
@@ -2097,87 +2171,80 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
                     <>
                       <SidebarSection {...sectionProps} title="Main" items={menuItemsDisplay.filter(item => !item.hasOwnProperty('section'))} />
                       
-                      {/* Main's section for items with section property */}
                       {menuItemsDisplay.some(item => (item as any).section === "Main's") && (
                         <SidebarSection {...sectionProps} title="Main's" items={menuItemsDisplay.filter(item => (item as any).section === "Main's")} />
                       )}
                     </>
                   )}
                   
-                  {/* Show sections without "Main" label when no institute selected (exclude child context) */}
                   {!selectedInstitute && !selectedChild && menuItemsDisplay.length > 0 && (
                     <SidebarSection {...sectionProps} title="Select Institute" items={menuItemsDisplay.filter(item => !item.hasOwnProperty('section'))} />
                   )}
+
+                  {/* Divider before grouped sections */}
+                  {selectedInstitute && <div className="my-1.5 mx-3 border-t border-border/50" />}
                   
-                  {/* Show attendance section for Teacher based on selection state */}
+                  {/* Attendance - collapsible */}
                   {userRole === 'Teacher' && attendanceItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} sectionIcon={<UserCheck className="h-3.5 w-3.5" />} />
                   )}
-                  
-                  {/* Show attendance section when institute is selected for InstituteAdmin */}
                   {userRole === 'InstituteAdmin' && selectedInstitute && (
-                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} sectionIcon={<UserCheck className="h-3.5 w-3.5" />} />
                   )}
-                  
-                  {/* For AttendanceMarker role, only show Mark Attendance when institute is selected */}
                   {userRole === 'AttendanceMarker' && selectedInstitute && (
-                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} sectionIcon={<UserCheck className="h-3.5 w-3.5" />} />
                   )}
-                  
-                  {/* For other roles, show attendance navigation based on role */}
                   {userRole !== 'AttendanceMarker' && userRole !== 'InstituteAdmin' && userRole !== 'Teacher' && userRole !== 'Student' && selectedInstitute && (
-                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} sectionIcon={<UserCheck className="h-3.5 w-3.5" />} />
                   )}
                   
-                  {/* Show academic items for Teacher only when institute, class and subject are all selected */}
+                  {/* Academic - collapsible */}
                   {userRole === 'Teacher' && systemItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} sectionIcon={<BookOpen className="h-3.5 w-3.5" />} />
                   )}
-                  
-                  {/* Show academic items for InstituteAdmin only when institute, class and subject are all selected */}
                   {userRole === 'InstituteAdmin' && selectedInstitute && selectedClass && selectedSubject && (
-                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} sectionIcon={<BookOpen className="h-3.5 w-3.5" />} />
                   )}
-                  
-                  {/* Show full academic section for other roles (excluding Student) */}
                   {selectedInstitute && userRole !== 'AttendanceMarker' && userRole !== 'InstituteAdmin' && userRole !== 'Teacher' && userRole !== 'Student' && (
-                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} sectionIcon={<BookOpen className="h-3.5 w-3.5" />} />
                   )}
                   
-                  {/* Show My Children section before institute selection for Parents */}
+                  {/* My Children & Child */}
                   {myChildrenItemsDisplay.length > 0 && (
                     <SidebarSection {...sectionProps} title="My Children" items={myChildrenItemsDisplay} />
                   )}
-                  
-                  {/* Show Child specific navigation when child is selected */}
                   {childItemsDisplay.length > 0 && (
                     <SidebarSection {...sectionProps} title="Select Child Institute" items={childItemsDisplay} />
                   )}
+
+                  {/* Divider before payments/comms */}
+                  {(systemPaymentItemsDisplay.length > 0 || paymentItemsDisplay.length > 0 || smsItemsDisplay.length > 0) && (
+                    <div className="my-1.5 mx-3 border-t border-border/50" />
+                  )}
                   
-                  {/* Show System Payments section before institute selection */}
+                  {/* Payments - collapsible */}
                   {systemPaymentItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="System Payments" items={systemPaymentItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="System Payments" items={systemPaymentItemsDisplay} sectionIcon={<CreditCard className="h-3.5 w-3.5" />} />
                   )}
-                  
-                  {/* Show Payment section for specific user types based on new rules */}
                   {paymentItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Payments" items={paymentItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="Payments" items={paymentItemsDisplay} sectionIcon={<CreditCard className="h-3.5 w-3.5" />} />
                   )}
                   
+                  {/* SMS - collapsible */}
                   {smsItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="SMS" items={smsItemsDisplay} />
+                    <SidebarSection {...sectionProps} title="SMS" items={smsItemsDisplay} sectionIcon={<MessageSquare className="h-3.5 w-3.5" />} />
                   )}
                   
-                  {/* Notifications Section - before Settings */}
+                  {/* Notifications - collapsible */}
                   {notificationItemsDisplay.length > 0 && (
-                    <SidebarSection 
-                      {...sectionProps}
-                      title="Notifications" 
-                      items={notificationItemsDisplay} 
-                    />
+                    <SidebarSection {...sectionProps} title="Notifications" items={notificationItemsDisplay} sectionIcon={<Bell className="h-3.5 w-3.5" />} />
                   )}
+
+                  {/* Divider before settings */}
+                  <div className="my-1.5 mx-3 border-t border-border/50" />
                   
-                  <SidebarSection {...sectionProps} title="Settings" items={settingsItemsDisplay} />
+                  {/* Settings - collapsible */}
+                  <SidebarSection {...sectionProps} title="Settings" items={settingsItemsDisplay} sectionIcon={<Settings className="h-3.5 w-3.5" />} />
                 </>
               );
             })()}
@@ -2185,15 +2252,15 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
         </ScrollArea>
 
         {/* Footer */}
-        <div className="p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="px-3 py-2.5 border-t border-border">
           {!isCollapsed && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-3 space-y-1">
+            <div className="text-[11px] text-muted-foreground mb-2 space-y-0.5">
               <div className="truncate">
-                <span>Logged in as:</span> 
+                <span className="opacity-70">Logged in:</span> 
                 <span className="font-medium ml-1">{user?.name}</span>
               </div>
               <div>
-                <span>Role:</span> 
+                <span className="opacity-70">Role:</span> 
                 <span className="font-medium ml-1">{isViewingAsParent ? 'Parent' : userRole}</span>
               </div>
             </div>
@@ -2202,10 +2269,10 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             variant="outline"
             size="sm"
             onClick={handleLogout}
-            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-center gap-2'} text-sm hover:bg-destructive hover:text-destructive-foreground hover:border-destructive h-8 sm:h-9 transition-colors`}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-center gap-1.5'} text-xs hover:bg-destructive hover:text-destructive-foreground hover:border-destructive h-7 transition-colors border-border`}
           >
-            <LogOut className="h-3 w-3 sm:h-4 sm:w-4" />
-            {!isCollapsed && <span className="text-xs sm:text-sm">Logout</span>}
+            <LogOut className="h-3 w-3" />
+            {!isCollapsed && <span>Logout</span>}
           </Button>
         </div>
       </div>

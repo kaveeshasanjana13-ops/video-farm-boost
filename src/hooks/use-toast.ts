@@ -186,8 +186,8 @@ function toast({ ...props }: Toast) {
     }, 3000)
   }
 
-  // Auto-dismiss success messages after 1.5 seconds
-  if (isSuccessMessage) {
+  // Auto-dismiss success messages after 1.5 seconds (but NOT error messages)
+  if (isSuccessMessage && props.variant !== 'destructive') {
     setTimeout(() => {
       dismiss()
     }, 1500)

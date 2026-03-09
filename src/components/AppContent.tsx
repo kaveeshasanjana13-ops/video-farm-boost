@@ -71,6 +71,7 @@ import EnrollSubject from '@/components/EnrollSubject';
 import InstituteUsers from '@/components/InstituteUsers';
 import SetupGuide from '@/components/SetupGuide';
 import InstituteProfile from '@/components/InstituteProfile';
+import InstituteSettingsPage from '@/pages/InstituteSettingsPage';
 import StudentHomeworkSubmissions from '@/components/StudentHomeworkSubmissions';
 import FreeLectures from '@/components/FreeLectures';
 import SMS from '@/components/SMS';
@@ -695,6 +696,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <Appearance />;
         case 'institute-profile':
           return <InstituteProfile />;
+        case 'institute-settings':
+          return <InstituteSettingsPage />;
         case 'organizations':
           return <Organizations />;
         case 'institute-payments':
@@ -882,6 +885,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <Appearance />;
         case 'institute-profile':
           return <InstituteProfile />;
+        case 'institute-settings':
+          return <InstituteSettingsPage />;
         case 'institute-payments':
           return <InstitutePayments />;
         case 'pending-submissions':
@@ -957,6 +962,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <Appearance />;
         case 'institute-profile':
           return <InstituteProfile />;
+        case 'institute-settings':
+          return <InstituteSettingsPage />;
         case 'settings':
           return <Settings />;
         case 'all-notifications':
@@ -1135,6 +1142,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <Appearance />;
       case 'institute-profile':
         return <InstituteProfile />;
+      case 'institute-settings':
+        return <InstituteSettingsPage />;
       case 'sms':
         return <SMS />;
       case 'sms-history':

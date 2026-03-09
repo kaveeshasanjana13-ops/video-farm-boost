@@ -7,6 +7,7 @@ import useEmblaCarousel from 'embla-carousel-react';
 import DashboardQuickNav from '@/components/dashboard/DashboardQuickNav';
 import DashboardSectionPills from '@/components/dashboard/DashboardSectionPills';
 import DashboardGrid, { type DashboardItem } from '@/components/dashboard/DashboardGrid';
+import InstituteCarousel from '@/components/dashboard/InstituteCarousel';
 import {
   Users, GraduationCap, UserCheck, BookOpen, School,
   User, Building2, QrCode, Award, Video, FileText, Notebook,
@@ -23,6 +24,7 @@ const MobileDashboard = () => {
   const {
     user, selectedInstitute, selectedClass, selectedSubject,
     selectedChild, selectedOrganization, selectedTransport,
+    setSelectedInstitute,
   } = useAuth();
   const userRole = useInstituteRole();
   const navigate = useNavigate();
@@ -336,11 +338,16 @@ const MobileDashboard = () => {
 
   return (
     <div className="space-y-3 pb-4">
-      {/* Welcome + context breadcrumbs */}
+      {/* Welcome */}
       <div className="px-1">
         <h1 className="text-lg font-bold text-foreground">
           Welcome{user?.firstName ? `, ${user.firstName}` : ''}
         </h1>
+      </div>
+
+      {/* Institute carousel - auto-scrolling cards */}
+      <div className="px-1">
+        <InstituteCarousel onSelectInstitute={(inst) => setSelectedInstitute(inst)} />
       </div>
 
       {/* Context breadcrumb navigation */}

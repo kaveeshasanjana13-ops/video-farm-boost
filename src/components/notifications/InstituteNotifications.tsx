@@ -1,15 +1,14 @@
 // src/components/notifications/InstituteNotifications.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useForceRefresh } from '@/hooks/useForceRefresh';
-import { Bell, CheckCheck, RefreshCw, Building2 } from 'lucide-react';
+import { Bell, CheckCheck, RefreshCw, Building2, Sparkles, Download } from 'lucide-react';
 import { notificationApiService, Notification } from '@/services/notificationApiService';
 import { DateGroupedNotifications } from './DateGroupedNotifications';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 
 interface InstituteNotificationsProps {
   instituteId: string;
@@ -18,46 +17,35 @@ interface InstituteNotificationsProps {
 
 type FilterScope = 'ALL' | 'INSTITUTE' | 'CLASS' | 'SUBJECT';
 
-/**
- * Institute Notifications Component
- * Shows INSTITUTE, CLASS, and SUBJECT scope notifications
- * when user has selected an institute
- */
 export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
   instituteId,
   instituteName,
 }) => {
   const navigate = useNavigate();
   const { triggerForceRefresh } = useForceRefresh();
+  const { decrementUnread } = useNotificationStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [filter, setFilter] = useState<FilterScope>('ALL');
+  const [initialized, setInitialized] = useState(false);
 
   const loadNotifications = useCallback(async () => {
     if (!instituteId) return;
-    
     try {
       setLoading(true);
-      const result = await notificationApiService.getInstituteNotifications(
-        instituteId,
-        {
-          page,
-          limit: 10,
-          scope: filter !== 'ALL' ? filter : undefined
-        }
-      );
+      const result = await notificationApiService.getInstituteNotifications(instituteId, {
+        page,
+        limit: 10,
+        scope: filter !== 'ALL' ? filter : undefined,
+      });
       setNotifications(result.data || []);
       setTotalPages(result.totalPages || 1);
     } catch (error) {
       console.error('Failed to load notifications:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load notifications',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to load notifications', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -65,7 +53,6 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
 
   const loadUnreadCount = useCallback(async () => {
     if (!instituteId) return;
-    
     try {
       const result = await notificationApiService.getInstituteUnreadCount(instituteId);
       setUnreadCount(result.unreadCount || 0);
@@ -74,19 +61,13 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
     }
   }, [instituteId]);
 
-  // Only load on explicit user action (refresh button, pagination, filter change)
-  // NOT automatically on mount - user must click refresh to load
-  const [initialized, setInitialized] = useState(false);
-  
-  // Load only when page or filter changes AFTER initial load
   useEffect(() => {
     if (initialized) {
       loadNotifications();
       loadUnreadCount();
     }
   }, [page, filter]);
-  
-  // Handle initial refresh click
+
   const handleRefresh = () => {
     triggerForceRefresh();
     if (!initialized) setInitialized(true);
@@ -97,10 +78,9 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       await notificationApiService.markAsRead(notificationId);
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
-      );
+      setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
+      decrementUnread();
     } catch (error) {
       console.error('Failed to mark as read:', error);
     }
@@ -108,126 +88,105 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
 
   const handleMarkAllAsRead = async () => {
     if (!instituteId) return;
-    
     try {
       await notificationApiService.markAllAsRead(instituteId);
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
-      toast({
-        title: 'Success',
-        description: 'All notifications marked as read',
-      });
+      toast({ title: 'Done', description: 'All notifications marked as read' });
     } catch (error) {
-      console.error('Failed to mark all as read:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to mark all as read',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to mark all as read', variant: 'destructive' });
     }
   };
 
   const handleNotificationClick = (notification: Notification) => {
-    if (notification.actionUrl) {
-      navigate(notification.actionUrl);
-    }
+    if (notification.actionUrl) navigate(notification.actionUrl);
   };
-
-  // handleRefresh is now defined above with the initialized state
 
   const handleFilterChange = (value: string) => {
     setFilter(value as FilterScope);
     setPage(1);
   };
 
-  // Show prompt to load if not initialized
+  // Not initialized — show load prompt
   if (!initialized) {
     return (
-      <Card>
-        <CardHeader className="p-3 sm:p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
-            <CardTitle className="flex items-center gap-1 sm:gap-2 text-base sm:text-lg">
-              <Building2 className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
-              Institute Notifications
-            </CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              className="text-xs sm:text-sm h-8 sm:h-9"
-            >
-              <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-              Load Notifications
-            </Button>
+      <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+          <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+            <Building2 className="h-8 w-8 text-primary" />
           </div>
-        </CardHeader>
-        <CardContent className="p-3 sm:p-6 pt-0 sm:pt-0">
-          <div className="flex flex-col items-center justify-center py-8 sm:py-12 text-center">
-            <Bell className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground/50 mb-3 sm:mb-4" />
-            <p className="text-sm sm:text-base text-muted-foreground">
-              Click "Load Notifications" to view your notifications
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+          <h3 className="font-semibold text-foreground mb-1">Institute Notifications</h3>
+          <p className="text-sm text-muted-foreground mb-5">
+            Tap below to load notifications from {instituteName || 'your institute'}
+          </p>
+          <Button onClick={handleRefresh} className="rounded-xl gap-2">
+            <Download className="h-4 w-4" />
+            Load Notifications
+          </Button>
+        </div>
+      </div>
     );
   }
 
   if (loading && notifications.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Institute Notifications
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">Institute Notifications</h3>
+              <p className="text-xs text-muted-foreground">Loading...</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 space-y-3">
           {[1, 2, 3].map(i => (
             <div key={i} className="flex gap-3 animate-pulse">
-              <div className="h-10 w-10 rounded-full bg-muted" />
+              <div className="h-10 w-10 rounded-xl bg-muted" />
               <div className="flex-1 space-y-2">
-                <div className="h-4 w-3/4 bg-muted rounded" />
-                <div className="h-3 w-full bg-muted rounded" />
+                <div className="h-4 w-3/4 bg-muted rounded-lg" />
+                <div className="h-3 w-full bg-muted rounded-lg" />
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="space-y-3 sm:space-y-4 p-3 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            <CardTitle className="flex items-center gap-1 sm:gap-2 text-base sm:text-lg">
-              <Building2 className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
-              <span className="truncate">Institute Notifications</span>
-            </CardTitle>
-            {unreadCount > 0 && (
-              <Badge variant="destructive" className="text-xs">{unreadCount} unread</Badge>
-            )}
+    <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
+      {/* Header */}
+      <div className="p-4 sm:p-5 space-y-3 border-b border-border/40">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-foreground">Notifications</h3>
+                {unreadCount > 0 && (
+                  <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
+              {instituteName && (
+                <p className="text-xs text-muted-foreground mt-0.5">{instituteName}</p>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={loading}
-              className="h-8 w-8 p-0 sm:h-9 sm:w-9"
-            >
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={loading} className="h-9 w-9 rounded-xl">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
             {unreadCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleMarkAllAsRead}
-                className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3"
-              >
-                <CheckCheck className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+              <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className="h-9 rounded-xl text-xs gap-1.5">
+                <CheckCheck className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Mark all read</span>
                 <span className="sm:hidden">Read all</span>
               </Button>
@@ -235,70 +194,54 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
           </div>
         </div>
 
-        {instituteName && (
-          <p className="text-xs sm:text-sm text-muted-foreground truncate">{instituteName}</p>
-        )}
-
-        {/* Filter Tabs */}
+        {/* Scope filters */}
         <Tabs value={filter} onValueChange={handleFilterChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 h-8 sm:h-10">
-            <TabsTrigger value="ALL" className="text-xs sm:text-sm px-1 sm:px-3">All</TabsTrigger>
-            <TabsTrigger value="INSTITUTE" className="text-xs sm:text-sm px-1 sm:px-3">
+          <TabsList className="grid w-full grid-cols-4 h-9 rounded-xl bg-muted/50 p-0.5">
+            <TabsTrigger value="ALL" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">All</TabsTrigger>
+            <TabsTrigger value="INSTITUTE" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
               <span className="hidden sm:inline">Institute</span>
               <span className="sm:hidden">Inst.</span>
             </TabsTrigger>
-            <TabsTrigger value="CLASS" className="text-xs sm:text-sm px-1 sm:px-3">Class</TabsTrigger>
-            <TabsTrigger value="SUBJECT" className="text-xs sm:text-sm px-1 sm:px-3">
+            <TabsTrigger value="CLASS" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">Class</TabsTrigger>
+            <TabsTrigger value="SUBJECT" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
               <span className="hidden sm:inline">Subject</span>
               <span className="sm:hidden">Subj.</span>
             </TabsTrigger>
           </TabsList>
         </Tabs>
-      </CardHeader>
+      </div>
 
-      <CardContent className="p-0">
-        {notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Bell className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <p className="text-muted-foreground">
-              {filter === 'ALL' 
-                ? 'No notifications for this institute' 
-                : `No ${filter.toLowerCase()} notifications`}
-            </p>
+      {/* Content */}
+      {notifications.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="h-14 w-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+            <Sparkles className="h-7 w-7 text-muted-foreground/40" />
           </div>
-        ) : (
-          <DateGroupedNotifications
-            notifications={notifications}
-            onMarkAsRead={handleMarkAsRead}
-            onClick={handleNotificationClick}
-          />
-        )}
+          <p className="text-sm font-medium text-muted-foreground">
+            {filter === 'ALL' ? 'No notifications' : `No ${filter.toLowerCase()} notifications`}
+          </p>
+          <p className="text-xs text-muted-foreground/60 mt-1">You're all caught up!</p>
+        </div>
+      ) : (
+        <DateGroupedNotifications
+          notifications={notifications}
+          onMarkAsRead={handleMarkAsRead}
+          onClick={handleNotificationClick}
+        />
+      )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === 1}
-              onClick={() => setPage(p => p - 1)}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Page {page} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === totalPages}
-              onClick={() => setPage(p => p + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border/40">
+          <Button variant="ghost" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)} className="rounded-xl text-xs">
+            Previous
+          </Button>
+          <span className="text-xs text-muted-foreground">{page} / {totalPages}</span>
+          <Button variant="ghost" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="rounded-xl text-xs">
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
   );
 };

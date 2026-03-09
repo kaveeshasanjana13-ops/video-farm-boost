@@ -1,6 +1,6 @@
 // src/components/notifications/NotificationItem.tsx
 import React from 'react';
-import { Bell, AlertCircle, Info, AlertTriangle, Megaphone } from 'lucide-react';
+import { Bell, AlertCircle, AlertTriangle, Info, Megaphone, ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Notification } from '@/services/notificationApiService';
@@ -9,153 +9,156 @@ interface NotificationItemProps {
   notification: Notification;
   onMarkAsRead?: (id: string) => void;
   onClick?: (notification: Notification) => void;
+  compact?: boolean;
 }
 
-const priorityColors = {
-  LOW: 'bg-muted text-muted-foreground',
-  NORMAL: 'bg-primary/10 text-primary',
-  HIGH: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  URGENT: 'bg-destructive/10 text-destructive',
+const scopeConfig = {
+  GLOBAL: { label: 'System', className: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20' },
+  INSTITUTE: { label: 'Institute', className: 'bg-primary/10 text-primary border-primary/20' },
+  CLASS: { label: 'Class', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
+  SUBJECT: { label: 'Subject', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' },
 };
 
-const scopeColors = {
-  GLOBAL: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-  INSTITUTE: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  CLASS: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  SUBJECT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+const priorityConfig = {
+  URGENT: { icon: AlertCircle, className: 'text-destructive', bg: 'bg-destructive/10' },
+  HIGH: { icon: AlertTriangle, className: 'text-amber-500', bg: 'bg-amber-500/10' },
+  NORMAL: { icon: Bell, className: 'text-primary', bg: 'bg-primary/10' },
+  LOW: { icon: Info, className: 'text-muted-foreground', bg: 'bg-muted' },
 };
 
-const PriorityIcon = ({ priority }: { priority: Notification['priority'] }) => {
-  switch (priority) {
-    case 'URGENT':
-      return <AlertCircle className="h-5 w-5 text-destructive" />;
-    case 'HIGH':
-      return <AlertTriangle className="h-5 w-5 text-orange-500" />;
-    case 'NORMAL':
-      return <Bell className="h-5 w-5 text-primary" />;
-    case 'LOW':
-    default:
-      return <Info className="h-5 w-5 text-muted-foreground" />;
-  }
-};
+function formatTimeAgo(dateString: string): string {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 7) return `${diffDays}d`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
 export const NotificationItem: React.FC<NotificationItemProps> = ({
   notification,
   onMarkAsRead,
   onClick,
+  compact = false,
 }) => {
   const handleClick = () => {
     if (!notification.isRead && onMarkAsRead) {
       onMarkAsRead(notification.id);
     }
-    if (onClick) {
-      onClick(notification);
-    }
+    onClick?.(notification);
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
-  };
+  const pConfig = priorityConfig[notification.priority] || priorityConfig.NORMAL;
+  const sConfig = scopeConfig[notification.scope] || scopeConfig.INSTITUTE;
+  const IconComponent = notification.icon ? Megaphone : pConfig.icon;
+  const timeStr = formatTimeAgo(notification.sentAt || notification.createdAt || '');
 
   return (
     <div
       onClick={handleClick}
       className={cn(
-        'flex gap-2 sm:gap-3 p-3 sm:p-4 cursor-pointer transition-colors border-b last:border-b-0',
-        notification.isRead
-          ? 'bg-background hover:bg-muted/50'
-          : 'bg-primary/5 hover:bg-primary/10'
+        'group relative flex gap-3 p-3.5 sm:p-4 cursor-pointer transition-all duration-200',
+        'hover:bg-accent/50 active:scale-[0.995]',
+        !notification.isRead && 'bg-primary/[0.03]',
       )}
     >
+      {/* Unread indicator line */}
+      {!notification.isRead && (
+        <div className="absolute left-0 top-3 bottom-3 w-[3px] rounded-r-full bg-primary" />
+      )}
+
       {/* Icon */}
-      <div className="flex-shrink-0 mt-0.5 sm:mt-1">
-        {notification.icon ? (
-          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-muted flex items-center justify-center">
-            <Megaphone className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-          </div>
-        ) : (
-          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-muted flex items-center justify-center">
-            <PriorityIcon priority={notification.priority} />
-          </div>
-        )}
+      <div className={cn(
+        'flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center transition-colors',
+        pConfig.bg,
+      )}>
+        <IconComponent className={cn('h-5 w-5', pConfig.className)} />
       </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-1 sm:gap-2">
+        <div className="flex items-start justify-between gap-2">
           <h4 className={cn(
-            'text-xs sm:text-sm font-medium line-clamp-2 sm:line-clamp-1',
-            !notification.isRead && 'font-semibold'
+            'text-sm leading-tight line-clamp-2',
+            !notification.isRead ? 'font-semibold text-foreground' : 'font-medium text-foreground/80',
           )}>
             {notification.title}
           </h4>
-          {!notification.isRead && (
-            <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-primary flex-shrink-0 mt-1 sm:mt-1.5" />
-          )}
+          <span className="text-[11px] text-muted-foreground whitespace-nowrap mt-0.5 flex-shrink-0">
+            {timeStr}
+          </span>
         </div>
-        
-        <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 mt-0.5 sm:mt-1">
+
+        <p className={cn(
+          'text-[13px] mt-1 line-clamp-2 leading-relaxed',
+          !notification.isRead ? 'text-muted-foreground' : 'text-muted-foreground/70',
+        )}>
           {notification.body}
         </p>
 
-        {/* Meta info */}
-        <div className="flex items-center gap-1 sm:gap-2 mt-1.5 sm:mt-2 flex-wrap">
-          <Badge variant="secondary" className={cn('text-[10px] sm:text-xs px-1 sm:px-2 py-0 sm:py-0.5', scopeColors[notification.scope])}>
-            {notification.scope}
-          </Badge>
-          
+        {/* Tags row */}
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <span className={cn(
+            'inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full border',
+            sConfig.className,
+          )}>
+            {sConfig.label}
+          </span>
+
           {notification.priority !== 'NORMAL' && (
-            <Badge variant="secondary" className={cn('text-[10px] sm:text-xs px-1 sm:px-2 py-0 sm:py-0.5', priorityColors[notification.priority])}>
+            <span className={cn(
+              'inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full',
+              notification.priority === 'URGENT' && 'bg-destructive/10 text-destructive',
+              notification.priority === 'HIGH' && 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+              notification.priority === 'LOW' && 'bg-muted text-muted-foreground',
+            )}>
               {notification.priority}
-            </Badge>
+            </span>
           )}
 
           {notification.targetClassName && (
-            <span className="text-[10px] sm:text-xs text-muted-foreground truncate max-w-[80px] sm:max-w-none">
+            <span className="text-[11px] text-muted-foreground">
               {notification.targetClassName}
             </span>
           )}
-
           {notification.targetSubjectName && (
-            <span className="text-[10px] sm:text-xs text-muted-foreground truncate max-w-[60px] sm:max-w-none">
-              • {notification.targetSubjectName}
-            </span>
-          )}
-
-          {(notification.sentAt || notification.createdAt) && (
-            <span className="text-[10px] sm:text-xs text-muted-foreground ml-auto flex-shrink-0">
-              {formatDate(notification.sentAt || notification.createdAt || '')}
+            <span className="text-[11px] text-muted-foreground">
+              · {notification.targetSubjectName}
             </span>
           )}
         </div>
 
         {notification.senderName && (
-          <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
-            From: {notification.senderName}
+          <p className="text-[11px] text-muted-foreground/60 mt-1">
+            by {notification.senderName}
           </p>
         )}
 
-        {/* Notification Image */}
-        {notification.imageUrl && (
-          <div className="mt-2 rounded-lg overflow-hidden">
-            <img 
-              src={notification.imageUrl} 
-              alt="" 
-              className="w-full h-24 sm:h-32 object-cover rounded-lg"
+        {/* Image */}
+        {notification.imageUrl && !compact && (
+          <div className="mt-2.5 rounded-xl overflow-hidden border border-border/50">
+            <img
+              src={notification.imageUrl}
+              alt=""
+              className="w-full h-28 sm:h-36 object-cover"
               loading="lazy"
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
+          </div>
+        )}
+
+        {/* Action URL hint */}
+        {notification.actionUrl && !compact && (
+          <div className="flex items-center gap-1 mt-2 text-[11px] text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+            <ExternalLink className="h-3 w-3" />
+            Open link
           </div>
         )}
       </div>

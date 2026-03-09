@@ -1,23 +1,18 @@
 // src/components/notifications/SystemNotifications.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useForceRefresh } from '@/hooks/useForceRefresh';
-import { Bell, CheckCheck, RefreshCw } from 'lucide-react';
+import { Bell, CheckCheck, RefreshCw, Sparkles } from 'lucide-react';
 import { notificationApiService, Notification } from '@/services/notificationApiService';
 import { DateGroupedNotifications } from './DateGroupedNotifications';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 
-/**
- * System Notifications Component
- * Shows GLOBAL notifications when user hasn't selected an institute
- */
 export const SystemNotifications: React.FC = () => {
   const navigate = useNavigate();
   const { triggerForceRefresh } = useForceRefresh();
+  const { decrementUnread, resetUnread } = useNotificationStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -27,49 +22,28 @@ export const SystemNotifications: React.FC = () => {
   const loadNotifications = useCallback(async () => {
     try {
       setLoading(true);
-      const result = await notificationApiService.getSystemNotifications({
-        page,
-        limit: 10
-      });
+      const result = await notificationApiService.getSystemNotifications({ page, limit: 10 });
       setNotifications(result.data || []);
       setTotalPages(result.totalPages || 1);
-      // Use unreadCount from response if available
-      if (result.unreadCount !== undefined) {
-        setUnreadCount(result.unreadCount);
-      }
+      if (result.unreadCount !== undefined) setUnreadCount(result.unreadCount);
     } catch (error) {
       console.error('Failed to load notifications:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load notifications',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to load notifications', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
   }, [page]);
 
-  const loadUnreadCount = useCallback(async () => {
-    try {
-      const result = await notificationApiService.getSystemUnreadCount();
-      setUnreadCount(result.unreadCount || 0);
-    } catch (error) {
-      console.error('Failed to load unread count:', error);
-    }
-  }, []);
-
   useEffect(() => {
     loadNotifications();
-    loadUnreadCount();
-  }, [loadNotifications, loadUnreadCount]);
+  }, [loadNotifications]);
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       await notificationApiService.markAsRead(notificationId);
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
-      );
+      setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
+      decrementUnread();
     } catch (error) {
       console.error('Failed to mark as read:', error);
     }
@@ -80,132 +54,117 @@ export const SystemNotifications: React.FC = () => {
       await notificationApiService.markAllSystemAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
-      toast({
-        title: 'Success',
-        description: 'All notifications marked as read',
-      });
+      toast({ title: 'Done', description: 'All notifications marked as read' });
     } catch (error) {
-      console.error('Failed to mark all as read:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to mark all as read',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to mark all as read', variant: 'destructive' });
     }
   };
 
   const handleNotificationClick = (notification: Notification) => {
-    if (notification.actionUrl) {
-      navigate(notification.actionUrl);
-    }
+    if (notification.actionUrl) navigate(notification.actionUrl);
   };
 
   const handleRefresh = () => {
     triggerForceRefresh();
     loadNotifications();
-    loadUnreadCount();
   };
 
   if (loading && notifications.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Notifications
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Bell className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">System Notifications</h3>
+              <p className="text-xs text-muted-foreground">Loading...</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 space-y-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="flex gap-3">
-              <Skeleton className="h-10 w-10 rounded-full" />
+            <div key={i} className="flex gap-3 animate-pulse">
+              <div className="h-10 w-10 rounded-xl bg-muted" />
               <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-3 w-full" />
+                <div className="h-4 w-3/4 bg-muted rounded-lg" />
+                <div className="h-3 w-full bg-muted rounded-lg" />
               </div>
             </div>
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 space-y-0 p-3 sm:p-6 pb-3 sm:pb-4">
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <CardTitle className="flex items-center gap-1 sm:gap-2 text-base sm:text-lg">
-            <Bell className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
-            Notifications
-          </CardTitle>
-          {unreadCount > 0 && (
-            <Badge variant="destructive" className="text-xs">{unreadCount} unread</Badge>
-          )}
+    <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
+      {/* Header */}
+      <div className="p-4 sm:p-5 border-b border-border/40">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Bell className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-foreground">System Notifications</h3>
+                {unreadCount > 0 && (
+                  <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">Global announcements & updates</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={loading} className="h-9 w-9 rounded-xl">
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
+            {unreadCount > 0 && (
+              <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className="h-9 rounded-xl text-xs gap-1.5">
+                <CheckCheck className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Mark all read</span>
+                <span className="sm:hidden">Read all</span>
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={loading}
-            className="h-8 w-8 p-0 sm:h-9 sm:w-9"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+      </div>
+
+      {/* Content */}
+      {notifications.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="h-14 w-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+            <Sparkles className="h-7 w-7 text-muted-foreground/40" />
+          </div>
+          <p className="text-sm font-medium text-muted-foreground">No notifications yet</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">You're all caught up!</p>
+        </div>
+      ) : (
+        <DateGroupedNotifications
+          notifications={notifications}
+          onMarkAsRead={handleMarkAsRead}
+          onClick={handleNotificationClick}
+        />
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border/40">
+          <Button variant="ghost" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)} className="rounded-xl text-xs">
+            Previous
           </Button>
-          {unreadCount > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleMarkAllAsRead}
-              className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3"
-            >
-              <CheckCheck className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-              <span className="hidden sm:inline">Mark all read</span>
-              <span className="sm:hidden">Read all</span>
-            </Button>
-          )}
+          <span className="text-xs text-muted-foreground">
+            {page} / {totalPages}
+          </span>
+          <Button variant="ghost" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="rounded-xl text-xs">
+            Next
+          </Button>
         </div>
-      </CardHeader>
-
-      <CardContent className="p-0">
-        {notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Bell className="h-12 w-12 text-muted-foreground/50 mb-4" />
-            <p className="text-muted-foreground">No notifications yet</p>
-          </div>
-        ) : (
-          <DateGroupedNotifications
-            notifications={notifications}
-            onMarkAsRead={handleMarkAsRead}
-            onClick={handleNotificationClick}
-          />
-        )}
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === 1}
-              onClick={() => setPage(p => p - 1)}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Page {page} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === totalPages}
-              onClick={() => setPage(p => p + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 };

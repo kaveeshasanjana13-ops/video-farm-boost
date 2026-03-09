@@ -2,9 +2,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { pushNotificationService, NotificationPayload } from '../services/pushNotificationService';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 
 export const usePushNotifications = () => {
   const { user } = useAuth();
+  const { incrementUnread } = useNotificationStore();
   const [latestNotification, setLatestNotification] = useState<NotificationPayload | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
@@ -53,6 +55,7 @@ export const usePushNotifications = () => {
       console.log('📬 New notification received:', payload);
       setLatestNotification(payload);
       setShowToast(true);
+      incrementUnread(); // Update global badge count
 
       // Auto-hide toast after 5 seconds
       setTimeout(() => setShowToast(false), 5000);

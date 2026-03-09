@@ -797,43 +797,45 @@ const Attendance = () => {
                   Last 5 Days Attendance Distribution
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-4 md:p-6">
-                {pieChartData.length > 0 ? (
-                  <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsPie>
-                        <Pie
-                          data={pieChartData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={100}
-                          paddingAngle={2}
-                          dataKey="value"
-                          label={({ name, percentage }) => `${name} ${percentage}%`}
-                          labelLine={false}
-                        >
-                          {pieChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          formatter={(value: number, name: string) => [`${value} students`, name]}
-                          contentStyle={{ 
-                            backgroundColor: 'hsl(var(--card))', 
-                            borderColor: 'hsl(var(--border))',
-                            borderRadius: '8px'
-                          }}
-                        />
-                        <Legend />
-                      </RechartsPie>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                    No data available for last 5 days
-                  </div>
-                )}
+               <CardContent className="p-4 md:p-6">
+                 {pieChartData.length > 0 ? (
+                   <div className="h-[250px] sm:h-[300px]">
+                     <ResponsiveContainer width="100%" height="100%">
+                       <RechartsPie>
+                         <Pie
+                           data={pieChartData}
+                           cx="50%"
+                           cy="50%"
+                           innerRadius={40}
+                           outerRadius={70}
+                           paddingAngle={2}
+                           dataKey="value"
+                           label={({ name, percentage }) => `${name} ${percentage}%`}
+                           labelLine={false}
+                           fontSize={11}
+                           isAnimationActive={true}
+                         >
+                           {pieChartData.map((entry, index) => (
+                             <Cell key={`cell-${index}`} fill={entry.color} />
+                           ))}
+                         </Pie>
+                         <Tooltip 
+                           formatter={(value: number, name: string) => [`${value} students`, name]}
+                           contentStyle={{ 
+                             backgroundColor: 'hsl(var(--card))', 
+                             borderColor: 'hsl(var(--border))',
+                             borderRadius: '8px'
+                           }}
+                         />
+                         <Legend wrapperStyle={{ fontSize: '12px' }} />
+                       </RechartsPie>
+                     </ResponsiveContainer>
+                   </div>
+                 ) : (
+                   <div className="h-[250px] sm:h-[300px] flex items-center justify-center text-muted-foreground">
+                     No data available for last 5 days
+                   </div>
+                 )}
               </CardContent>
             </Card>
 

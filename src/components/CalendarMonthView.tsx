@@ -8,8 +8,9 @@ import {
   UserCheck, Users, Award, BookOpen, Star, AlertTriangle, CalendarDays
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useInstituteRole } from '@/hooks/useInstituteRole';
 import calendarApi from '@/api/calendar.api';
-import type { CalendarDay, CalendarEvent, CalendarDayType } from '@/types/calendar.types';
+import type { CalendarDay, CalendarEvent, CalendarDayType, CalendarViewData, CalendarViewSummary } from '@/types/calendar.types';
 import { DAY_TYPE_META } from '@/components/calendar/calendarTheme';
 
 // Day type color configuration
@@ -25,8 +26,76 @@ const formatTime = (time: string | undefined | null): string => {
   return `${h}:${minutes} ${ampm}`;
 };
 
+type MonthStats = CalendarViewSummary;
+
+const EMPTY_MONTH_STATS: MonthStats = {
+  working: 0,
+  holidays: 0,
+  weekends: 0,
+  exams: 0,
+  special: 0,
+};
+
+const normalizeMonthSummary = (summary?: Partial<CalendarViewSummary> | null): Partial<MonthStats> => {
+  if (!summary) return {};
+
+  const normalize = (value: unknown): number | undefined => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
+  return {
+    working: normalize(summary.working),
+    holidays: normalize(summary.holidays),
+    weekends: normalize(summary.weekends),
+    exams: normalize(summary.exams),
+    special: normalize(summary.special),
+  };
+};
+
+const extractCalendarViewData = (
+  payload: CalendarDay[] | CalendarViewData | null | undefined
+): { days: CalendarDay[]; userType?: string; monthSummary: Partial<MonthStats> } => {
+  if (!payload) return { days: [], monthSummary: {} };
+
+  const source = payload as CalendarViewData;
+  const rawDays = [
+    Array.isArray(payload) ? payload : null,
+    Array.isArray(source.days) ? source.days : null,
+    Array.isArray(source.calendarDays) ? source.calendarDays : null,
+    Array.isArray(source.items) ? source.items : null,
+    Array.isArray((source as any)?.calendar?.days) ? (source as any).calendar.days : null,
+    Array.isArray((source as any)?.calendarView?.days) ? (source as any).calendarView.days : null,
+  ].find(Array.isArray) || [];
+
+  const days = rawDays
+    .map((raw: any) => {
+      const calendarDate = raw?.calendarDate || raw?.date || raw?.eventDate;
+      if (!calendarDate) return null;
+
+      return {
+        ...raw,
+        id: raw?.id ? String(raw.id) : undefined,
+        calendarDate,
+        dayType: raw?.effectiveDayType || raw?.dayType || 'REGULAR',
+        isAttendanceExpected: raw?.effectiveIsAttendanceExpected ?? raw?.isAttendanceExpected ?? true,
+      } as CalendarDay;
+    })
+    .filter((day): day is CalendarDay => Boolean(day));
+
+  const userType = [source.userType, source.attendanceUserType, source.role, (source as any).viewerType]
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return {
+    days,
+    userType,
+    monthSummary: normalizeMonthSummary(source.monthSummary),
+  };
+};
+
 const CalendarMonthView = () => {
   const { currentInstituteId } = useAuth();
+  const instituteRole = useInstituteRole();
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1); // 1-indexed
   const [dayMap, setDayMap] = useState<Map<string, CalendarDay>>(new Map());
@@ -35,6 +104,10 @@ const CalendarMonthView = () => {
   const [dayEvents, setDayEvents] = useState<CalendarEvent[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [showDayDetail, setShowDayDetail] = useState(false);
+  const [calendarViewUserType, setCalendarViewUserType] = useState('');
+  const [apiMonthSummary, setApiMonthSummary] = useState<Partial<MonthStats> | null>(null);
+
+  const isTeacherOrStudentView = instituteRole === 'Teacher' || instituteRole === 'Student';
 
   const fetchMonthDays = useCallback(async () => {
     if (!currentInstituteId) return;
@@ -42,26 +115,47 @@ const CalendarMonthView = () => {
     try {
       const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
       const lastDay = new Date(year, month, 0).getDate();
-      const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+      const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-      const res = await calendarApi.getDays(currentInstituteId, {
-        startDate,
-        endDate,
-        limit: 400,
-      });
+      let days: CalendarDay[] = [];
+
+      if (isTeacherOrStudentView) {
+        const res = await calendarApi.getCalendarView(currentInstituteId, {
+          startDate,
+          endDate,
+          year,
+          month,
+        });
+        const parsed = extractCalendarViewData((res as any)?.data);
+        days = parsed.days;
+        setCalendarViewUserType(parsed.userType || (instituteRole === 'Teacher' ? 'TEACHER' : 'STUDENT'));
+        setApiMonthSummary(Object.keys(parsed.monthSummary).length ? parsed.monthSummary : null);
+      } else {
+        const res = await calendarApi.getDays(currentInstituteId, {
+          startDate,
+          endDate,
+          limit: 400,
+        });
+        days = Array.isArray(res?.data) ? res.data : [];
+        setCalendarViewUserType('');
+        setApiMonthSummary(null);
+      }
 
       const map = new Map<string, CalendarDay>();
-      const days = Array.isArray(res?.data) ? res.data : [];
       for (const day of days) {
-        map.set(day.calendarDate, day);
+        if (day?.calendarDate) {
+          map.set(day.calendarDate, day);
+        }
       }
       setDayMap(map);
     } catch (error) {
       console.error('Failed to load calendar days:', error);
+      setDayMap(new Map());
+      setApiMonthSummary(null);
     } finally {
       setLoading(false);
     }
-  }, [currentInstituteId, year, month]);
+  }, [currentInstituteId, year, month, isTeacherOrStudentView, instituteRole]);
 
   useEffect(() => {
     fetchMonthDays();
@@ -95,39 +189,74 @@ const CalendarMonthView = () => {
   }, [dayMap, year, month]);
 
   // Month summary stats
-  const monthStats = useMemo(() => {
-    const stats = { working: 0, holidays: 0, weekends: 0, exams: 0, special: 0 };
+  const monthStats = useMemo<MonthStats>(() => {
+    const calculated: MonthStats = { ...EMPTY_MONTH_STATS };
+
     dayMap.forEach(day => {
-      if (day.dayType === 'WEEKEND') stats.weekends++;
-      else if (['PUBLIC_HOLIDAY', 'INSTITUTE_HOLIDAY'].includes(day.dayType)) stats.holidays++;
-      else if (day.dayType === 'EXAM_DAY') stats.exams++;
-      else if (day.dayType === 'SPECIAL_EVENT') stats.special++;
-      else if (day.isAttendanceExpected) stats.working++;
+      if (day.dayType === 'WEEKEND') calculated.weekends++;
+      else if (['PUBLIC_HOLIDAY', 'INSTITUTE_HOLIDAY'].includes(day.dayType)) calculated.holidays++;
+      else if (day.dayType === 'EXAM_DAY') calculated.exams++;
+      else if (day.dayType === 'SPECIAL_EVENT') calculated.special++;
+      else if (day.isAttendanceExpected) calculated.working++;
     });
-    return stats;
-  }, [dayMap]);
+
+    if (!apiMonthSummary) return calculated;
+
+    return {
+      working: apiMonthSummary.working ?? calculated.working,
+      holidays: apiMonthSummary.holidays ?? calculated.holidays,
+      weekends: apiMonthSummary.weekends ?? calculated.weekends,
+      exams: apiMonthSummary.exams ?? calculated.exams,
+      special: apiMonthSummary.special ?? calculated.special,
+    };
+  }, [dayMap, apiMonthSummary]);
 
   const handleDayClick = async (day: CalendarDay) => {
     setSelectedDay(day);
     setShowDayDetail(true);
     setDayEvents([]);
 
-    if (day.id && currentInstituteId) {
-      setLoadingEvents(true);
-      try {
+    if (!currentInstituteId) return;
+
+    setLoadingEvents(true);
+    try {
+      if (Array.isArray(day.events) && day.events.length > 0) {
+        setDayEvents(day.events);
+        return;
+      }
+
+      if (day.id) {
         const res = await calendarApi.getDayEvents(currentInstituteId, day.id);
         setDayEvents(Array.isArray(res?.data) ? res.data : []);
-      } catch (err) {
-        console.warn('Failed to load events:', err);
-      } finally {
-        setLoadingEvents(false);
+        return;
       }
+
+      const res = await calendarApi.getByDate(currentInstituteId, day.calendarDate);
+      const detailDay = (res as any)?.data;
+
+      if (detailDay) {
+        setSelectedDay(prev => (prev ? { ...prev, ...detailDay } as CalendarDay : prev));
+        setDayEvents(Array.isArray(detailDay.events) ? detailDay.events : []);
+      }
+    } catch (err) {
+      console.warn('Failed to load events:', err);
+      setDayEvents([]);
+    } finally {
+      setLoadingEvents(false);
     }
   };
 
   const monthName = new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const today = new Date().toISOString().split('T')[0];
   const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const resolvedViewType = useMemo(() => {
+    const normalized = calendarViewUserType.toUpperCase();
+    if (normalized.includes('TEACH')) return 'Teacher';
+    if (normalized.includes('STUDENT')) return 'Student';
+    if (instituteRole === 'Teacher') return 'Teacher';
+    if (instituteRole === 'Student') return 'Student';
+    return '';
+  }, [calendarViewUserType, instituteRole]);
 
   return (
     <div className="space-y-4">
@@ -141,6 +270,11 @@ const CalendarMonthView = () => {
             <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
               <Calendar className="h-5 w-5 text-primary" />
               {monthName}
+              {resolvedViewType && (
+                <Badge variant="secondary" className="text-[10px] sm:text-xs">
+                  {resolvedViewType} Type
+                </Badge>
+              )}
             </CardTitle>
             <Button variant="ghost" size="icon" onClick={() => navigateMonth('next')}>
               <ChevronRight className="h-5 w-5" />
@@ -186,7 +320,7 @@ const CalendarMonthView = () => {
                   return (
                     <button
                       key={day.calendarDate}
-                      onClick={() => day.id && handleDayClick(day)}
+                      onClick={() => handleDayClick(day)}
                       className={`
                         bg-card p-1 sm:p-2 min-h-[48px] sm:min-h-[64px] text-left transition-colors
                         hover:bg-accent/50 cursor-pointer relative
