@@ -492,16 +492,9 @@ const AppContent = ({ initialPage }: AppContentProps) => {
   };
 
   const renderComponent = () => {
-    // CRITICAL: Show loading state when loading context from direct URL navigation
+    // CRITICAL: Show branded loading state when loading context from direct URL navigation
     if (isLoadingContextFromUrl) {
-      return (
-        <div className="flex items-center justify-center h-dvh">
-          <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            <p className="text-muted-foreground">Loading institute data...</p>
-          </div>
-        </div>
-      );
+      return <AppLoadingScreen message="Loading your data..." />;
     }
     
     // CRITICAL: Handle parent viewing child routes FIRST - regardless of user role
