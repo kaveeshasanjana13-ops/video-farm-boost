@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import AppLoadingScreen from '@/components/AppLoadingScreen';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppNavigation } from '@/hooks/useAppNavigation';
 import { useAuth } from '@/contexts/AuthContext';
