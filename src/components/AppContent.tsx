@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import AppLoadingScreen from '@/components/AppLoadingScreen';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppNavigation } from '@/hooks/useAppNavigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -492,16 +493,9 @@ const AppContent = ({ initialPage }: AppContentProps) => {
   };
 
   const renderComponent = () => {
-    // CRITICAL: Show loading state when loading context from direct URL navigation
+    // CRITICAL: Show branded loading state when loading context from direct URL navigation
     if (isLoadingContextFromUrl) {
-      return (
-        <div className="flex items-center justify-center h-dvh">
-          <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-            <p className="text-muted-foreground">Loading institute data...</p>
-          </div>
-        </div>
-      );
+      return <AppLoadingScreen message="Loading your data..." />;
     }
     
     // CRITICAL: Handle parent viewing child routes FIRST - regardless of user role
@@ -1201,17 +1195,9 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     }} loginFunction={login} />;
   }
 
-  // 🛡️ Show loading state while validating context from URL (only for context-heavy routes)
-  // isValidating is now only true when there are actual context IDs in the URL
+  // 🛡️ Show branded loading state while validating context from URL
   if (isValidating && (urlInstituteId || location.pathname.startsWith('/child/') || location.pathname.startsWith('/organization/') || location.pathname.startsWith('/transport/'))) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading context from URL...</p>
-        </div>
-      </div>
-    );
+    return <AppLoadingScreen message="Loading your data..." />;
   }
 
   // If organizations page is active, render full screen
