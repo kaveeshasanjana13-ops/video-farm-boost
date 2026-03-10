@@ -12,7 +12,7 @@ import {
   Users, GraduationCap, UserCheck, BookOpen, School,
   User, Building2, QrCode, Award, Video, FileText, Notebook,
   CreditCard, IdCard, MessageSquare, Bell, ImageIcon,
-  Calendar, CalendarDays, Clock, type LucideIcon,
+  Calendar, CalendarDays, Clock, Bus, Settings, type LucideIcon,
 } from 'lucide-react';
 
 interface DashboardSection {
@@ -78,6 +78,53 @@ const MobileDashboard = () => {
 
   const getSections = (): DashboardSection[] => {
     const sections: DashboardSection[] = [];
+    const userType = user?.userType?.toUpperCase() || '';
+
+    // ── PRE-INSTITUTE SELECTION ──
+    if (!selectedInstitute) {
+      // Institutes section (unless UserWithoutStudent — they have no institute enrollment)
+      if (userType !== 'USER_WITHOUT_STUDENT') {
+        sections.push({
+          title: 'My Institutes',
+          items: [
+            { id: 'select-institute', label: 'Select Institute', icon: School, color: nextColor() },
+            { id: 'notifications', label: 'Notifications', icon: Bell, color: nextColor() },
+          ],
+        });
+      }
+
+      // Children section (for Parent, User, UserWithoutStudent — NOT UserWithoutParent)
+      if (userType !== 'USER_WITHOUT_PARENT') {
+        sections.push({
+          title: 'My Children',
+          items: [
+            { id: 'my-children', label: 'My Children', icon: Users, color: nextColor() },
+          ],
+        });
+      }
+
+      // Common navigation
+      sections.push({
+        title: 'Services',
+        items: [
+          { id: 'organizations', label: 'Organizations', icon: Building2, color: nextColor() },
+          { id: 'transport', label: 'Transport', icon: Bus, color: nextColor() },
+          { id: 'system-payments', label: 'Payments', icon: CreditCard, color: nextColor() },
+        ],
+      });
+
+      // Account
+      sections.push({
+        title: 'My Account',
+        items: [
+          { id: 'profile', label: 'My Profile', icon: User, color: nextColor() },
+          { id: 'id-cards', label: 'ID Cards', icon: IdCard, color: nextColor() },
+          { id: 'settings', label: 'Settings', icon: Settings, color: nextColor() },
+        ],
+      });
+
+      return sections;
+    }
 
     // ── STUDENT ──
     if (userRole === 'Student') {

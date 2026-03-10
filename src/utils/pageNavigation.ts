@@ -187,7 +187,7 @@ export const getSidebarHighlightPage = (pathname: string): string => {
     'rfid-attendance': 'qr-attendance',
     'institute-mark-attendance': 'qr-attendance',
     'daily-attendance': 'daily-attendance',
-    'select-institute': 'dashboard',
+    'select-institute': 'select-institute',
   };
   
   return sidebarParentMap[basePage] || basePage;

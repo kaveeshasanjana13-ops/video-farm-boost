@@ -4,7 +4,7 @@ import { ErrorToaster, Toaster as Sonner } from "@/components/ui/sonner";
 import { NotificationToast } from "@/components/notifications/NotificationToast";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useNavigate } from "react-router-dom";
-import { createTheme, ThemeProvider } from "@mui/material/styles";
+import { createTheme, ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
@@ -30,6 +30,7 @@ import PaymentSubmissionsPage from "./pages/PaymentSubmissionsPage";
 import HomeworkSubmissions from "./pages/HomeworkSubmissions";
 import HomeworkSubmissionDetails from "./pages/HomeworkSubmissionDetails";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import UpdateHomework from "@/pages/UpdateHomework";
 import UpdateLecture from "@/pages/UpdateLecture";
 import CardDemo from "@/pages/CardDemo";
@@ -92,11 +93,7 @@ const App = () => {
   const { isOnline, isLoading, retry } = useCapacitorConnection();
 
   useEffect(() => {
-    // Force light mode
-    const root = document.documentElement;
-    root.classList.remove('dark');
-    root.classList.add('light');
-    localStorage.setItem('theme', 'light');
+    // Theme is now managed by ThemeContext — no forced light mode
     
     // Configure native platform features
     if (Capacitor.isNativePlatform()) {
@@ -157,8 +154,9 @@ const App = () => {
 
   return (
     <ErrorBoundary>
-      <ThemeProvider theme={muiTheme}>
+      <MuiThemeProvider theme={muiTheme}>
         <CssBaseline />
+        <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <AuthProvider>
@@ -271,86 +269,16 @@ const App = () => {
                 <Route path="/device-management" element={<Index />} />
 
                 {/* Dedicated Page Routes (must be protected) */}
-                <Route
-                  path="/my-children"
-                  element={
-                    <ProtectedRoute>
-                      <MyChildren />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/transport"
-                  element={
-                    <ProtectedRoute>
-                      <Transport />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/system-payment"
-                  element={
-                    <ProtectedRoute>
-                      <Payments />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/system-payments/create"
-                  element={
-                    <ProtectedRoute>
-                      <CreatePayment />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/payment-submissions/:paymentId"
-                  element={
-                    <ProtectedRoute>
-                      <PaymentSubmissions />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/payment-submissions"
-                  element={
-                    <ProtectedRoute>
-                      <PaymentSubmissionsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/my-submissions"
-                  element={
-                    <ProtectedRoute>
-                      <MySubmissions />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/card-demo"
-                  element={
-                    <ProtectedRoute>
-                      <CardDemo />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/id-cards"
-                  element={
-                    <ProtectedRoute>
-                      <CardManagement />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/sessions"
-                  element={
-                    <ProtectedRoute>
-                      <ActiveSessionsPage />
-                    </ProtectedRoute>
-                  }
-                />
+                <Route path="/my-children" element={<ProtectedRoute><MyChildren /></ProtectedRoute>} />
+                <Route path="/transport" element={<ProtectedRoute><Transport /></ProtectedRoute>} />
+                <Route path="/system-payment" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
+                <Route path="/system-payments/create" element={<ProtectedRoute><CreatePayment /></ProtectedRoute>} />
+                <Route path="/payment-submissions/:paymentId" element={<ProtectedRoute><PaymentSubmissions /></ProtectedRoute>} />
+                <Route path="/payment-submissions" element={<ProtectedRoute><PaymentSubmissionsPage /></ProtectedRoute>} />
+                <Route path="/my-submissions" element={<ProtectedRoute><MySubmissions /></ProtectedRoute>} />
+                <Route path="/card-demo" element={<ProtectedRoute><CardDemo /></ProtectedRoute>} />
+                <Route path="/id-cards" element={<ProtectedRoute><CardManagement /></ProtectedRoute>} />
+                <Route path="/sessions" element={<ProtectedRoute><ActiveSessionsPage /></ProtectedRoute>} />
 
                 {/* Catch-all - Show 404 for unknown paths */}
                 <Route path="*" element={<NotFound />} />
@@ -358,7 +286,8 @@ const App = () => {
             </AuthProvider>
           </BrowserRouter>
         </QueryClientProvider>
-      </ThemeProvider>
+        </ThemeProvider>
+      </MuiThemeProvider>
     </ErrorBoundary>
   );
 };

@@ -39,8 +39,11 @@ export interface InstituteProfileResponse {
   name: string;
   shortName?: string;
   logoUrl?: string | null;
+  loadingGifUrl?: string | null;
   primaryColorCode?: string | null;
   secondaryColorCode?: string | null;
+  imageUrls?: string[];
+  imageUrl?: string | null;
   phone?: string;
   email: string;
   city?: string;

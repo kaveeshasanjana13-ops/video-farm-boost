@@ -4,6 +4,7 @@ import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useNavigate } from 'react-router-dom';
 import { buildSidebarUrl } from '@/utils/pageNavigation';
 import InstituteCarousel from '@/components/dashboard/InstituteCarousel';
+import MyAttendanceHistoryCard from '@/components/dashboard/MyAttendanceHistoryCard';
 import { instituteClassesApi } from '@/api/instituteClasses.api';
 import { subjectsApi } from '@/api/subjects.api';
 import { studentAttendanceApi } from '@/api/studentAttendance.api';
@@ -14,7 +15,8 @@ import {
   Users, GraduationCap, UserCheck, BookOpen, School,
   MessageSquare, Video, Calendar, ChevronRight,
   QrCode, Clock, TrendingUp, TrendingDown, Notebook,
-  FileText, Award, Bell, User, IdCard, Loader2,
+  FileText, Award, Bell, User, IdCard, Loader2, Bus,
+  Building2, CreditCard, Settings,
 } from 'lucide-react';
 
 const DesktopDashboard = () => {
@@ -194,6 +196,74 @@ const DesktopDashboard = () => {
   };
 
   const quickActions = getQuickActions();
+
+  const userType = user?.userType?.toUpperCase() || '';
+  const showInstitutes = userType !== 'USER_WITHOUT_STUDENT';
+  const showChildren = userType !== 'USER_WITHOUT_PARENT';
+
+  // Pre-institute selection view
+  if (!instituteId) {
+    const preInstituteItems = [
+      ...(showInstitutes ? [{ id: 'select-institute', label: 'Select Institute', icon: School, desc: 'Choose your institute' }] : []),
+      ...(showChildren ? [{ id: 'my-children', label: 'My Children', icon: Users, desc: 'View your children' }] : []),
+      { id: 'organizations', label: 'Organizations', icon: Building2, desc: 'Manage organizations' },
+      { id: 'transport', label: 'Transport', icon: Bus, desc: 'Transport services' },
+      { id: 'system-payments', label: 'Payments', icon: CreditCard, desc: 'System payments' },
+      { id: 'notifications', label: 'Notifications', icon: Bell, desc: 'View notifications' },
+      { id: 'profile', label: 'My Profile', icon: User, desc: 'View your profile' },
+      { id: 'id-cards', label: 'ID Cards', icon: IdCard, desc: 'Digital ID cards' },
+      { id: 'settings', label: 'Settings', icon: Settings, desc: 'App settings' },
+    ];
+
+    return (
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">
+            Welcome{user?.nameWithInitials ? `, ${user.nameWithInitials}` : ''}
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+            Select an institute to get started
+          </p>
+        </div>
+
+        {/* Institute carousel */}
+        {showInstitutes && (
+          <InstituteCarousel onSelectInstitute={(inst) => setSelectedInstitute(inst)} />
+        )}
+
+        {/* My Attendance History Card */}
+        <MyAttendanceHistoryCard />
+
+        {/* Navigation grid */}
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            Quick Access
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {preInstituteItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleNavigate(item.id)}
+                className="bg-card border border-border rounded-xl p-5 text-left hover:border-primary/20 hover:shadow-sm transition-all group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-xl bg-muted group-hover:bg-primary/10 transition-colors">
+                    <item.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-base font-medium text-foreground truncate">{item.label}</p>
+                    <p className="text-xs text-muted-foreground truncate">{item.desc}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto shrink-0 group-hover:text-primary transition-colors" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">

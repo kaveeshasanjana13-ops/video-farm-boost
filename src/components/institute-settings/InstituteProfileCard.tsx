@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { instituteSettingsApi, InstituteProfileResponse } from '@/api/instituteSettings.api';
 import { SafeImage } from '@/components/ui/SafeImage';
-import { Building2, Mail, Phone, MapPin, Globe, Facebook, Youtube, Eye, Target, ExternalLink } from 'lucide-react';
+import { Building2, Mail, Phone, MapPin, Globe, Facebook, Youtube, Eye, Target, Image as ImageIcon, Palette } from 'lucide-react';
 
 const InstituteProfileCard = () => {
   const { selectedInstitute, currentInstituteId } = useAuth();
@@ -50,6 +50,7 @@ const InstituteProfileCard = () => {
         <CardContent className="space-y-3">
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
         </CardContent>
       </Card>
     );
@@ -58,13 +59,14 @@ const InstituteProfileCard = () => {
   if (!profile) return null;
 
   const primaryColor = profile.primaryColorCode || undefined;
+  const secondaryColor = profile.secondaryColorCode || undefined;
 
   return (
     <Card className="overflow-hidden">
-      {/* Header with branding */}
+      {/* Header with branding gradient */}
       <div
         className="h-3 w-full"
-        style={{ background: primaryColor ? `linear-gradient(90deg, ${primaryColor}, ${profile.secondaryColorCode || primaryColor})` : undefined }}
+        style={{ background: primaryColor ? `linear-gradient(90deg, ${primaryColor}, ${secondaryColor || primaryColor})` : undefined }}
       />
       <CardHeader className="flex flex-row items-start gap-4 pb-3">
         <div className="shrink-0">
@@ -118,9 +120,66 @@ const InstituteProfileCard = () => {
           )}
         </div>
 
+        {/* Brand Colors */}
+        {(primaryColor || secondaryColor) && (
+          <div className="space-y-1 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <Palette className="h-3 w-3" /> Brand Colors
+            </p>
+            <div className="flex items-center gap-2">
+              {primaryColor && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded border border-border" style={{ backgroundColor: primaryColor }} />
+                  <span className="text-xs text-muted-foreground">{primaryColor}</span>
+                </div>
+              )}
+              {secondaryColor && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded border border-border" style={{ backgroundColor: secondaryColor }} />
+                  <span className="text-xs text-muted-foreground">{secondaryColor}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Loading GIF */}
+        {profile.loadingGifUrl && (
+          <div className="space-y-1 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <ImageIcon className="h-3 w-3" /> Loading Animation
+            </p>
+            <img src={profile.loadingGifUrl} alt="Loading GIF" className="h-12 w-auto rounded" />
+          </div>
+        )}
+
+        {/* Cover / Legacy Image */}
+        {profile.imageUrl && (
+          <div className="space-y-1 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <ImageIcon className="h-3 w-3" /> Cover Image
+            </p>
+            <img src={profile.imageUrl} alt="Cover" className="w-full h-32 object-cover rounded-lg" />
+          </div>
+        )}
+
+        {/* Gallery */}
+        {profile.imageUrls && profile.imageUrls.length > 0 && (
+          <div className="space-y-1 pt-2 border-t border-border">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <ImageIcon className="h-3 w-3" /> Gallery ({profile.imageUrls.length})
+            </p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {profile.imageUrls.map((url, idx) => (
+                <img key={idx} src={url} alt={`Gallery ${idx + 1}`} className="w-full h-20 object-cover rounded" />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Vision & Mission */}
         {(profile.vision || profile.mission) && (
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3 pt-2 border-t border-border">
             {profile.vision && (
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">

@@ -645,7 +645,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       }
       
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard') {
         return <InstituteSelector />;
       }
 
@@ -799,7 +799,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     // For Teacher role
     if (userRole === 'Teacher') {
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard') {
         return <InstituteSelector />;
       }
 
@@ -914,7 +914,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     // For AttendanceMarker role
     if (userRole === 'AttendanceMarker') {
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard') {
         return <InstituteSelector />;
       }
 
@@ -1007,7 +1007,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     });
     
     // Only redirect to institute selector if institute is not selected AND not loading from URL AND page is not in exception list
-    if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'organizations' && !pagesWithoutClassRequirement.includes(currentPage)) {
+    if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'organizations' && currentPage !== 'dashboard' && !pagesWithoutClassRequirement.includes(currentPage)) {
       console.log('❌ Redirecting to InstituteSelector');
       return <InstituteSelector />;
     }

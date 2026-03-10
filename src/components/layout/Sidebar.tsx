@@ -211,18 +211,25 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       if (!selectedInstitute) {
         return [
           {
-            id: 'profile',
-            label: 'Profile',
-            icon: User,
+            id: 'select-institute',
+            label: 'Select Institutes',
+            icon: Building2,
             permission: 'view-dashboard',
             alwaysShow: true
           },
           {
             id: 'dashboard',
-            label: 'Select Institutes',
+            label: 'Dashboard',
             icon: LayoutDashboard,
             permission: 'view-dashboard',
-            alwaysShow: false
+            alwaysShow: true
+          },
+          {
+            id: 'profile',
+            label: 'Profile',
+            icon: User,
+            permission: 'view-dashboard',
+            alwaysShow: true
           },
           {
             id: 'organizations',
@@ -369,18 +376,25 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       if (!selectedInstitute) {
         return [
           {
-            id: 'profile',
-            label: 'Profile',
-            icon: User,
+            id: 'select-institute',
+            label: 'Select Institutes',
+            icon: Building2,
             permission: 'view-dashboard',
             alwaysShow: true
           },
           {
             id: 'dashboard',
-            label: 'Select Institutes',
+            label: 'Dashboard',
             icon: LayoutDashboard,
             permission: 'view-dashboard',
-            alwaysShow: false
+            alwaysShow: true
+          },
+          {
+            id: 'profile',
+            label: 'Profile',
+            icon: User,
+            permission: 'view-dashboard',
+            alwaysShow: true
           }
         ];
       }
@@ -504,18 +518,25 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       if (!selectedInstitute) {
         return [
           {
-            id: 'profile',
-            label: 'Profile',
-            icon: User,
+            id: 'select-institute',
+            label: 'Select Institutes',
+            icon: Building2,
             permission: 'view-dashboard',
             alwaysShow: true
           },
           {
             id: 'dashboard',
-            label: 'Select Institutes',
+            label: 'Dashboard',
             icon: LayoutDashboard,
             permission: 'view-dashboard',
-            alwaysShow: false
+            alwaysShow: true
+          },
+          {
+            id: 'profile',
+            label: 'Profile',
+            icon: User,
+            permission: 'view-dashboard',
+            alwaysShow: true
           },
           {
             id: 'organizations',
@@ -706,11 +727,18 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
             alwaysShow: true
           },
           {
-            id: 'dashboard',
+            id: 'select-institute',
             label: 'Select Institutes',
+            icon: Building2,
+            permission: 'view-dashboard',
+            alwaysShow: true
+          },
+          {
+            id: 'dashboard',
+            label: 'Dashboard',
             icon: LayoutDashboard,
             permission: 'view-dashboard',
-            alwaysShow: false
+            alwaysShow: true
           },
           {
             id: 'transport',
@@ -810,11 +838,18 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
       if (!selectedInstitute) {
         return [
           {
-            id: 'dashboard',
+            id: 'select-institute',
             label: 'Select Institutes',
+            icon: Building2,
+            permission: 'view-dashboard',
+            alwaysShow: true
+          },
+          {
+            id: 'dashboard',
+            label: 'Dashboard',
             icon: LayoutDashboard,
             permission: 'view-dashboard',
-            alwaysShow: false
+            alwaysShow: true
           },
           {
             id: 'transport',
@@ -897,12 +932,19 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
     // Base items that are always available for all other users (User role, SystemAdmin, etc.)
     const baseItems = [
       {
-        id: 'dashboard',
+        id: selectedInstitute ? 'dashboard' : 'select-institute',
         label: selectedInstitute ? 'Dashboard' : 'Select Institutes',
-        icon: LayoutDashboard,
+        icon: selectedInstitute ? LayoutDashboard : Building2,
         permission: 'view-dashboard',
         alwaysShow: false
       },
+      ...(!selectedInstitute ? [{
+        id: 'dashboard',
+        label: 'Dashboard',
+        icon: LayoutDashboard,
+        permission: 'view-dashboard',
+        alwaysShow: true as const
+      }] : []),
       {
         id: 'organizations',
         label: 'Organizations',

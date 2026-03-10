@@ -16,7 +16,8 @@ import { AccessControl } from '@/utils/permissions';
 import ProfileImageUpload from '@/components/ProfileImageUpload';
 import { apiClient } from '@/api/client';
 import { useToast } from '@/hooks/use-toast';
-import { User, Mail, Phone, MapPin, Calendar, Shield, Lock, Eye, EyeOff, Camera, Briefcase, GraduationCap, CreditCard, Languages, Monitor, Smartphone, Tablet, LogOut, ShieldAlert, RefreshCw, Link2, Trash2 } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Shield, Lock, Eye, EyeOff, Camera, Briefcase, GraduationCap, CreditCard, Languages, Monitor, Smartphone, Tablet, LogOut, ShieldAlert, RefreshCw, Link2, Trash2, ChevronRight } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { getActiveSessions, revokeSession, revokeAllSessions } from '@/contexts/utils/auth.api';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import ConnectedApps from '@/components/ConnectedApps';
@@ -325,6 +326,9 @@ const Profile = () => {
     return `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'U';
   };
 
+  const isMobile = useIsMobile();
+  const [mobileSection, setMobileSection] = useState<string | null>(null);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -335,85 +339,351 @@ const Profile = () => {
 
   const langDisplay = formData.language === 'E' ? 'English' : formData.language === 'S' ? 'Sinhala' : formData.language;
 
-  return (
-    <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-20 lg:pb-6">
-      <CurrentSelection showNavigation={false} />
-      {/* Profile Header */}
-      <Card className="overflow-hidden">
-        <CardContent className="p-4 sm:p-6">
-          <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-5">
-            <div className="relative group">
-              <Avatar
-                className="h-20 w-20 sm:h-24 sm:w-24 ring-2 ring-primary/20 cursor-pointer transition-opacity hover:opacity-80"
-                onClick={() => currentImageUrl && setShowImagePreview(true)}
-              >
-                <AvatarImage src={currentImageUrl} alt="Profile" className="object-cover" />
-                <AvatarFallback className="text-lg sm:text-xl font-semibold bg-primary/10 text-primary">
-                  {getUserInitials()}
-                </AvatarFallback>
-              </Avatar>
-              <Button
-                size="icon"
-                variant="secondary"
-                className="absolute -bottom-1 -right-1 h-7 w-7 sm:h-8 sm:w-8 rounded-full shadow-md"
-                onClick={() => document.querySelector<HTMLButtonElement>('[aria-label="change-photo"]')?.click()}
-              >
-                <Camera className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              </Button>
-              <div className="hidden">
-                <ProfileImageUpload currentImageUrl={currentImageUrl} onImageUpdate={handleImageUpdate} />
-              </div>
-            </div>
-            <div className="text-center sm:text-left flex-1 min-w-0">
-              <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate">{formData.nameWithInitials || formData.name || 'Welcome'}</h1>
-              <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 truncate">{formData.email}</p>
-              {user?.id && (
-                <p className="text-muted-foreground text-[10px] sm:text-xs mt-0.5 font-mono">ID: {user.id}</p>
-              )}
-              <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start flex-wrap">
-                <Badge variant="secondary" className="text-[10px] sm:text-xs">
-                  <Shield className="h-3 w-3 mr-1" />
-                  {userTypeDisplay}
-                </Badge>
-                {formData.joinDate && (
-                  <span className="text-[10px] sm:text-xs text-muted-foreground">Joined {formData.joinDate}</span>
-                )}
-              </div>
-            </div>
-            {/* Logout - Desktop inline, Mobile bottom */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => logout()}
-              className="hidden lg:flex items-center gap-1.5 text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground"
+  const menuItems = [
+    { id: 'details', icon: User, label: 'Personal Details', description: 'Name, email, phone & more', color: 'text-blue-500' },
+    { id: 'address', icon: MapPin, label: 'Address', description: 'Your address information', color: 'text-emerald-500' },
+    { id: 'professional', icon: Briefcase, label: 'Professional', description: 'Work & education details', color: 'text-amber-500' },
+    { id: 'account', icon: CreditCard, label: 'Account & Plan', description: 'Subscription & language', color: 'text-purple-500' },
+    { id: 'security', icon: Lock, label: 'Change Password', description: 'Update your password', color: 'text-red-500' },
+    { id: 'sessions', icon: Monitor, label: 'Devices', description: 'Manage active sessions', color: 'text-cyan-500' },
+    { id: 'apps', icon: Link2, label: 'Connected Apps', description: 'Third-party connections', color: 'text-indigo-500' },
+    { id: 'delete-account', icon: Trash2, label: 'Delete Account', description: 'Permanently remove account', color: 'text-destructive' },
+  ];
+
+  // Mobile section content renderer
+  const renderMobileSection = (sectionId: string) => {
+    switch (sectionId) {
+      case 'details':
+        return (
+          <Card><CardContent className="p-4 space-y-0">
+            <InfoRow label="Name with Initials" value={formData.nameWithInitials} />
+            <InfoRow label="Full Name" value={formData.name} />
+            <InfoRow icon={Mail} label="Email" value={formData.email} />
+            <InfoRow icon={Phone} label="Phone" value={formData.phone} />
+            <InfoRow icon={Calendar} label="Date of Birth" value={formData.dateOfBirth} />
+            <InfoRow label="Gender" value={formData.gender} />
+            <InfoRow label="NIC" value={formData.nic} />
+            <InfoRow label="Birth Cert. No" value={formData.birthCertificateNo} />
+            <InfoRow icon={Shield} label="User Type" value={userTypeDisplay} />
+          </CardContent></Card>
+        );
+      case 'address':
+        return (
+          <Card><CardContent className="p-4 space-y-0">
+            <InfoRow label="Address Line 1" value={formData.addressLine1} />
+            <InfoRow label="Address Line 2" value={formData.addressLine2} />
+            <InfoRow label="City" value={formData.city} />
+            <InfoRow label="District" value={formData.district} />
+            <InfoRow label="Province" value={formData.province} />
+            <InfoRow label="Postal Code" value={formData.postalCode} />
+            <InfoRow label="Country" value={formData.country} />
+          </CardContent></Card>
+        );
+      case 'professional':
+        return (
+          <Card><CardContent className="p-4 space-y-0">
+            <InfoRow icon={Briefcase} label="Occupation" value={formData.occupation} />
+            <InfoRow label="Workplace" value={formData.workplace} />
+            <InfoRow icon={Phone} label="Work Phone" value={formData.workPhone} />
+            <InfoRow icon={GraduationCap} label="Education" value={formData.educationLevel} />
+          </CardContent></Card>
+        );
+      case 'account':
+        return (
+          <Card><CardContent className="p-4 space-y-0">
+            <InfoRow icon={CreditCard} label="Plan" value={formData.subscriptionPlan || 'FREE'} />
+            <InfoRow icon={Languages} label="Language" value={langDisplay} />
+          </CardContent></Card>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Profile header (shared)
+  const profileHeader = (
+    <Card className="overflow-hidden">
+      <CardContent className="p-4 sm:p-6">
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-5">
+          <div className="relative group">
+            <Avatar
+              className="h-20 w-20 sm:h-24 sm:w-24 ring-2 ring-primary/20 cursor-pointer transition-opacity hover:opacity-80"
+              onClick={() => currentImageUrl && setShowImagePreview(true)}
             >
-              <LogOut className="h-3.5 w-3.5" />
-              Logout
+              <AvatarImage src={currentImageUrl} alt="Profile" className="object-cover" />
+              <AvatarFallback className="text-lg sm:text-xl font-semibold bg-primary/10 text-primary">
+                {getUserInitials()}
+              </AvatarFallback>
+            </Avatar>
+            <Button
+              size="icon"
+              variant="secondary"
+              className="absolute -bottom-1 -right-1 h-7 w-7 sm:h-8 sm:w-8 rounded-full shadow-md"
+              onClick={() => document.querySelector<HTMLButtonElement>('[aria-label="change-photo"]')?.click()}
+            >
+              <Camera className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+            </Button>
+            <div className="hidden">
+              <ProfileImageUpload currentImageUrl={currentImageUrl} onImageUpdate={handleImageUpdate} />
+            </div>
+          </div>
+          <div className="text-center sm:text-left flex-1 min-w-0">
+            <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate">{formData.nameWithInitials || formData.name || 'Welcome'}</h1>
+            <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 truncate">{formData.email}</p>
+            {user?.id && (
+              <p className="text-muted-foreground text-[10px] sm:text-xs mt-0.5 font-mono">ID: {user.id}</p>
+            )}
+            <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start flex-wrap">
+              <Badge variant="secondary" className="text-[10px] sm:text-xs">
+                <Shield className="h-3 w-3 mr-1" />
+                {userTypeDisplay}
+              </Badge>
+              {formData.joinDate && (
+                <span className="text-[10px] sm:text-xs text-muted-foreground">Joined {formData.joinDate}</span>
+              )}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => logout()}
+            className="hidden lg:flex items-center gap-1.5 text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Logout
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  // Security content (shared between mobile & desktop)
+  const securityContent = (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Lock className="h-4 w-4 text-primary" /> Change Password
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {(['currentPassword', 'newPassword', 'confirmNewPassword'] as const).map((field) => (
+          <div key={field} className="space-y-1.5">
+            <Label htmlFor={field} className="text-sm">
+              {field === 'currentPassword' ? 'Current Password' : field === 'newPassword' ? 'New Password' : 'Confirm New Password'}
+            </Label>
+            <div className="relative">
+              <Input
+                id={field}
+                type={passwordVisibility[field] ? 'text' : 'password'}
+                placeholder={field === 'currentPassword' ? 'Enter current password' : field === 'newPassword' ? 'Enter new password' : 'Confirm new password'}
+                value={passwordData[field]}
+                onChange={e => setPasswordData({ ...passwordData, [field]: e.target.value })}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setPasswordVisibility({ ...passwordVisibility, [field]: !passwordVisibility[field] })}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {passwordVisibility[field] ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+        ))}
+        <p className="text-xs text-muted-foreground">
+          8-20 characters, with uppercase, lowercase, number, and special character.
+        </p>
+        <Button onClick={handlePasswordChange} disabled={passwordLoading} className="w-full">
+          <Lock className="h-4 w-4 mr-2" />
+          {passwordLoading ? 'Updating...' : 'Update Password'}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+
+  // Sessions content (shared)
+  const sessionsContent = (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Devices ({sessions.length})</CardTitle>
+            <Button variant="ghost" size="sm" onClick={loadSessions} disabled={sessionsLoading}>
+              <RefreshCw className={`h-4 w-4 mr-1 ${sessionsLoading ? 'animate-spin' : ''}`} />
+              Refresh
             </Button>
           </div>
+          <p className="text-sm text-muted-foreground">Devices currently logged into your account.</p>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          {sessionsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : sessions.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No active sessions found.</p>
+          ) : (
+            sessions.map((session, index) => (
+              <React.Fragment key={session.id}>
+                {index > 0 && <Separator />}
+                <div className="flex items-center gap-4 py-3">
+                  <div className="shrink-0 text-muted-foreground p-2 rounded-lg bg-muted/50">
+                    {getPlatformIcon(session.platform, session.userAgent)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-foreground">
+                        {getDeviceLabel(session)}
+                      </span>
+                      {session.isCurrent && <Badge variant="secondary" className="text-xs">This device</Badge>}
+                    </div>
+                    <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
+                      {session.ipAddress && <p>IP: {session.ipAddress}</p>}
+                      <p>Logged in: {session.createdAt ? new Date(session.createdAt).getFullYear() > 1971 ? new Date(session.createdAt).toLocaleString() : session.createdAt : 'Unknown'}</p>
+                      {session.expiresInHuman ? (
+                        <p>Expires in: {session.expiresInHuman}</p>
+                      ) : session.expiresAt ? (
+                        <p>Expires: {new Date(session.expiresAt).getFullYear() > 1971 ? new Date(session.expiresAt).toLocaleString() : session.expiresAt}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  {!session.isCurrent && (
+                    <Button variant="outline" size="sm" onClick={() => handleRevoke(session.id)} disabled={revoking === session.id} className="shrink-0">
+                      <LogOut className="h-3.5 w-3.5 mr-1" />
+                      {revoking === session.id ? 'Revoking...' : 'Log out'}
+                    </Button>
+                  )}
+                </div>
+              </React.Fragment>
+            ))
+          )}
         </CardContent>
       </Card>
 
-      {/* Tabs */}
+      {sessions.length > 1 && (
+        <Card className="border-destructive/30">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-foreground">Log out everywhere</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This will revoke all sessions including this one. You'll need to log in again on every device.
+                </p>
+                <Button variant="destructive" size="sm" className="mt-3" onClick={handleRevokeAll} disabled={revokingAll}>
+                  {revokingAll ? 'Revoking all...' : 'Log out of all devices'}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+
+  // ===== MOBILE LAYOUT =====
+  if (isMobile) {
+    // If a section is selected, show it with a back button
+    if (mobileSection) {
+      const item = menuItems.find(m => m.id === mobileSection);
+      return (
+        <div className="px-3 py-4 pb-20 space-y-4">
+          <button
+            onClick={() => setMobileSection(null)}
+            className="flex items-center gap-2 text-sm font-medium text-primary active:opacity-70 transition-opacity"
+          >
+            <ChevronRight className="h-4 w-4 rotate-180" />
+            Back to Profile
+          </button>
+          <h2 className="text-lg font-bold text-foreground">{item?.label}</h2>
+
+          {['details', 'address', 'professional', 'account'].includes(mobileSection) && renderMobileSection(mobileSection)}
+          {mobileSection === 'security' && securityContent}
+          {mobileSection === 'sessions' && sessionsContent}
+          {mobileSection === 'apps' && <ConnectedApps />}
+          {mobileSection === 'delete-account' && <DeleteAccountTab />}
+
+          <ImagePreviewModal isOpen={showImagePreview} onClose={() => setShowImagePreview(false)} imageUrl={currentImageUrl} title="Profile Photo" />
+        </div>
+      );
+    }
+
+    // Menu list view
+    return (
+      <div className="px-3 py-4 pb-20 space-y-4">
+        <CurrentSelection showNavigation={false} />
+        {profileHeader}
+
+        {/* Menu List */}
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
+            {menuItems.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setMobileSection(item.id);
+                    if (item.id === 'sessions' && sessions.length === 0) loadSessions();
+                  }}
+                  className={`w-full flex items-center gap-3.5 px-4 py-3.5 text-left active:bg-muted/60 transition-colors ${
+                    index < menuItems.length - 1 ? 'border-b border-border/40' : ''
+                  }`}
+                >
+                  <div className={`p-2 rounded-xl bg-muted/50 ${item.color}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{item.label}</p>
+                    <p className="text-xs text-muted-foreground truncate">{item.description}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </button>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        {/* Logout */}
+        <Button
+          variant="outline"
+          onClick={() => logout()}
+          className="w-full flex items-center justify-center gap-2 h-11 text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground"
+        >
+          <LogOut className="h-4 w-4" />
+          Logout
+        </Button>
+
+        <ImagePreviewModal isOpen={showImagePreview} onClose={() => setShowImagePreview(false)} imageUrl={currentImageUrl} title="Profile Photo" />
+      </div>
+    );
+  }
+
+  // ===== DESKTOP LAYOUT (existing tabs) =====
+  return (
+    <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6 pb-6">
+      <CurrentSelection showNavigation={false} />
+      {profileHeader}
+
       <Tabs value={activeProfileTab} onValueChange={(val) => {
         setActiveProfileTab(val);
         if (val === 'devices' && sessions.length === 0) loadSessions();
       }}>
-        <TabsList className="w-full grid grid-cols-5 h-11 sm:h-10">
-          <TabsTrigger value="details" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
-            <User className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Details</span>
+        <TabsList className="w-full grid grid-cols-5 h-10">
+          <TabsTrigger value="details" className="gap-1.5 text-sm px-3">
+            <User className="h-4 w-4 shrink-0" /> Details
           </TabsTrigger>
-          <TabsTrigger value="security" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
-            <Lock className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Security</span>
+          <TabsTrigger value="security" className="gap-1.5 text-sm px-3">
+            <Lock className="h-4 w-4 shrink-0" /> Security
           </TabsTrigger>
-          <TabsTrigger value="sessions" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
-            <Monitor className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Devices</span>
+          <TabsTrigger value="sessions" className="gap-1.5 text-sm px-3">
+            <Monitor className="h-4 w-4 shrink-0" /> Devices
           </TabsTrigger>
-          <TabsTrigger value="apps" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3">
-            <Link2 className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Apps</span>
+          <TabsTrigger value="apps" className="gap-1.5 text-sm px-3">
+            <Link2 className="h-4 w-4 shrink-0" /> Apps
           </TabsTrigger>
-          <TabsTrigger value="delete-account" className="gap-1.5 text-xs sm:text-sm px-1 sm:px-3 text-destructive data-[state=active]:text-destructive">
-            <Trash2 className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Delete</span>
+          <TabsTrigger value="delete-account" className="gap-1.5 text-sm px-3 text-destructive data-[state=active]:text-destructive">
+            <Trash2 className="h-4 w-4 shrink-0" /> Delete
           </TabsTrigger>
         </TabsList>
 
@@ -484,123 +754,11 @@ const Profile = () => {
         </TabsContent>
 
         <TabsContent value="security" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Lock className="h-4 w-4 text-primary" /> Change Password
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {(['currentPassword', 'newPassword', 'confirmNewPassword'] as const).map((field) => (
-                <div key={field} className="space-y-1.5">
-                  <Label htmlFor={field} className="text-sm">
-                    {field === 'currentPassword' ? 'Current Password' : field === 'newPassword' ? 'New Password' : 'Confirm New Password'}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id={field}
-                      type={passwordVisibility[field] ? 'text' : 'password'}
-                      placeholder={field === 'currentPassword' ? 'Enter current password' : field === 'newPassword' ? 'Enter new password' : 'Confirm new password'}
-                      value={passwordData[field]}
-                      onChange={e => setPasswordData({ ...passwordData, [field]: e.target.value })}
-                      className="pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setPasswordVisibility({ ...passwordVisibility, [field]: !passwordVisibility[field] })}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {passwordVisibility[field] ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <p className="text-xs text-muted-foreground">
-                8-20 characters, with uppercase, lowercase, number, and special character.
-              </p>
-              <Button onClick={handlePasswordChange} disabled={passwordLoading} className="w-full">
-                <Lock className="h-4 w-4 mr-2" />
-                {passwordLoading ? 'Updating...' : 'Update Password'}
-              </Button>
-            </CardContent>
-          </Card>
+          {securityContent}
         </TabsContent>
 
-        <TabsContent value="sessions" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Devices ({sessions.length})</CardTitle>
-                <Button variant="ghost" size="sm" onClick={loadSessions} disabled={sessionsLoading}>
-                  <RefreshCw className={`h-4 w-4 mr-1 ${sessionsLoading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-              </div>
-              <p className="text-sm text-muted-foreground">Devices currently logged into your account.</p>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              {sessionsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : sessions.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No active sessions found.</p>
-              ) : (
-                sessions.map((session, index) => (
-                  <React.Fragment key={session.id}>
-                    {index > 0 && <Separator />}
-                    <div className="flex items-center gap-4 py-3">
-                      <div className="shrink-0 text-muted-foreground p-2 rounded-lg bg-muted/50">
-                        {getPlatformIcon(session.platform, session.userAgent)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-foreground">
-                            {getDeviceLabel(session)}
-                          </span>
-                          {session.isCurrent && <Badge variant="secondary" className="text-xs">This device</Badge>}
-                        </div>
-                        <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
-                          {session.ipAddress && <p>IP: {session.ipAddress}</p>}
-                          <p>Logged in: {session.createdAt ? new Date(session.createdAt).getFullYear() > 1971 ? new Date(session.createdAt).toLocaleString() : session.createdAt : 'Unknown'}</p>
-                          {session.expiresInHuman ? (
-                            <p>Expires in: {session.expiresInHuman}</p>
-                          ) : session.expiresAt ? (
-                            <p>Expires: {new Date(session.expiresAt).getFullYear() > 1971 ? new Date(session.expiresAt).toLocaleString() : session.expiresAt}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                      {!session.isCurrent && (
-                        <Button variant="outline" size="sm" onClick={() => handleRevoke(session.id)} disabled={revoking === session.id} className="shrink-0">
-                          <LogOut className="h-3.5 w-3.5 mr-1" />
-                          {revoking === session.id ? 'Revoking...' : 'Log out'}
-                        </Button>
-                      )}
-                    </div>
-                  </React.Fragment>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          {sessions.length > 1 && (
-            <Card className="border-destructive/30">
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-3">
-                  <ShieldAlert className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <h3 className="text-sm font-semibold text-foreground">Log out everywhere</h3>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      This will revoke all sessions including this one. You'll need to log in again on every device.
-                    </p>
-                    <Button variant="destructive" size="sm" className="mt-3" onClick={handleRevokeAll} disabled={revokingAll}>
-                      {revokingAll ? 'Revoking all...' : 'Log out of all devices'}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        <TabsContent value="sessions" className="mt-4">
+          {sessionsContent}
         </TabsContent>
 
         <TabsContent value="apps" className="mt-4">
@@ -612,24 +770,7 @@ const Profile = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Logout Button - Mobile only */}
-      <div className="lg:hidden">
-        <Button
-          variant="outline"
-          onClick={() => logout()}
-          className="w-full flex items-center justify-center gap-2 h-11 text-destructive border-destructive/30 hover:bg-destructive hover:text-destructive-foreground transition-colors"
-        >
-          <LogOut className="h-4 w-4" />
-          Logout
-        </Button>
-      </div>
-      {/* Image Preview Modal */}
-      <ImagePreviewModal
-        isOpen={showImagePreview}
-        onClose={() => setShowImagePreview(false)}
-        imageUrl={currentImageUrl}
-        title="Profile Photo"
-      />
+      <ImagePreviewModal isOpen={showImagePreview} onClose={() => setShowImagePreview(false)} imageUrl={currentImageUrl} title="Profile Photo" />
     </div>
   );
 };

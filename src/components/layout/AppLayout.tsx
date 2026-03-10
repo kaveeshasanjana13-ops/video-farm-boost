@@ -4,6 +4,7 @@ import { useAppNavigation } from '@/hooks/useAppNavigation';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import BottomNav from './BottomNav';
+import AppLoadingScreen from '@/components/AppLoadingScreen';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -47,7 +48,7 @@ const AppLayout = ({ children, currentPage: propCurrentPage, onPageChange }: App
   };
 
   if (!user) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return <AppLoadingScreen message="Loading your workspace..." />;
   }
 
   return (

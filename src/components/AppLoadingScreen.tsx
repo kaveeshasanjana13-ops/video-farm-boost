@@ -1,4 +1,5 @@
 import React from 'react';
+import appIcon from '@/assets/app-icon.png';
 
 interface AppLoadingScreenProps {
   message?: string;
@@ -7,22 +8,21 @@ interface AppLoadingScreenProps {
 const AppLoadingScreen: React.FC<AppLoadingScreenProps> = ({ message = 'Loading...' }) => {
   return (
     <div className="fixed inset-0 bg-background flex items-center justify-center z-50">
-      <div className="text-center space-y-4">
-        {/* Animated logo/brand area */}
-        <div className="relative mx-auto w-16 h-16">
-          <div className="absolute inset-0 rounded-2xl bg-primary/20 animate-ping" style={{ animationDuration: '1.5s' }} />
-          <div className="relative w-16 h-16 rounded-2xl bg-primary flex items-center justify-center shadow-lg">
-            <svg className="w-8 h-8 text-primary-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
-              <path d="M6 12v5c3 3 9 3 12 0v-5" />
-            </svg>
-          </div>
+      <div className="text-center space-y-5">
+        {/* Branded logo with ping animation */}
+        <div className="relative mx-auto w-20 h-20">
+          <div className="absolute inset-0 rounded-2xl bg-primary/15 animate-ping" style={{ animationDuration: '2s' }} />
+          <img
+            src={appIcon}
+            alt="App Logo"
+            className="relative w-20 h-20 rounded-2xl shadow-lg object-cover"
+          />
         </div>
         
         {/* Loading bar */}
         <div className="w-48 h-1 bg-muted rounded-full overflow-hidden mx-auto">
           <div 
-            className="h-full bg-primary rounded-full animate-pulse"
+            className="h-full bg-primary rounded-full"
             style={{
               animation: 'loading-bar 1.2s ease-in-out infinite',
             }}
