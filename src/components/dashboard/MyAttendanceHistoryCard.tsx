@@ -6,9 +6,9 @@ import { Loader2, UserCheck, UserX, Clock, ChevronRight, LogOut, DoorOpen } from
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
 const STATUS_COLORS: Record<string, string> = {
-  present: 'hsl(var(--chart-2))',   // green-ish
+  present: 'hsl(var(--chart-2))',
   absent: 'hsl(var(--destructive))',
-  late: 'hsl(var(--chart-4))',      // amber-ish
+  late: 'hsl(var(--chart-4))',
   left: 'hsl(var(--chart-5))',
   leftEarly: 'hsl(var(--chart-3))',
   leftLately: 'hsl(var(--chart-1))',
@@ -18,7 +18,7 @@ const MyAttendanceHistoryCard = () => {
   const navigate = useNavigate();
   const [data, setData] = useState<MyAttendanceHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -32,9 +32,10 @@ const MyAttendanceHistoryCard = () => {
           limit: 10,
         });
         setData(result);
-      } catch (err) {
-        console.error('Failed to fetch attendance history:', err);
-        setError('Failed to load attendance');
+      } catch (err: any) {
+        // Silently hide if endpoint not available (404)
+        console.warn('Attendance history not available:', err?.message || err);
+        setError(true);
       } finally {
         setLoading(false);
       }
@@ -42,39 +43,28 @@ const MyAttendanceHistoryCard = () => {
     fetchData();
   }, []);
 
+  // Don't render anything if error or no data — avoid showing broken UI
+  if (error || (!loading && !data)) {
+    return null;
+  }
+
   if (loading) {
     return (
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-xl bg-primary/10">
             <UserCheck className="h-5 w-5 text-primary" />
           </div>
           <h3 className="font-semibold text-foreground">My Attendance</h3>
         </div>
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="flex items-center justify-center py-6">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       </div>
     );
   }
 
-  if (error || !data) {
-    return (
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-primary/10">
-            <UserCheck className="h-5 w-5 text-primary" />
-          </div>
-          <h3 className="font-semibold text-foreground">My Attendance</h3>
-        </div>
-        <p className="text-sm text-muted-foreground text-center py-4">
-          {error || 'No attendance data available'}
-        </p>
-      </div>
-    );
-  }
-
-  const { summary, byInstitute, data: records } = data;
+  const { summary, byInstitute, data: records } = data!;
   const rate = summary.attendanceRate;
 
   const pieData = [
@@ -114,18 +104,11 @@ const MyAttendanceHistoryCard = () => {
 
       {/* Rate + Pie */}
       <div className="flex items-center gap-4">
-        {/* Pie chart */}
         {totalRecords > 0 && (
           <div className="w-20 h-20 flex-shrink-0">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie
-                  data={pieData}
-                  innerRadius={22}
-                  outerRadius={36}
-                  dataKey="value"
-                  strokeWidth={0}
-                >
+                <Pie data={pieData} innerRadius={22} outerRadius={36} dataKey="value" strokeWidth={0}>
                   {pieData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
                   ))}
@@ -134,8 +117,6 @@ const MyAttendanceHistoryCard = () => {
             </ResponsiveContainer>
           </div>
         )}
-
-        {/* Rate */}
         <div className="flex-1 min-w-0">
           <div className="text-3xl font-bold text-foreground">
             {rate != null ? `${Math.round(rate)}%` : '—'}

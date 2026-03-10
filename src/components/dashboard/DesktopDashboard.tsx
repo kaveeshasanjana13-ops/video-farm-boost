@@ -1,23 +1,23 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useNavigate } from 'react-router-dom';
 import { buildSidebarUrl } from '@/utils/pageNavigation';
 import InstituteCarousel from '@/components/dashboard/InstituteCarousel';
+import DashboardQuickNav from '@/components/dashboard/DashboardQuickNav';
+import DashboardGrid, { type DashboardItem } from '@/components/dashboard/DashboardGrid';
 import MyAttendanceHistoryCard from '@/components/dashboard/MyAttendanceHistoryCard';
-import { instituteClassesApi } from '@/api/instituteClasses.api';
-import { subjectsApi } from '@/api/subjects.api';
-import { studentAttendanceApi } from '@/api/studentAttendance.api';
-import { enhancedCachedClient } from '@/api/enhancedCachedClient';
-import { format, subDays, startOfWeek, endOfWeek } from 'date-fns';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import {
   Users, GraduationCap, UserCheck, BookOpen, School,
-  MessageSquare, Video, Calendar, ChevronRight,
-  QrCode, Clock, TrendingUp, TrendingDown, Notebook,
-  FileText, Award, Bell, User, IdCard, Loader2, Bus,
-  Building2, CreditCard, Settings,
+  User, Building2, QrCode, Award, Video, FileText, Notebook,
+  CreditCard, IdCard, MessageSquare, Bell, ImageIcon,
+  Calendar, CalendarDays, Clock, Bus, Settings,
 } from 'lucide-react';
+
+interface DashboardSection {
+  title: string;
+  items: DashboardItem[];
+}
 
 const DesktopDashboard = () => {
   const {
@@ -29,146 +29,6 @@ const DesktopDashboard = () => {
   const navigate = useNavigate();
   const isTuitionInstitute = selectedInstitute?.type === 'tuition_institute';
   const subjectLabel = isTuitionInstitute ? 'Sub Class' : 'Subject';
-
-  // Real data state
-  const [classCount, setClassCount] = useState<number | null>(null);
-  const [subjectCount, setSubjectCount] = useState<number | null>(null);
-  const [attendanceRate, setAttendanceRate] = useState<number | null>(null);
-  const [attendanceSummary, setAttendanceSummary] = useState<any>(null);
-  const [weeklyAttendance, setWeeklyAttendance] = useState<number[]>([]);
-  const [lastWeekRate, setLastWeekRate] = useState<number | null>(null);
-  const [loading, setLoading] = useState({ classes: true, subjects: true, attendance: true });
-
-  const instituteId = selectedInstitute?.id;
-
-  // Fetch classes count
-  useEffect(() => {
-    if (!instituteId) return;
-    setLoading(l => ({ ...l, classes: true }));
-
-    const fetchClasses = async () => {
-      try {
-        if (userRole === 'Teacher' && user?.id) {
-          const result = await instituteClassesApi.getByInstituteAndTeacher(instituteId, user.id);
-          const classes = (result as any)?.data || (result as any) || [];
-          setClassCount(Array.isArray(classes) ? classes.length : 0);
-        } else if (userRole === 'Student' && user?.id) {
-          // Students: use student endpoint /institute-classes/{instituteId}/student/{userId}
-          const result = await enhancedCachedClient.get<any>(`/institute-classes/${instituteId}/student/${user.id}?page=1&limit=50`, undefined, {
-            ttl: 15,
-            userId: user.id,
-            instituteId,
-          });
-          const classes = (result as any)?.data || (result as any) || [];
-          setClassCount(Array.isArray(classes) ? classes.length : 0);
-        } else {
-          const result = await instituteClassesApi.getByInstitute(instituteId);
-          const classes = (result as any)?.data || (result as any) || [];
-          setClassCount(Array.isArray(classes) ? classes.length : 0);
-        }
-      } catch (e) {
-        console.error('Failed to fetch classes:', e);
-        setClassCount(0);
-      } finally {
-        setLoading(l => ({ ...l, classes: false }));
-      }
-    };
-    fetchClasses();
-  }, [instituteId, userRole, user?.id]);
-
-  // Fetch subjects count
-  useEffect(() => {
-    if (!instituteId) return;
-    setLoading(l => ({ ...l, subjects: true }));
-
-    const fetchSubjects = async () => {
-      try {
-        const result = await subjectsApi.getAll(instituteId);
-        const subjects = (result as any)?.data || (result as any) || [];
-        setSubjectCount(Array.isArray(subjects) ? subjects.length : 0);
-      } catch (e) {
-        console.error('Failed to fetch subjects:', e);
-        setSubjectCount(0);
-      } finally {
-        setLoading(l => ({ ...l, subjects: false }));
-      }
-    };
-    fetchSubjects();
-  }, [instituteId]);
-
-  // Fetch attendance data (role-based)
-  useEffect(() => {
-    if (!instituteId) return;
-    setLoading(l => ({ ...l, attendance: true }));
-
-    // Lock attendance to today's date only - no yesterday or tomorrow
-    const today = new Date();
-    const todayStr = format(today, 'yyyy-MM-dd');
-    const startDate = todayStr;
-    const endDate = todayStr;
-    const lastWeekStart = format(startOfWeek(subDays(today, 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
-    const lastWeekEnd = format(endOfWeek(subDays(today, 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
-
-    const fetchAttendance = async () => {
-      try {
-        if (userRole === 'Student' && user?.id) {
-          // Student: get own attendance
-          const result = await studentAttendanceApi.getInstituteAttendance({
-            studentId: user.id,
-            instituteId,
-            startDate,
-            endDate,
-            limit: 100,
-          });
-          setAttendanceSummary(result.summary);
-          const total = (result.summary?.totalPresent || 0) + (result.summary?.totalAbsent || 0) + (result.summary?.totalLate || 0);
-          setAttendanceRate(total > 0 ? Math.round(((result.summary?.totalPresent || 0) / total) * 100) : null);
-
-          // Last week for comparison
-          const lastResult = await studentAttendanceApi.getInstituteAttendance({
-            studentId: user.id,
-            instituteId,
-            startDate: lastWeekStart,
-            endDate: lastWeekEnd,
-            limit: 100,
-          });
-          const lastTotal = (lastResult.summary?.totalPresent || 0) + (lastResult.summary?.totalAbsent || 0) + (lastResult.summary?.totalLate || 0);
-          setLastWeekRate(lastTotal > 0 ? Math.round(((lastResult.summary?.totalPresent || 0) / lastTotal) * 100) : null);
-        } else {
-          // Admin/Teacher: get institute-wide attendance
-          const result = await enhancedCachedClient.get<any>(
-            `/api/attendance/institute/${instituteId}?startDate=${startDate}&endDate=${endDate}&page=1&limit=100`,
-            undefined,
-            { ttl: 10, useStaleWhileRevalidate: true, instituteId }
-          );
-          const summary = (result as any)?.summary;
-          setAttendanceSummary(summary);
-          const rate = summary?.attendanceRate;
-          setAttendanceRate(rate != null ? Math.round(rate) : null);
-
-          // Last week
-          const lastResult = await enhancedCachedClient.get<any>(
-            `/api/attendance/institute/${instituteId}?startDate=${lastWeekStart}&endDate=${lastWeekEnd}&page=1&limit=100`,
-            undefined,
-            { ttl: 10, useStaleWhileRevalidate: true, instituteId }
-          );
-          const lastSummary = (lastResult as any)?.summary;
-          setLastWeekRate(lastSummary?.attendanceRate != null ? Math.round(lastSummary.attendanceRate) : null);
-        }
-      } catch (e) {
-        console.error('Failed to fetch attendance:', e);
-        setAttendanceRate(null);
-      } finally {
-        setLoading(l => ({ ...l, attendance: false }));
-      }
-    };
-    fetchAttendance();
-  }, [instituteId, userRole, user?.id, selectedClass?.id]);
-
-  const attendanceDiff = useMemo(() => {
-    if (attendanceRate == null || lastWeekRate == null) return null;
-    return attendanceRate - lastWeekRate;
-  }, [attendanceRate, lastWeekRate]);
 
   const handleNavigate = (itemId: string) => {
     const context = {
@@ -187,351 +47,404 @@ const DesktopDashboard = () => {
     navigate(url);
   };
 
-  // Quick action items - only Select Class and Calendar View for all roles
-  const getQuickActions = () => {
-    return [
-      { id: 'select-class', label: 'Select Class', icon: School, desc: 'Choose a class' },
-      { id: 'calendar-view', label: 'Calendar View', icon: Calendar, desc: 'Full calendar view' },
-    ];
-  };
-
-  const quickActions = getQuickActions();
+  const colors = [
+    'bg-blue-500', 'bg-emerald-500', 'bg-violet-500', 'bg-amber-500',
+    'bg-rose-500', 'bg-cyan-500', 'bg-indigo-500', 'bg-teal-500',
+    'bg-orange-500', 'bg-pink-500', 'bg-sky-500', 'bg-lime-500',
+  ];
+  let colorIndex = 0;
+  const nextColor = () => colors[colorIndex++ % colors.length];
 
   const userType = user?.userType?.toUpperCase() || '';
-  const showInstitutes = userType !== 'USER_WITHOUT_STUDENT';
-  const showChildren = userType !== 'USER_WITHOUT_PARENT';
 
-  // Pre-institute selection view
-  if (!instituteId) {
-    const preInstituteItems = [
-      ...(showInstitutes ? [{ id: 'select-institute', label: 'Select Institute', icon: School, desc: 'Choose your institute' }] : []),
-      ...(showChildren ? [{ id: 'my-children', label: 'My Children', icon: Users, desc: 'View your children' }] : []),
-      { id: 'organizations', label: 'Organizations', icon: Building2, desc: 'Manage organizations' },
-      { id: 'transport', label: 'Transport', icon: Bus, desc: 'Transport services' },
-      { id: 'system-payments', label: 'Payments', icon: CreditCard, desc: 'System payments' },
-      { id: 'notifications', label: 'Notifications', icon: Bell, desc: 'View notifications' },
-      { id: 'profile', label: 'My Profile', icon: User, desc: 'View your profile' },
-      { id: 'id-cards', label: 'ID Cards', icon: IdCard, desc: 'Digital ID cards' },
-      { id: 'settings', label: 'Settings', icon: Settings, desc: 'App settings' },
+  const getSections = (): DashboardSection[] => {
+    const sections: DashboardSection[] = [];
+
+    // ── PRE-INSTITUTE SELECTION ──
+    if (!selectedInstitute) {
+      if (userType !== 'USER_WITHOUT_STUDENT') {
+        sections.push({
+          title: 'My Institutes',
+          items: [
+            { id: 'select-institute', label: 'Select Institute', icon: School, color: nextColor(), description: 'Choose your school or institute' },
+            { id: 'notifications', label: 'Notifications', icon: Bell, color: nextColor(), description: 'Check your updates' },
+          ],
+        });
+      }
+      if (userType !== 'USER_WITHOUT_PARENT') {
+        sections.push({
+          title: 'My Children',
+          items: [
+            { id: 'my-children', label: 'My Children', icon: Users, color: nextColor(), description: 'View and manage your children' },
+          ],
+        });
+      }
+      sections.push({
+        title: 'Services',
+        items: [
+          { id: 'organizations', label: 'Organizations', icon: Building2, color: nextColor(), description: 'Browse organizations' },
+          { id: 'transport', label: 'Transport', icon: Bus, color: nextColor(), description: 'Transport services' },
+          { id: 'system-payments', label: 'Payments', icon: CreditCard, color: nextColor(), description: 'Manage your payments' },
+        ],
+      });
+      sections.push({
+        title: 'My Account',
+        items: [
+          { id: 'profile', label: 'My Profile', icon: User, color: nextColor(), description: 'View and edit your profile' },
+          { id: 'id-cards', label: 'ID Cards', icon: IdCard, color: nextColor(), description: 'Your digital ID cards' },
+          { id: 'settings', label: 'Settings', icon: Settings, color: nextColor(), description: 'App preferences' },
+        ],
+      });
+      return sections;
+    }
+
+    // ── STUDENT ──
+    if (userRole === 'Student') {
+      if (!selectedClass) {
+        sections.push({
+          title: 'Get Started',
+          items: [
+            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor(), description: 'Select your class to continue' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "See today's schedule" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'View full calendar' },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: 'Check your attendance' },
+            { id: 'institute-lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Watch available lectures' },
+          ],
+        });
+        sections.push({
+          title: 'Fees',
+          items: [
+            { id: 'institute-payments', label: 'My Fees', icon: CreditCard, color: nextColor(), description: 'View due fees' },
+            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor(), description: 'Past payments & receipts' },
+          ],
+        });
+      } else if (selectedClass && !selectedSubject) {
+        sections.push({
+          title: 'Get Started',
+          items: [
+            { id: 'select-subject', label: isTuitionInstitute ? 'Choose Sub Class' : 'Choose Subject', icon: BookOpen, color: nextColor(), description: `Pick a ${subjectLabel.toLowerCase()} to explore` },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "See today's schedule" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'View full calendar' },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: 'Check your attendance' },
+          ],
+        });
+        sections.push({
+          title: 'Fees',
+          items: [
+            { id: 'institute-payments', label: 'My Fees', icon: CreditCard, color: nextColor(), description: 'View due fees' },
+            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor(), description: 'Past payments & receipts' },
+          ],
+        });
+      } else if (selectedClass && selectedSubject) {
+        sections.push({
+          title: 'My Learning',
+          items: [
+            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Watch class lectures' },
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor(), description: 'Free video lessons' },
+            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor(), description: 'View & submit homework' },
+            { id: 'exams', label: 'Exams', icon: Award, color: nextColor(), description: 'Upcoming & past exams' },
+          ],
+        });
+        sections.push({
+          title: 'My Schedule',
+          items: [
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: 'Your attendance record' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's timetable" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Full calendar view' },
+            { id: 'subject-payments', label: 'Fees', icon: CreditCard, color: nextColor(), description: 'Subject fee details' },
+          ],
+        });
+      }
+
+    // ── PARENT ──
+    } else if (userRole === 'Parent') {
+      if (!selectedClass) {
+        sections.push({
+          title: 'My Children',
+          items: [
+            { id: 'my-children', label: 'Children', icon: Users, color: nextColor(), description: 'View your children' },
+            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor(), description: "Select child's class" },
+            { id: 'today-dashboard', label: "Today's Activity", icon: CalendarDays, color: nextColor(), description: "What's happening today" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Academic calendar' },
+          ],
+        });
+        sections.push({
+          title: 'Fees & Payments',
+          items: [
+            { id: 'institute-payments', label: 'Due Fees', icon: CreditCard, color: nextColor(), description: 'Outstanding fee payments' },
+            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor(), description: 'Past payments & receipts' },
+          ],
+        });
+      } else if (selectedClass && !selectedSubject) {
+        sections.push({
+          title: 'My Children',
+          items: [
+            { id: 'my-children', label: 'Children', icon: Users, color: nextColor(), description: 'View your children' },
+            { id: 'select-subject', label: isTuitionInstitute ? 'Choose Sub Class' : 'Choose Subject', icon: BookOpen, color: nextColor(), description: `Select a ${subjectLabel.toLowerCase()}` },
+            { id: 'today-dashboard', label: "Today's Activity", icon: CalendarDays, color: nextColor(), description: "What's happening today" },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: "Child's attendance record" },
+          ],
+        });
+        sections.push({
+          title: 'Fees & Payments',
+          items: [
+            { id: 'institute-payments', label: 'Due Fees', icon: CreditCard, color: nextColor(), description: 'Outstanding fee payments' },
+            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor(), description: 'Past payments & receipts' },
+          ],
+        });
+      } else if (selectedClass && selectedSubject) {
+        sections.push({
+          title: "Child's Progress",
+          items: [
+            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Class lecture videos' },
+            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor(), description: 'Assigned homework' },
+            { id: 'exams', label: 'Exam Results', icon: Award, color: nextColor(), description: 'View exam scores' },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: "Child's attendance" },
+          ],
+        });
+        sections.push({
+          title: 'Fees & Payments',
+          items: [
+            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor(), description: 'Fees for this subject' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's schedule" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Full calendar view' },
+          ],
+        });
+      }
+
+    // ── TEACHER ──
+    } else if (userRole === 'Teacher') {
+      if (!selectedClass && !selectedSubject) {
+        sections.push({
+          title: 'My Classes',
+          items: [
+            { id: 'institute-subjects', label: `All ${subjectLabel}s`, icon: BookOpen, color: nextColor(), description: `Browse all ${subjectLabel.toLowerCase()}s` },
+            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor(), description: 'Select a class to manage' },
+            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Pick a ${subjectLabel.toLowerCase()}` },
+            { id: 'institute-lectures', label: 'All Lectures', icon: Video, color: nextColor(), description: 'View all uploaded lectures' },
+          ],
+        });
+        sections.push({
+          title: 'Schedule',
+          items: [
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's teaching schedule" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Full calendar view' },
+          ],
+        });
+      } else if (selectedClass && !selectedSubject) {
+        sections.push({
+          title: 'Class Overview',
+          items: [
+            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Select a ${subjectLabel.toLowerCase()}` },
+            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor(), description: 'View enrolled students' },
+            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor(), description: 'Students awaiting approval' },
+          ],
+        });
+        sections.push({
+          title: 'Attendance',
+          items: [
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's overview" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Attendance calendar' },
+          ],
+        });
+      } else if (selectedClass && selectedSubject) {
+        sections.push({
+          title: 'Teaching',
+          items: [
+            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor(), description: 'View your students' },
+            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Manage lecture videos' },
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor(), description: 'Free content for students' },
+            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor(), description: 'Assign & review homework' },
+            { id: 'exams', label: 'Exams', icon: FileText, color: nextColor(), description: 'Create & grade exams' },
+          ],
+        });
+        sections.push({
+          title: 'Attendance',
+          items: [
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's overview" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Attendance calendar' },
+          ],
+        });
+        sections.push({
+          title: 'Fees',
+          items: [
+            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor(), description: 'Manage subject fees' },
+          ],
+        });
+      }
+
+    // ── INSTITUTE ADMIN ──
+    } else if (userRole === 'InstituteAdmin') {
+      if (!selectedClass && !selectedSubject) {
+        sections.push({
+          title: 'People',
+          items: [
+            ...(isTuitionInstitute ? [] : [{ id: 'institute-organizations', label: 'Organizations', icon: Building2, color: nextColor(), description: 'Manage organizations' }]),
+            { id: 'institute-users', label: 'All Users', icon: Users, color: nextColor(), description: 'View all institute members' },
+            { id: 'parents', label: 'Parents', icon: Users, color: nextColor(), description: 'View parent accounts' },
+            { id: 'verify-image', label: 'Verify Photos', icon: ImageIcon, color: nextColor(), description: 'Approve profile photos' },
+          ],
+        });
+        sections.push({
+          title: 'Classes & Subjects',
+          items: [
+            { id: 'classes', label: 'All Classes', icon: School, color: nextColor(), description: 'Manage all classes' },
+            { id: 'institute-subjects', label: `All ${subjectLabel}s`, icon: BookOpen, color: nextColor(), description: `View all ${subjectLabel.toLowerCase()}s` },
+            { id: 'select-class', label: 'Go to Class', icon: School, color: nextColor(), description: 'Navigate to a class' },
+            { id: 'select-subject', label: `Go to ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Open a ${subjectLabel.toLowerCase()}` },
+            { id: 'institute-lectures', label: 'All Lectures', icon: Video, color: nextColor(), description: 'View all lecture content' },
+          ],
+        });
+        sections.push({
+          title: 'Attendance',
+          items: [
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's attendance overview" },
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'View attendance history' },
+          ],
+        });
+        sections.push({
+          title: 'Fees & Messages',
+          items: [
+            { id: 'institute-payments', label: 'All Fees', icon: CreditCard, color: nextColor(), description: 'Manage institute fees' },
+            { id: 'pending-submissions', label: 'Review Payments', icon: Clock, color: nextColor(), description: 'Approve pending payments' },
+            { id: 'sms', label: 'Send SMS', icon: MessageSquare, color: nextColor(), description: 'Send messages to users' },
+            { id: 'sms-history', label: 'SMS History', icon: MessageSquare, color: nextColor(), description: 'View sent messages' },
+          ],
+        });
+      } else if (selectedClass && !selectedSubject) {
+        sections.push({
+          title: 'Class Overview',
+          items: [
+            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor(), description: 'View enrolled students' },
+            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor(), description: 'Students awaiting approval' },
+            { id: 'parents', label: 'Parents', icon: Users, color: nextColor(), description: 'View parent contacts' },
+            { id: 'class-subjects', label: `${subjectLabel}s`, icon: BookOpen, color: nextColor(), description: `Class ${subjectLabel.toLowerCase()}s list` },
+            { id: 'select-subject', label: `Go to ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Open a ${subjectLabel.toLowerCase()}` },
+          ],
+        });
+        sections.push({
+          title: 'Attendance',
+          items: [
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's overview" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Attendance calendar' },
+          ],
+        });
+      } else if (selectedClass && selectedSubject) {
+        sections.push({
+          title: 'Quick Access',
+          items: [
+            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor(), description: 'View enrolled students' },
+            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor(), description: 'Awaiting approval' },
+            { id: 'select-subject', label: `Change ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Switch to another ${subjectLabel.toLowerCase()}` },
+          ],
+        });
+        sections.push({
+          title: 'Content',
+          items: [
+            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Manage lecture videos' },
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor(), description: 'Free content for students' },
+            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor(), description: 'Assign & review homework' },
+            { id: 'exams', label: 'Exams', icon: FileText, color: nextColor(), description: 'Create & grade exams' },
+          ],
+        });
+        sections.push({
+          title: 'Attendance',
+          items: [
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's overview" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Attendance calendar' },
+          ],
+        });
+        sections.push({
+          title: 'Fees',
+          items: [
+            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor(), description: 'Manage fee collection' },
+          ],
+        });
+      }
+
+    // ── ATTENDANCE MARKER ──
+    } else if (userRole === 'AttendanceMarker') {
+      if (selectedInstitute) {
+        sections.push({
+          title: 'Mark Attendance',
+          items: [
+            { id: 'attendance-markers', label: 'My Markers', icon: Users, color: nextColor(), description: 'Your assigned markers' },
+            ...(!selectedClass ? [{ id: 'select-class', label: 'Choose Class', icon: School, color: nextColor(), description: 'Select a class first' }] : []),
+            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Pick a ${subjectLabel.toLowerCase()}` },
+            ...(selectedSubject ? [{ id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor(), description: 'Free video content' }] : []),
+          ],
+        });
+      }
+    }
+
+    // Notifications — all roles
+    if (selectedInstitute) {
+      sections.push({
+        title: 'Updates',
+        items: [
+          { id: 'institute-notifications', label: 'Notifications', icon: Bell, color: nextColor(), description: 'Latest updates & alerts' },
+        ],
+      });
+    }
+
+    // Account — all roles
+    const accountItems: DashboardItem[] = [
+      { id: 'profile', label: 'My Profile', icon: User, color: nextColor(), description: 'View and edit your profile' },
     ];
+    if (selectedInstitute && ['Student', 'Teacher', 'InstituteAdmin', 'Parent'].includes(userRole)) {
+      accountItems.push({ id: 'institute-profile', label: 'ID Card', icon: IdCard, color: nextColor(), description: 'Your digital ID card' });
+    }
+    sections.push({ title: 'My Account', items: accountItems });
 
-    return (
-      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground">
-            Welcome{user?.nameWithInitials ? `, ${user.nameWithInitials}` : ''}
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Select an institute to get started
-          </p>
-        </div>
+    return sections;
+  };
 
-        {/* Institute carousel */}
-        {showInstitutes && (
-          <InstituteCarousel onSelectInstitute={(inst) => setSelectedInstitute(inst)} />
-        )}
-
-        {/* My Attendance History Card */}
-        <MyAttendanceHistoryCard />
-
-        {/* Navigation grid */}
-        <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            Quick Access
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {preInstituteItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => handleNavigate(item.id)}
-                className="bg-card border border-border rounded-xl p-5 text-left hover:border-primary/20 hover:shadow-sm transition-all group"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-xl bg-muted group-hover:bg-primary/10 transition-colors">
-                    <item.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-base font-medium text-foreground truncate">{item.label}</p>
-                    <p className="text-xs text-muted-foreground truncate">{item.desc}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto shrink-0 group-hover:text-primary transition-colors" />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const sections = getSections();
 
   return (
-    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-6 space-y-5 max-w-5xl mx-auto pb-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            {userRole === 'Student'
-              ? 'Your academic overview'
-              : `Overview of ${selectedInstitute?.shortName || selectedInstitute?.name || 'your institute'}`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          Live
-        </div>
+      <div>
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">
+          Welcome{user?.firstName || user?.nameWithInitials ? `, ${user?.firstName || user?.nameWithInitials}` : ''} 👋
+        </h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {selectedInstitute
+            ? selectedInstitute.shortName || selectedInstitute.name
+            : 'Select an institute to get started'}
+        </p>
       </div>
 
-      {/* Institute carousel */}
+      {/* Institute carousel slider */}
       <InstituteCarousel onSelectInstitute={(inst) => setSelectedInstitute(inst)} />
 
-      {/* Stats row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      {/* Breadcrumb navigation */}
+      {selectedInstitute && (
+        <DashboardQuickNav onNavigate={handleNavigate} isTuitionInstitute={isTuitionInstitute} />
+      )}
 
-        {/* Academic Card */}
-        <div className="bg-card border border-primary/20 rounded-2xl p-5 space-y-4 shadow-sm">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-primary/10">
-              <GraduationCap className="h-5 w-5 text-primary" />
-            </div>
-            <h3 className="font-semibold text-foreground">Academic</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => handleNavigate(userRole === 'Student' ? 'select-class' : 'classes')}
-              className="bg-muted/40 hover:bg-muted rounded-xl p-4 text-left transition-colors group"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <School className="h-4 w-4 text-primary" />
-                <p className="text-xs text-muted-foreground">Active Classes</p>
-              </div>
-              <p className="text-2xl font-bold text-foreground">
-                {loading.classes ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                ) : (
-                  classCount ?? '—'
-                )}
-              </p>
-            </button>
-            <button
-              onClick={() => handleNavigate('institute-subjects')}
-              className="bg-muted/40 hover:bg-muted rounded-xl p-4 text-left transition-colors group"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <BookOpen className="h-4 w-4 text-orange-500" />
-                <p className="text-xs text-muted-foreground">{subjectLabel}s</p>
-              </div>
-              <p className="text-2xl font-bold text-foreground">
-                {loading.subjects ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                ) : (
-                  subjectCount ?? '—'
-                )}
-              </p>
-            </button>
-          </div>
-          {/* Quick nav */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleNavigate('select-class')}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-medium text-primary"
-            >
-              <School className="h-3.5 w-3.5" />
-              Go to Class
-            </button>
-            <button
-              onClick={() => handleNavigate('select-subject')}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-primary/5 hover:bg-primary/10 transition-colors text-xs font-medium text-primary"
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              Go to {subjectLabel}
-            </button>
-          </div>
-        </div>
+      {/* Attendance card - only shows if API is available */}
+      {!selectedInstitute && <MyAttendanceHistoryCard />}
 
-        {/* Daily Attendance Card - Pie Chart */}
-        <div className="bg-card border border-border rounded-2xl p-5 space-y-3 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-emerald-500/10">
-                <UserCheck className="h-5 w-5 text-emerald-500" />
-              </div>
-              <h3 className="font-semibold text-foreground">
-                {userRole === 'Student' ? 'My Attendance' : 'Daily Attendance'}
-              </h3>
-            </div>
-          </div>
-
-          {loading.attendance ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : attendanceSummary ? (
-            <>
-              {/* Mini Pie Chart */}
-              <div className="flex items-center gap-4">
-                <div className="w-28 h-28 relative shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={(() => {
-                          const p = attendanceSummary.totalPresent || 0;
-                          const a = attendanceSummary.totalAbsent || 0;
-                          const l = attendanceSummary.totalLate || 0;
-                          const total = p + a + l;
-                          if (total === 0) return [{ name: 'No Data', value: 1, color: 'hsl(var(--muted))' }];
-                          return [
-                            { name: 'Present', value: p, color: 'hsl(142 71% 45%)' },
-                            { name: 'Absent', value: a, color: 'hsl(var(--destructive))' },
-                            { name: 'Late', value: l, color: 'hsl(45 93% 47%)' },
-                          ].filter(d => d.value > 0);
-                        })()}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={30}
-                        outerRadius={48}
-                        dataKey="value"
-                        strokeWidth={2}
-                        stroke="hsl(var(--card))"
-                      >
-                        {(() => {
-                          const p = attendanceSummary.totalPresent || 0;
-                          const a = attendanceSummary.totalAbsent || 0;
-                          const l = attendanceSummary.totalLate || 0;
-                          const total = p + a + l;
-                          if (total === 0) return <Cell fill="hsl(var(--muted))" />;
-                          return [
-                            { name: 'Present', value: p, color: 'hsl(142 71% 45%)' },
-                            { name: 'Absent', value: a, color: 'hsl(var(--destructive))' },
-                            { name: 'Late', value: l, color: 'hsl(45 93% 47%)' },
-                          ].filter(d => d.value > 0).map((entry, i) => (
-                            <Cell key={i} fill={entry.color} />
-                          ));
-                        })()}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-lg font-bold text-foreground">
-                      {attendanceRate != null ? `${attendanceRate}%` : '—'}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'hsl(142 71% 45%)' }} />
-                    <span className="text-xs text-muted-foreground flex-1">Present</span>
-                    <span className="text-sm font-semibold text-foreground">{attendanceSummary.totalPresent || 0}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-destructive" />
-                    <span className="text-xs text-muted-foreground flex-1">Absent</span>
-                    <span className="text-sm font-semibold text-foreground">{attendanceSummary.totalAbsent || 0}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'hsl(45 93% 47%)' }} />
-                    <span className="text-xs text-muted-foreground flex-1">Late</span>
-                    <span className="text-sm font-semibold text-foreground">{attendanceSummary.totalLate || 0}</span>
-                  </div>
-                  {attendanceDiff != null && (
-                    <div className={`flex items-center gap-1 text-xs font-medium ${
-                      attendanceDiff >= 0 ? 'text-emerald-500' : 'text-destructive'
-                    }`}>
-                      {attendanceDiff >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                      {attendanceDiff > 0 ? '+' : ''}{attendanceDiff}% vs last week
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground text-center py-6">No data today</p>
-          )}
-
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={() => handleNavigate(userRole === 'Student' ? 'my-attendance' : 'daily-attendance')}
-              className="flex-1 text-center text-xs text-primary font-medium hover:underline py-1"
-            >
-              View Details
-            </button>
-            {userRole !== 'Student' && (
-              <button
-                onClick={() => handleNavigate('qr-attendance')}
-                className="flex-1 text-center text-xs text-primary font-medium hover:underline py-1"
-              >
-                QR Mark
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions + Messages side by side */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Quick Actions */}
-        <div>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            Quick Actions
+      {/* All sections with card grid */}
+      {sections.map((section) => (
+        <div key={section.title}>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2.5">
+            {section.title}
           </h2>
-          <div className="grid grid-cols-1 gap-3">
-            {quickActions.map((action) => (
-              <button
-                key={action.id}
-                onClick={() => handleNavigate(action.id)}
-                className="bg-card border border-border rounded-xl p-5 text-left hover:border-primary/20 hover:shadow-sm transition-all group"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-xl bg-muted group-hover:bg-primary/10 transition-colors">
-                    <action.icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-base font-medium text-foreground truncate">{action.label}</p>
-                    <p className="text-xs text-muted-foreground truncate">{action.desc}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto shrink-0 group-hover:text-primary transition-colors" />
-                </div>
-              </button>
-            ))}
-          </div>
+          <DashboardGrid items={section.items} onNavigate={handleNavigate} />
         </div>
-
-        {/* Messages */}
-        {(userRole === 'InstituteAdmin' || userRole === 'Teacher') && (
-          <div>
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Messages
-            </h2>
-            <div className="bg-card border border-border rounded-xl p-5 space-y-4 shadow-sm">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-violet-500/10">
-                  <MessageSquare className="h-5 w-5 text-violet-500" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-foreground">SMS Notifications</h3>
-                  <p className="text-xs text-muted-foreground">Send to students & parents</p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleNavigate('sms')}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 transition-colors text-xs font-medium text-violet-600 dark:text-violet-400"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Send SMS
-                </button>
-                <button
-                  onClick={() => handleNavigate('sms-history')}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg bg-muted/50 hover:bg-muted transition-colors text-xs font-medium text-foreground"
-                >
-                  SMS History
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      ))}
     </div>
   );
 };
