@@ -1,18 +1,15 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useNavigate } from 'react-router-dom';
 import { buildSidebarUrl } from '@/utils/pageNavigation';
-import useEmblaCarousel from 'embla-carousel-react';
-import DashboardQuickNav from '@/components/dashboard/DashboardQuickNav';
-import DashboardSectionPills from '@/components/dashboard/DashboardSectionPills';
 import DashboardGrid, { type DashboardItem } from '@/components/dashboard/DashboardGrid';
 import InstituteCarousel from '@/components/dashboard/InstituteCarousel';
 import {
   Users, GraduationCap, UserCheck, BookOpen, School,
   User, Building2, QrCode, Award, Video, FileText, Notebook,
   CreditCard, IdCard, MessageSquare, Bell, ImageIcon,
-  Calendar, CalendarDays, Clock, Bus, Settings, type LucideIcon,
+  Calendar, CalendarDays, Clock, Bus, Settings,
 } from 'lucide-react';
 
 interface DashboardSection {
@@ -30,25 +27,6 @@ const MobileDashboard = () => {
   const navigate = useNavigate();
   const isTuitionInstitute = selectedInstitute?.type === 'tuition_institute';
   const subjectLabel = isTuitionInstitute ? 'Sub Class' : 'Subject';
-
-  const [activeSection, setActiveSection] = useState(0);
-  const [emblaRef, emblaApi] = useEmblaCarousel({ align: 'start', loop: false });
-
-  const onSelect = useCallback(() => {
-    if (!emblaApi) return;
-    setActiveSection(emblaApi.selectedScrollSnap());
-  }, [emblaApi]);
-
-  useEffect(() => {
-    if (!emblaApi) return;
-    emblaApi.on('select', onSelect);
-    return () => { emblaApi.off('select', onSelect); };
-  }, [emblaApi, onSelect]);
-
-  const scrollToSection = useCallback((index: number) => {
-    emblaApi?.scrollTo(index);
-    setActiveSection(index);
-  }, [emblaApi]);
 
   const handleNavigate = (itemId: string) => {
     const context = {
@@ -82,47 +60,39 @@ const MobileDashboard = () => {
 
     // ── PRE-INSTITUTE SELECTION ──
     if (!selectedInstitute) {
-      // Institutes section (unless UserWithoutStudent — they have no institute enrollment)
       if (userType !== 'USER_WITHOUT_STUDENT') {
         sections.push({
           title: 'My Institutes',
           items: [
-            { id: 'select-institute', label: 'Select Institute', icon: School, color: nextColor() },
-            { id: 'notifications', label: 'Notifications', icon: Bell, color: nextColor() },
+            { id: 'select-institute', label: 'Select Institute', icon: School, color: nextColor(), description: 'Choose your school or institute' },
+            { id: 'notifications', label: 'Notifications', icon: Bell, color: nextColor(), description: 'Check your updates' },
           ],
         });
       }
-
-      // Children section (for Parent, User, UserWithoutStudent — NOT UserWithoutParent)
       if (userType !== 'USER_WITHOUT_PARENT') {
         sections.push({
           title: 'My Children',
           items: [
-            { id: 'my-children', label: 'My Children', icon: Users, color: nextColor() },
+            { id: 'my-children', label: 'My Children', icon: Users, color: nextColor(), description: 'View and manage your children' },
           ],
         });
       }
-
-      // Common navigation
       sections.push({
         title: 'Services',
         items: [
-          { id: 'organizations', label: 'Organizations', icon: Building2, color: nextColor() },
-          { id: 'transport', label: 'Transport', icon: Bus, color: nextColor() },
-          { id: 'system-payments', label: 'Payments', icon: CreditCard, color: nextColor() },
+          { id: 'organizations', label: 'Organizations', icon: Building2, color: nextColor(), description: 'Browse organizations' },
+          { id: 'transport', label: 'Transport', icon: Bus, color: nextColor(), description: 'Transport services' },
+          { id: 'system-payments', label: 'Payments', icon: CreditCard, color: nextColor(), description: 'Manage your payments' },
         ],
       });
-
-      // Account
       sections.push({
         title: 'My Account',
         items: [
-          { id: 'profile', label: 'My Profile', icon: User, color: nextColor() },
-          { id: 'id-cards', label: 'ID Cards', icon: IdCard, color: nextColor() },
-          { id: 'settings', label: 'Settings', icon: Settings, color: nextColor() },
+          { id: 'profile', label: 'My Profile', icon: User, color: nextColor(), description: 'View and edit your profile' },
+          { id: 'id-cards', label: 'ID Cards', icon: IdCard, color: nextColor(), description: 'Your digital ID cards' },
+          { id: 'settings', label: 'Settings', icon: Settings, color: nextColor(), description: 'App preferences' },
         ],
       });
-
       return sections;
     }
 
@@ -132,54 +102,54 @@ const MobileDashboard = () => {
         sections.push({
           title: 'Get Started',
           items: [
-            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor() },
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
-            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor() },
-            { id: 'institute-lectures', label: 'Lectures', icon: Video, color: nextColor() },
+            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor(), description: 'Select your class to continue' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "See today's schedule" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'View full calendar' },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: 'Check your attendance' },
+            { id: 'institute-lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Watch available lectures' },
           ],
         });
         sections.push({
           title: 'Fees',
           items: [
-            { id: 'institute-payments', label: 'My Fees', icon: CreditCard, color: nextColor() },
-            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor() },
+            { id: 'institute-payments', label: 'My Fees', icon: CreditCard, color: nextColor(), description: 'View due fees' },
+            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor(), description: 'Past payments & receipts' },
           ],
         });
       } else if (selectedInstitute && selectedClass && !selectedSubject) {
         sections.push({
           title: 'Get Started',
           items: [
-            { id: 'select-subject', label: isTuitionInstitute ? 'Choose Sub Class' : 'Choose Subject', icon: BookOpen, color: nextColor() },
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
-            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor() },
+            { id: 'select-subject', label: isTuitionInstitute ? 'Choose Sub Class' : 'Choose Subject', icon: BookOpen, color: nextColor(), description: `Pick a ${subjectLabel.toLowerCase()} to explore` },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "See today's schedule" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'View full calendar' },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: 'Check your attendance' },
           ],
         });
         sections.push({
           title: 'Fees',
           items: [
-            { id: 'institute-payments', label: 'My Fees', icon: CreditCard, color: nextColor() },
-            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor() },
+            { id: 'institute-payments', label: 'My Fees', icon: CreditCard, color: nextColor(), description: 'View due fees' },
+            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor(), description: 'Past payments & receipts' },
           ],
         });
       } else if (selectedInstitute && selectedClass && selectedSubject) {
         sections.push({
           title: 'My Learning',
           items: [
-            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor() },
-            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor() },
-            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor() },
-            { id: 'exams', label: 'Exams', icon: Award, color: nextColor() },
+            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Watch class lectures' },
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor(), description: 'Free video lessons' },
+            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor(), description: 'View & submit homework' },
+            { id: 'exams', label: 'Exams', icon: Award, color: nextColor(), description: 'Upcoming & past exams' },
           ],
         });
         sections.push({
           title: 'My Schedule',
           items: [
-            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor() },
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
-            { id: 'subject-payments', label: 'Fees', icon: CreditCard, color: nextColor() },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: 'Your attendance record' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's timetable" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Full calendar view' },
+            { id: 'subject-payments', label: 'Fees', icon: CreditCard, color: nextColor(), description: 'Subject fee details' },
           ],
         });
       }
@@ -190,52 +160,52 @@ const MobileDashboard = () => {
         sections.push({
           title: 'My Children',
           items: [
-            { id: 'my-children', label: 'Children', icon: Users, color: nextColor() },
-            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor() },
-            { id: 'today-dashboard', label: "Today's Activity", icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
+            { id: 'my-children', label: 'Children', icon: Users, color: nextColor(), description: 'View your children' },
+            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor(), description: "Select child's class" },
+            { id: 'today-dashboard', label: "Today's Activity", icon: CalendarDays, color: nextColor(), description: "What's happening today" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Academic calendar' },
           ],
         });
         sections.push({
           title: 'Fees & Payments',
           items: [
-            { id: 'institute-payments', label: 'Due Fees', icon: CreditCard, color: nextColor() },
-            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor() },
+            { id: 'institute-payments', label: 'Due Fees', icon: CreditCard, color: nextColor(), description: 'Outstanding fee payments' },
+            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor(), description: 'Past payments & receipts' },
           ],
         });
       } else if (selectedInstitute && selectedClass && !selectedSubject) {
         sections.push({
           title: 'My Children',
           items: [
-            { id: 'my-children', label: 'Children', icon: Users, color: nextColor() },
-            { id: 'select-subject', label: isTuitionInstitute ? 'Choose Sub Class' : 'Choose Subject', icon: BookOpen, color: nextColor() },
-            { id: 'today-dashboard', label: "Today's Activity", icon: CalendarDays, color: nextColor() },
-            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor() },
+            { id: 'my-children', label: 'Children', icon: Users, color: nextColor(), description: 'View your children' },
+            { id: 'select-subject', label: isTuitionInstitute ? 'Choose Sub Class' : 'Choose Subject', icon: BookOpen, color: nextColor(), description: `Select a ${subjectLabel.toLowerCase()}` },
+            { id: 'today-dashboard', label: "Today's Activity", icon: CalendarDays, color: nextColor(), description: "What's happening today" },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: "Child's attendance record" },
           ],
         });
         sections.push({
           title: 'Fees & Payments',
           items: [
-            { id: 'institute-payments', label: 'Due Fees', icon: CreditCard, color: nextColor() },
-            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor() },
+            { id: 'institute-payments', label: 'Due Fees', icon: CreditCard, color: nextColor(), description: 'Outstanding fee payments' },
+            { id: 'my-submissions', label: 'Payment History', icon: FileText, color: nextColor(), description: 'Past payments & receipts' },
           ],
         });
       } else if (selectedInstitute && selectedClass && selectedSubject) {
         sections.push({
           title: "Child's Progress",
           items: [
-            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor() },
-            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor() },
-            { id: 'exams', label: 'Exam Results', icon: Award, color: nextColor() },
-            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor() },
+            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Class lecture videos' },
+            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor(), description: 'Assigned homework' },
+            { id: 'exams', label: 'Exam Results', icon: Award, color: nextColor(), description: 'View exam scores' },
+            { id: 'my-attendance', label: 'Attendance', icon: UserCheck, color: nextColor(), description: "Child's attendance" },
           ],
         });
         sections.push({
           title: 'Fees & Payments',
           items: [
-            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor() },
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
+            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor(), description: 'Fees for this subject' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's schedule" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Full calendar view' },
           ],
         });
       }
@@ -246,61 +216,61 @@ const MobileDashboard = () => {
         sections.push({
           title: 'My Classes',
           items: [
-            { id: 'institute-subjects', label: `All ${subjectLabel}s`, icon: BookOpen, color: nextColor() },
-            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor() },
-            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor() },
-            { id: 'institute-lectures', label: 'All Lectures', icon: Video, color: nextColor() },
+            { id: 'institute-subjects', label: `All ${subjectLabel}s`, icon: BookOpen, color: nextColor(), description: `Browse all ${subjectLabel.toLowerCase()}s` },
+            { id: 'select-class', label: 'Choose Class', icon: School, color: nextColor(), description: 'Select a class to manage' },
+            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Pick a ${subjectLabel.toLowerCase()}` },
+            { id: 'institute-lectures', label: 'All Lectures', icon: Video, color: nextColor(), description: 'View all uploaded lectures' },
           ],
         });
         sections.push({
           title: 'Schedule',
           items: [
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's teaching schedule" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Full calendar view' },
           ],
         });
       } else if (selectedInstitute && selectedClass && !selectedSubject) {
         sections.push({
           title: 'Class Overview',
           items: [
-            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor() },
-            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor() },
-            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor() },
+            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Select a ${subjectLabel.toLowerCase()}` },
+            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor(), description: 'View enrolled students' },
+            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor(), description: 'Students awaiting approval' },
           ],
         });
         sections.push({
-          title: 'Take Attendance',
+          title: 'Attendance',
           items: [
-            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor() },
-            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor() },
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's overview" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Attendance calendar' },
           ],
         });
       } else if (selectedInstitute && selectedClass && selectedSubject) {
         sections.push({
           title: 'Teaching',
           items: [
-            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor() },
-            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor() },
-            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor() },
-            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor() },
-            { id: 'exams', label: 'Exams', icon: FileText, color: nextColor() },
+            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor(), description: 'View your students' },
+            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Manage lecture videos' },
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor(), description: 'Free content for students' },
+            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor(), description: 'Assign & review homework' },
+            { id: 'exams', label: 'Exams', icon: FileText, color: nextColor(), description: 'Create & grade exams' },
           ],
         });
         sections.push({
-          title: 'Take Attendance',
+          title: 'Attendance',
           items: [
-            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor() },
-            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor() },
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's overview" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Attendance calendar' },
           ],
         });
         sections.push({
-          title: 'Manage Fees',
+          title: 'Fees',
           items: [
-            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor() },
+            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor(), description: 'Manage subject fees' },
           ],
         });
       }
@@ -311,91 +281,91 @@ const MobileDashboard = () => {
         sections.push({
           title: 'People',
           items: [
-            ...(isTuitionInstitute ? [] : [{ id: 'institute-organizations', label: 'Organizations', icon: Building2, color: nextColor() }]),
-            { id: 'institute-users', label: 'All Users', icon: Users, color: nextColor() },
-            { id: 'parents', label: 'Parents', icon: Users, color: nextColor() },
-            { id: 'verify-image', label: 'Verify Photos', icon: ImageIcon, color: nextColor() },
+            ...(isTuitionInstitute ? [] : [{ id: 'institute-organizations', label: 'Organizations', icon: Building2, color: nextColor(), description: 'Manage organizations' }]),
+            { id: 'institute-users', label: 'All Users', icon: Users, color: nextColor(), description: 'View all institute members' },
+            { id: 'parents', label: 'Parents', icon: Users, color: nextColor(), description: 'View parent accounts' },
+            { id: 'verify-image', label: 'Verify Photos', icon: ImageIcon, color: nextColor(), description: 'Approve profile photos' },
           ],
         });
         sections.push({
           title: 'Classes & Subjects',
           items: [
-            { id: 'classes', label: 'All Classes', icon: School, color: nextColor() },
-            { id: 'institute-subjects', label: `All ${subjectLabel}s`, icon: BookOpen, color: nextColor() },
-            { id: 'select-class', label: 'Go to Class', icon: School, color: nextColor() },
-            { id: 'select-subject', label: `Go to ${subjectLabel}`, icon: BookOpen, color: nextColor() },
-            { id: 'institute-lectures', label: 'All Lectures', icon: Video, color: nextColor() },
+            { id: 'classes', label: 'All Classes', icon: School, color: nextColor(), description: 'Manage all classes' },
+            { id: 'institute-subjects', label: `All ${subjectLabel}s`, icon: BookOpen, color: nextColor(), description: `View all ${subjectLabel.toLowerCase()}s` },
+            { id: 'select-class', label: 'Go to Class', icon: School, color: nextColor(), description: 'Navigate to a class' },
+            { id: 'select-subject', label: `Go to ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Open a ${subjectLabel.toLowerCase()}` },
+            { id: 'institute-lectures', label: 'All Lectures', icon: Video, color: nextColor(), description: 'View all lecture content' },
           ],
         });
         sections.push({
           title: 'Attendance',
           items: [
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor() },
-            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's attendance overview" },
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'View attendance history' },
           ],
         });
         sections.push({
           title: 'Fees & Messages',
           items: [
-            { id: 'institute-payments', label: 'All Fees', icon: CreditCard, color: nextColor() },
-            { id: 'pending-submissions', label: 'Review Payments', icon: Clock, color: nextColor() },
-            { id: 'sms', label: 'Send SMS', icon: MessageSquare, color: nextColor() },
-            { id: 'sms-history', label: 'SMS History', icon: MessageSquare, color: nextColor() },
+            { id: 'institute-payments', label: 'All Fees', icon: CreditCard, color: nextColor(), description: 'Manage institute fees' },
+            { id: 'pending-submissions', label: 'Review Payments', icon: Clock, color: nextColor(), description: 'Approve pending payments' },
+            { id: 'sms', label: 'Send SMS', icon: MessageSquare, color: nextColor(), description: 'Send messages to users' },
+            { id: 'sms-history', label: 'SMS History', icon: MessageSquare, color: nextColor(), description: 'View sent messages' },
           ],
         });
       } else if (selectedInstitute && selectedClass && !selectedSubject) {
         sections.push({
           title: 'Class Overview',
           items: [
-            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor() },
-            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor() },
-            { id: 'parents', label: 'Parents', icon: Users, color: nextColor() },
-            { id: 'class-subjects', label: `${subjectLabel}s`, icon: BookOpen, color: nextColor() },
-            { id: 'select-subject', label: `Go to ${subjectLabel}`, icon: BookOpen, color: nextColor() },
+            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor(), description: 'View enrolled students' },
+            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor(), description: 'Students awaiting approval' },
+            { id: 'parents', label: 'Parents', icon: Users, color: nextColor(), description: 'View parent contacts' },
+            { id: 'class-subjects', label: `${subjectLabel}s`, icon: BookOpen, color: nextColor(), description: `Class ${subjectLabel.toLowerCase()}s list` },
+            { id: 'select-subject', label: `Go to ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Open a ${subjectLabel.toLowerCase()}` },
           ],
         });
         sections.push({
-          title: 'Take Attendance',
+          title: 'Attendance',
           items: [
-            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor() },
-            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor() },
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's overview" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Attendance calendar' },
           ],
         });
       } else if (selectedInstitute && selectedClass && selectedSubject) {
         sections.push({
           title: 'Quick Access',
           items: [
-            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor() },
-            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor() },
-            { id: 'select-subject', label: `Change ${subjectLabel}`, icon: BookOpen, color: nextColor() },
+            { id: 'students', label: 'Students', icon: GraduationCap, color: nextColor(), description: 'View enrolled students' },
+            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, color: nextColor(), description: 'Awaiting approval' },
+            { id: 'select-subject', label: `Change ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Switch to another ${subjectLabel.toLowerCase()}` },
           ],
         });
         sections.push({
           title: 'Content',
           items: [
-            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor() },
-            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor() },
-            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor() },
-            { id: 'exams', label: 'Exams', icon: FileText, color: nextColor() },
+            { id: 'lectures', label: 'Lectures', icon: Video, color: nextColor(), description: 'Manage lecture videos' },
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor(), description: 'Free content for students' },
+            { id: 'homework', label: 'Homework', icon: Notebook, color: nextColor(), description: 'Assign & review homework' },
+            { id: 'exams', label: 'Exams', icon: FileText, color: nextColor(), description: 'Create & grade exams' },
           ],
         });
         sections.push({
-          title: 'Take Attendance',
+          title: 'Attendance',
           items: [
-            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor() },
-            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor() },
-            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor() },
-            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor() },
+            { id: 'daily-attendance', label: 'Mark Daily', icon: UserCheck, color: nextColor(), description: "Take today's attendance" },
+            { id: 'qr-attendance', label: 'Scan QR', icon: QrCode, color: nextColor(), description: 'Quick QR attendance' },
+            { id: 'today-dashboard', label: 'Today', icon: CalendarDays, color: nextColor(), description: "Today's overview" },
+            { id: 'calendar-view', label: 'Calendar', icon: Calendar, color: nextColor(), description: 'Attendance calendar' },
           ],
         });
         sections.push({
-          title: 'Manage Fees',
+          title: 'Fees',
           items: [
-            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor() },
+            { id: 'subject-payments', label: 'Subject Fees', icon: CreditCard, color: nextColor(), description: 'Manage fee collection' },
           ],
         });
       }
@@ -406,10 +376,10 @@ const MobileDashboard = () => {
         sections.push({
           title: 'Mark Attendance',
           items: [
-            { id: 'attendance-markers', label: 'My Markers', icon: Users, color: nextColor() },
-            ...(!selectedClass ? [{ id: 'select-class', label: 'Choose Class', icon: School, color: nextColor() }] : []),
-            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor() },
-            ...(selectedSubject ? [{ id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor() }] : []),
+            { id: 'attendance-markers', label: 'My Markers', icon: Users, color: nextColor(), description: 'Your assigned markers' },
+            ...(!selectedClass ? [{ id: 'select-class', label: 'Choose Class', icon: School, color: nextColor(), description: 'Select a class first' }] : []),
+            { id: 'select-subject', label: `Choose ${subjectLabel}`, icon: BookOpen, color: nextColor(), description: `Pick a ${subjectLabel.toLowerCase()}` },
+            ...(selectedSubject ? [{ id: 'free-lectures', label: 'Free Lectures', icon: Video, color: nextColor(), description: 'Free video content' }] : []),
           ],
         });
       }
@@ -420,17 +390,17 @@ const MobileDashboard = () => {
       sections.push({
         title: 'Updates',
         items: [
-          { id: 'institute-notifications', label: 'Notifications', icon: Bell, color: nextColor() },
+          { id: 'institute-notifications', label: 'Notifications', icon: Bell, color: nextColor(), description: 'Latest updates & alerts' },
         ],
       });
     }
 
     // Account — all roles
     const accountItems: DashboardItem[] = [
-      { id: 'profile', label: 'My Profile', icon: User, color: nextColor() },
+      { id: 'profile', label: 'My Profile', icon: User, color: nextColor(), description: 'View and edit your profile' },
     ];
     if (selectedInstitute && ['Student', 'Teacher', 'InstituteAdmin', 'Parent'].includes(userRole)) {
-      accountItems.push({ id: 'institute-profile', label: 'ID Card', icon: IdCard, color: nextColor() });
+      accountItems.push({ id: 'institute-profile', label: 'ID Card', icon: IdCard, color: nextColor(), description: 'Your digital ID card' });
     }
     sections.push({ title: 'My Account', items: accountItems });
 
@@ -438,78 +408,35 @@ const MobileDashboard = () => {
   };
 
   const sections = getSections();
-  const sectionTitles = sections.map(s => s.title);
-
-  // Reset active section when sections change
-  useEffect(() => {
-    setActiveSection(0);
-    emblaApi?.scrollTo(0);
-  }, [userRole, selectedInstitute?.id, selectedClass?.id, selectedSubject?.id]);
 
   return (
-    <div className="space-y-3 pb-4">
+    <div className="space-y-4 pb-6">
       {/* Welcome */}
       <div className="px-1">
-        <h1 className="text-lg font-bold text-foreground">
-          Welcome{user?.firstName ? `, ${user.firstName}` : ''}
+        <h1 className="text-xl font-bold text-foreground">
+          Welcome{user?.firstName ? `, ${user.firstName}` : ''} 👋
         </h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          {selectedInstitute
+            ? selectedInstitute.shortName || selectedInstitute.name
+            : 'Select an institute to get started'}
+        </p>
       </div>
 
-      {/* Institute carousel - auto-scrolling cards */}
+      {/* Institute carousel */}
       <div className="px-1">
         <InstituteCarousel onSelectInstitute={(inst) => setSelectedInstitute(inst)} />
       </div>
 
-      {/* Context breadcrumb navigation */}
-      <DashboardQuickNav
-        onNavigate={handleNavigate}
-        isTuitionInstitute={isTuitionInstitute}
-      />
-
-      {/* Section pills for quick jump */}
-      {sections.length > 1 && (
-        <DashboardSectionPills
-          sections={sectionTitles}
-          activeIndex={activeSection}
-          onSelect={scrollToSection}
-        />
-      )}
-
-      {/* Swipeable sections */}
-      <div ref={emblaRef} className="overflow-hidden">
-        <div className="flex">
-          {sections.map((section, i) => (
-            <div key={section.title} className="min-w-0 shrink-0 grow-0 basis-full px-0.5">
-              <div className="flex items-center justify-between mb-2 px-0.5">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {section.title}
-                </h2>
-                <span className="text-[10px] text-muted-foreground/60">
-                  {i + 1}/{sections.length}
-                </span>
-              </div>
-              <DashboardGrid items={section.items} onNavigate={handleNavigate} />
-            </div>
-          ))}
+      {/* All sections shown vertically — no swipe needed */}
+      {sections.map((section) => (
+        <div key={section.title} className="px-1">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+            {section.title}
+          </h2>
+          <DashboardGrid items={section.items} onNavigate={handleNavigate} />
         </div>
-      </div>
-
-      {/* Dot indicators */}
-      {sections.length > 1 && (
-        <div className="flex justify-center gap-1">
-          {sections.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => scrollToSection(i)}
-              className={`rounded-full transition-all duration-200 ${
-                i === activeSection
-                  ? 'w-5 h-1.5 bg-primary'
-                  : 'w-1.5 h-1.5 bg-muted-foreground/30'
-              }`}
-            />
-          ))}
-        </div>
-      )}
+      ))}
     </div>
   );
 };
