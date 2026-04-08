@@ -10,6 +10,7 @@ import { Upload, FileText, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { institutePaymentsApi, SubmitPaymentRequest, InstitutePayment } from '@/api/institutePayments.api';
 import { uploadWithSignedUrl } from '@/utils/signedUploadHelper';
+import { getErrorMessage } from '@/api/apiError';
 
 interface SubmitPaymentDialogProps {
   open: boolean;
