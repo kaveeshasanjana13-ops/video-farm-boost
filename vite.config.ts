@@ -14,7 +14,7 @@ export default defineConfig(({mode}) => {
 
   const versionManifestPlugin = {
     name: 'version-manifest',
-    generateBundle() {
+    generateBundle(this: any) {
       this.emitFile({
         type: 'asset',
         fileName: 'version.json',
