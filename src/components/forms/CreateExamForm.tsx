@@ -96,15 +96,15 @@ const CreateExamForm = ({ onClose, onSuccess }: CreateExamFormProps) => {
     }
 
         const errors: Record<string, string> = {};
-    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
-    if (!formData.description && formData.description !== 0) errors.description = 'Description is required';
-    if (!formData.duration && formData.duration !== 0) errors.duration = 'Duration is required';
-    if (!formData.maxMarks && formData.maxMarks !== 0) errors.maxMarks = 'Max Marks is required';
-    if (!formData.passingMarks && formData.passingMarks !== 0) errors.passingMarks = 'Passing Marks is required';
-    if (!formData.examDate && formData.examDate !== 0) errors.examDate = 'Exam Date is required';
-    if (!formData.startTime && formData.startTime !== 0) errors.startTime = 'Start Time is required';
-    if (!formData.endTime && formData.endTime !== 0) errors.endTime = 'End Time is required';
-    if (!formData.venue && formData.venue !== 0) errors.venue = 'Venue is required';
+    if (!formData.title) errors.title = 'Title is required';
+    if (!formData.description) errors.description = 'Description is required';
+    if (!formData.duration) errors.duration = 'Duration is required';
+    if (!formData.maxMarks) errors.maxMarks = 'Max Marks is required';
+    if (!formData.passingMarks) errors.passingMarks = 'Passing Marks is required';
+    if (!formData.examDate) errors.examDate = 'Exam Date is required';
+    if (!formData.startTime) errors.startTime = 'Start Time is required';
+    if (!formData.endTime) errors.endTime = 'End Time is required';
+    if (!formData.venue) errors.venue = 'Venue is required';
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;

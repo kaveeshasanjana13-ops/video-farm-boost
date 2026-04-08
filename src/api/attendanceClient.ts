@@ -237,7 +237,7 @@ class AttendanceApiClient {
           data = await response.json();
         } catch (jsonError) {
           console.error('Failed to parse JSON response:', jsonError);
-          throw new Error('Unexpected response from the server. Please try again later.', { cause: jsonError });
+          throw new Error('Unexpected response from the server. Please try again later.');
         }
       } else {
         // If not JSON, try to parse anyway but provide fallback
@@ -375,7 +375,7 @@ class AttendanceApiClient {
           data = await response.json();
         } catch (jsonError) {
           console.error('Failed to parse JSON response:', jsonError);
-          throw new Error('Unexpected response from the server. Please try again later.', { cause: jsonError });
+          throw new Error('Unexpected response from the server. Please try again later.');
         }
       } else {
         data = {} as T;

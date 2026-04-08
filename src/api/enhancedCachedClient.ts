@@ -466,7 +466,7 @@ class EnhancedCachedApiClient {
       // Wrap raw network errors (TypeError: Failed to fetch) with friendly messages
       if (error instanceof ApiError) throw error;
       if (error instanceof TypeError || error?.message?.match(/^(Failed to fetch|NetworkError|Load failed|fetch failed)/i)) {
-        throw new Error('Unable to connect to the server. Please check your internet connection and try again.', { cause: error });
+        throw new Error('Unable to connect to the server. Please check your internet connection and try again.');
       }
       throw error;
     }
