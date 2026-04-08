@@ -24,7 +24,7 @@ const attendanceMarkerSchema = z.object({
   assignedSubjects: z.string().min(1, 'Subject areas are required'),
   shifts: z.string().min(1, 'Shifts are required'),
   joinDate: z.string().min(1, 'Join date is required'),
-  status: z.string().default('Active'),
+  status: z.string().optional().default('Active'),
   address: z.string().min(5, 'Address is required'),
   emergencyContact: z.string().optional(),
   notes: z.string().optional()

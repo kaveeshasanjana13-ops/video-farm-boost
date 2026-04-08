@@ -272,13 +272,15 @@ export interface MarkByInstituteCardPayload {
   instituteName: string;
   classId?: string;
   className?: string;
+  subjectId?: string;
+  subjectName?: string;
   // ✅ NEW: Consolidated coordinates in address object
   address?: AddressCoordinates;
   location?: string;
   markingMethod: MarkingMethod;
   status: AttendanceStatus;
   date?: string;
-  eventId?: string
+  eventId?: string;
   latitude?: number;
   longitude?: number;
 }

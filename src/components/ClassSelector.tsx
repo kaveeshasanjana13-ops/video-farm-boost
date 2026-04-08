@@ -203,7 +203,7 @@ const ClassSelector = () => {
       setLoadingEnrollableClasses(true);
       instituteClassesApi.getByInstitute(currentInstituteId, { limit: 500 })
         .then(res => {
-          const classes = Array.isArray(res) ? res : res?.data || [];
+          const classes = Array.isArray(res) ? res : (res as any)?.data || [];
           setEnrollableClasses(classes.map(c => ({ id: c.id, name: c.name, code: c.code, grade: c.grade })));
         })
         .catch(err => {

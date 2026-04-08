@@ -18,9 +18,7 @@ import { getErrorMessage } from '@/api/apiError';
 
 const assignParentByPhoneSchema = z.object({
   phoneNumber: z.string().min(1, 'Phone number is required'),
-  parentRole: z.enum(['father', 'mother', 'guardian'], {
-    required_error: 'Please select a parent role',
-  }),
+  parentRole: z.enum({ father: 'father', mother: 'mother', guardian: 'guardian' }).describe('Please select a parent role'),
 });
 
 type AssignParentByPhoneFormData = z.infer<typeof assignParentByPhoneSchema>;
