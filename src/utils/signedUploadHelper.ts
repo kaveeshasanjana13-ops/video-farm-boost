@@ -224,7 +224,7 @@ export async function uploadWithSignedUrl(
     return relativePath;
   } catch (error: any) {
     console.error('Upload failed:', error);
-    throw new Error(error.message || 'Failed to upload file', { cause: error });
+    throw new Error(error.message || 'Failed to upload file');
   }
 }
 

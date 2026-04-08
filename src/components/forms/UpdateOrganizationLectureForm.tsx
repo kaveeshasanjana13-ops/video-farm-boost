@@ -63,11 +63,11 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
     }
 
         const errors: Record<string, string> = {};
-    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
-    if (!formData.description && formData.description !== 0) errors.description = 'Description is required';
-    if (!formData.venue && formData.venue !== 0) errors.venue = 'Venue is required';
-    if (!formData.timeStart && formData.timeStart !== 0) errors.timeStart = 'Time Start is required';
-    if (!formData.timeEnd && formData.timeEnd !== 0) errors.timeEnd = 'Time End is required';
+    if (!formData.title) errors.title = 'Title is required';
+    if (!formData.description) errors.description = 'Description is required';
+    if (!formData.venue) errors.venue = 'Venue is required';
+    if (!formData.timeStart) errors.timeStart = 'Time Start is required';
+    if (!formData.timeEnd) errors.timeEnd = 'Time End is required';
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;
