@@ -73,10 +73,10 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
         const errors: Record<string, string> = {};
-    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
-    if (!formData.description && formData.description !== 0) errors.description = 'Description is required';
-    if (!formData.startTime && formData.startTime !== 0) errors.startTime = 'Start Time is required';
-    if (!formData.endTime && formData.endTime !== 0) errors.endTime = 'End Time is required';
+    if (!formData.title) errors.title = 'Title is required';
+    if (!formData.description) errors.description = 'Description is required';
+    if (!formData.startTime) errors.startTime = 'Start Time is required';
+    if (!formData.endTime) errors.endTime = 'End Time is required';
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;

@@ -24,7 +24,7 @@ const attendanceMarkerSchema = z.object({
   assignedSubjects: z.string().min(1, 'Subject areas are required'),
   shifts: z.string().min(1, 'Shifts are required'),
   joinDate: z.string().min(1, 'Join date is required'),
-  status: z.string().default('Active'),
+  status: z.string().optional().default('Active'),
   address: z.string().min(5, 'Address is required'),
   emergencyContact: z.string().optional(),
   notes: z.string().optional()
@@ -38,15 +38,18 @@ interface CreateAttendanceMarkerFormProps {
 }
 
 const CreateAttendanceMarkerForm = ({ onSubmit, onCancel }: CreateAttendanceMarkerFormProps) => {
-  const form = useForm<AttendanceMarkerFormData>({
-    resolver: zodResolver(attendanceMarkerSchema),
+  const form = useForm({
+    resolver: zodResolver(attendanceMarkerSchema) as any,
     defaultValues: {
-      status: 'Active'
+      markerId: '', name: '', email: '', phone: '',
+      assignedClasses: '', assignedSubjects: '', shifts: '',
+      joinDate: '', status: 'Active', address: '',
+      emergencyContact: '', notes: ''
     }
   });
 
-  const handleSubmit = (data: AttendanceMarkerFormData) => {
-    onSubmit(data);
+  const handleSubmit = (data: any) => {
+    onSubmit(data as AttendanceMarkerFormData);
   };
 
   return (

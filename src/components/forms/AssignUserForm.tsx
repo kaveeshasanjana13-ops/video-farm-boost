@@ -45,8 +45,8 @@ const AssignUserForm = ({ instituteId, onSubmit, onCancel, initialUserId }: Assi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
         const errors: Record<string, string> = {};
-    if (!formData.userId && formData.userId !== 0) errors.userId = 'User Id is required';
-    if (!formData.userIdByInstitute && formData.userIdByInstitute !== 0) errors.userIdByInstitute = 'User Id By Institute is required';
+    if (!formData.userId) errors.userId = 'User Id is required';
+    if (!formData.userIdByInstitute) errors.userIdByInstitute = 'User Id By Institute is required';
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;

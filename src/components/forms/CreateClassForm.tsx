@@ -73,13 +73,13 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
     }
 
         const errors: Record<string, string> = {};
-    if (!formData.name && formData.name !== 0) errors.name = 'Name is required';
-    if (!formData.code && formData.code !== 0) errors.code = 'Code is required';
-    if (!formData.academicYear && formData.academicYear !== 0) errors.academicYear = 'Academic Year is required';
-    if (!formData.specialty && formData.specialty !== 0) errors.specialty = 'Specialty is required';
-    if (!formData.level && formData.level !== 0) errors.level = 'Level is required';
-    if (!formData.grade && formData.grade !== 0) errors.grade = 'Grade is required';
-    if (!formData.capacity && formData.capacity !== 0) errors.capacity = 'Capacity is required';
+    if (!formData.name) errors.name = 'Name is required';
+    if (!formData.code) errors.code = 'Code is required';
+    if (!formData.academicYear) errors.academicYear = 'Academic Year is required';
+    if (!formData.specialty) errors.specialty = 'Specialty is required';
+    if (!formData.level) errors.level = 'Level is required';
+    if (!formData.grade) errors.grade = 'Grade is required';
+    if (!formData.capacity) errors.capacity = 'Capacity is required';
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;

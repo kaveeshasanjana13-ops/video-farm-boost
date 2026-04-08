@@ -99,11 +99,11 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
         const errors: Record<string, string> = {};
-    if (!formData.nameWithInitials && formData.nameWithInitials !== 0) errors.nameWithInitials = 'Name With Initials is required';
-    if (!formData.firstName && formData.firstName !== 0) errors.firstName = 'First Name is required';
-    if (!formData.lastName && formData.lastName !== 0) errors.lastName = 'Last Name is required';
+    if (!formData.nameWithInitials) errors.nameWithInitials = 'Name With Initials is required';
+    if (!formData.firstName) errors.firstName = 'First Name is required';
+    if (!formData.lastName) errors.lastName = 'Last Name is required';
 
-    if (!formData.dateOfBirth && formData.dateOfBirth !== 0) errors.dateOfBirth = 'Date Of Birth is required';
+    if (!formData.dateOfBirth) errors.dateOfBirth = 'Date Of Birth is required';
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       return;
