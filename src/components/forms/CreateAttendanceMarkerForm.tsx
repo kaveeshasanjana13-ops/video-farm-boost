@@ -38,15 +38,18 @@ interface CreateAttendanceMarkerFormProps {
 }
 
 const CreateAttendanceMarkerForm = ({ onSubmit, onCancel }: CreateAttendanceMarkerFormProps) => {
-  const form = useForm<AttendanceMarkerFormData>({
+  const form = useForm({
     resolver: zodResolver(attendanceMarkerSchema),
     defaultValues: {
-      status: 'Active'
+      markerId: '', name: '', email: '', phone: '',
+      assignedClasses: '', assignedSubjects: '', shifts: '',
+      joinDate: '', status: 'Active', address: '',
+      emergencyContact: '', notes: ''
     }
   });
 
-  const handleSubmit = (data: AttendanceMarkerFormData) => {
-    onSubmit(data);
+  const handleSubmit = (data: any) => {
+    onSubmit(data as AttendanceMarkerFormData);
   };
 
   return (
