@@ -48,7 +48,7 @@ const AssignParentByPhoneForm: React.FC<AssignParentByPhoneFormProps> = ({
   const [isLoadingPreview, setIsLoadingPreview] = React.useState(false);
   
   const form = useForm<AssignParentByPhoneFormData>({
-    resolver: zodResolver(assignParentByPhoneSchema),
+    resolver: zodResolver(assignParentByPhoneSchema) as any,
     defaultValues: {
       phoneNumber: '+94',
       parentRole: 'father',

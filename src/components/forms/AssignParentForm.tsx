@@ -22,7 +22,7 @@ interface AssignParentFormProps {
 
 const AssignParentForm = ({ onSubmit, onCancel }: AssignParentFormProps) => {
   const form = useForm<AssignParentFormData>({
-    resolver: zodResolver(assignParentSchema),
+    resolver: zodResolver(assignParentSchema) as any,
     defaultValues: {
       parentType: undefined,
       parentUserId: ''
