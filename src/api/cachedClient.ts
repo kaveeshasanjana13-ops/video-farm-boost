@@ -23,9 +23,10 @@ class CachedApiClient {
   private isRefreshing = false;
   private refreshPromise: Promise<void> | null = null;
   
-  // Global rate limit tracking
-  private rateLimitedUntil: number = 0;
-  private readonly RATE_LIMIT_BACKOFF = 10000; // 10 seconds default backoff (reduced from 60s)
+  // Per-endpoint rate limit tracking
+  private rateLimitedEndpoints = new Map<string, number>();
+  private rateLimitedUntil: number = 0; // legacy global (rarely needed)
+  private readonly RATE_LIMIT_BACKOFF = 30000; // 30 seconds per-endpoint
   
   // Global force refresh flag
   private _globalForceRefresh: boolean = false;
@@ -36,25 +37,35 @@ class CachedApiClient {
   }
 
   /**
-   * Check if we're globally rate limited
+   * Check if we're rate limited for a specific endpoint
    */
-  private isRateLimited(): boolean {
-    if (Date.now() < this.rateLimitedUntil) {
-      return true;
+  private isRateLimited(endpoint?: string): boolean {
+    const now = Date.now();
+    if (endpoint) {
+      const endpointLimit = this.rateLimitedEndpoints.get(endpoint);
+      if (endpointLimit) {
+        if (now < endpointLimit) return true;
+        this.rateLimitedEndpoints.delete(endpoint);
+      }
+      return false;
     }
-    if (this.rateLimitedUntil > 0) {
-      this.rateLimitedUntil = 0;
-    }
+    if (now < this.rateLimitedUntil) return true;
+    if (this.rateLimitedUntil > 0) this.rateLimitedUntil = 0;
     return false;
   }
 
   /**
-   * Set global rate limit (called when 429 error received)
+   * Set rate limit for a specific endpoint or globally
    */
-  private setRateLimited(retryAfterSeconds?: number): void {
-    const backoffMs = (retryAfterSeconds || 10) * 1000;
-    this.rateLimitedUntil = Date.now() + backoffMs;
-    console.warn(`🛑 CachedClient: Rate limited! Pausing requests for ${backoffMs / 1000}s`);
+  private setRateLimited(retryAfterSeconds?: number, endpoint?: string): void {
+    const backoffMs = Math.min((retryAfterSeconds || 30) * 1000, 60000);
+    if (endpoint) {
+      this.rateLimitedEndpoints.set(endpoint, Date.now() + backoffMs);
+      console.warn(`🛑 CachedClient: Rate limited endpoint: ${endpoint} for ${backoffMs / 1000}s`);
+    } else {
+      this.rateLimitedUntil = Date.now() + backoffMs;
+      console.warn(`🛑 CachedClient: Global rate limit for ${backoffMs / 1000}s`);
+    }
   }
 
   /**
@@ -85,7 +96,7 @@ class CachedApiClient {
         console.log('🔄 401 Error - Attempting token refresh...');
         await refreshAccessToken();
         console.log('✅ Token refreshed successfully');
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ Token refresh failed:', error);
         
         // Clear all auth data using platform-aware storage
@@ -188,9 +199,9 @@ class CachedApiClient {
       forceRefresh 
     });
     
-    // Check global rate limit FIRST
-    if (this.isRateLimited()) {
-      console.log('🛑 Rate limited - checking cache for:', endpoint);
+    // Check per-endpoint rate limit FIRST - only this endpoint is blocked
+    if (this.isRateLimited(endpoint)) {
+      console.log('🛑 Rate limited (endpoint) - checking cache for:', endpoint);
       try {
         const cachedData = await apiCache.getCache<T>(endpoint, params, { 
           ttl: ttl * 10, // Accept older cache during rate limit
@@ -214,7 +225,7 @@ class CachedApiClient {
           return cachedData;
         }
         console.log('❌ Cache MISS for:', endpoint, 'User:', options.userId);
-      } catch (error) {
+      } catch (error: any) {
         console.warn('Cache retrieval failed:', error);
       }
     } else {
@@ -241,7 +252,7 @@ class CachedApiClient {
           console.log('✅ Returning stale cache during cooldown:', endpoint);
           return staleCachedData;
         }
-      } catch (error) {
+      } catch (error: any) {
         console.warn('No cached data available during cooldown');
       }
       // No cache available and in cooldown - allow the request to proceed anyway
@@ -323,7 +334,7 @@ class CachedApiClient {
               if (match) retryAfter = parseInt(match[1], 10);
             }
           } catch {}
-          this.setRateLimited(retryAfter);
+          this.setRateLimited(retryAfter, endpoint);
           throw new Error('Too many requests. Please try again later.');
         }
         
@@ -374,14 +385,14 @@ class CachedApiClient {
       // Cache the successful response with user context
       try {
         await apiCache.setCache(endpoint, data, params, ttl, options);
-      } catch (error) {
+      } catch (error: any) {
         console.warn('Failed to cache response:', error);
       }
 
       console.log('✅ API request successful, data cached for:', endpoint);
       return data;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('API request failed for:', endpoint, error);
       throw error;
     }
@@ -390,7 +401,7 @@ class CachedApiClient {
   async getCachedOnly<T = any>(endpoint: string, params?: Record<string, any>): Promise<T | null> {
     try {
       return await apiCache.getCache<T>(endpoint, params, { forceRefresh: false });
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Cache-only retrieval failed:', error);
       return null;
     }
@@ -400,7 +411,7 @@ class CachedApiClient {
     try {
       const cached = await apiCache.getCache(endpoint, params, { forceRefresh: false });
       return cached !== null;
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Cache check failed:', error);
       return false;
     }
@@ -409,7 +420,7 @@ class CachedApiClient {
   async preload<T = any>(endpoint: string, params?: Record<string, any>, ttl?: number): Promise<void> {
     try {
       await this.get<T>(endpoint, params, { ttl, forceRefresh: false });
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Preload failed for:', endpoint, error);
     }
   }

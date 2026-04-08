@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Settings, Save, RefreshCw } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 const ApiConfiguration = () => {
   const { toast } = useToast();
@@ -38,10 +39,10 @@ const ApiConfiguration = () => {
         title: "Configuration Saved",
         description: `API base URL updated to: ${formattedUrl}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Save Failed",
-        description: "Failed to save API configuration",
+        description: getErrorMessage(error, 'Failed to save API configuration'),
         variant: "destructive"
       });
     } finally {

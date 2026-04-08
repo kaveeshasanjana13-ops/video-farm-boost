@@ -24,7 +24,7 @@ const Transport: React.FC = () => {
       setLoading(true);
       const response = await transportApi.getStudentEnrollments(user.id.toString());
       setEnrollments(response.data.enrollments);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load transport enrollments:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to load transport enrollments';
       

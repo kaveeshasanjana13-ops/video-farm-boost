@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import adminAttendanceApi from '@/api/adminAttendance.api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,8 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { Plus, Trash2, Users, Loader2, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Users, Loader2, CheckCircle, XCircle, ArrowLeft, RefreshCw, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   AttendanceStatus,
@@ -22,13 +24,17 @@ import {
 } from '@/types/attendance.types';
 import { useTodayCalendarEvents, DEFAULT_EVENT_ID } from '@/hooks/useTodayCalendarEvents';
 import EventSelector from '@/components/attendance/EventSelector';
+import { instituteStudentsApi } from '@/api/instituteStudents.api';
 
 interface StudentEntry {
   id: string;
   studentId: string;
   studentName: string;
+  imageUrl?: string;
   status: AttendanceStatus;
   remarks: string;
+  /** true = loaded from class API (name/ID pre-filled) */
+  fromClass?: boolean;
 }
 
 const BulkAttendancePage: React.FC = () => {
@@ -47,6 +53,7 @@ const BulkAttendancePage: React.FC = () => {
   const [students, setStudents] = useState<StudentEntry[]>([
     { id: '1', studentId: '', studentName: '', status: 'present', remarks: '' },
   ]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [results, setResults] = useState<BulkAttendanceResponse | null>(null);
 
@@ -55,6 +62,39 @@ const BulkAttendancePage: React.FC = () => {
     selectedClass?.id?.toString(),
     selectedDate
   );
+
+  // ── Auto-load students from selected class ──────────────────
+  const loadStudentsFromClass = useCallback(async () => {
+    const instId = currentInstituteId;
+    const classId = selectedClass?.id?.toString();
+    if (!instId || !classId) {
+      toast.error('Select a class first');
+      return;
+    }
+    setLoadingStudents(true);
+    try {
+      const res = await instituteStudentsApi.getStudentsByClass(instId, classId, { limit: 200 });
+      const rows: StudentEntry[] = (res?.data ?? []).map((s, idx) => ({
+        id: `class-${s.id}-${idx}`,
+        studentId: s.id,
+        studentName: s.name,
+        imageUrl: s.imageUrl,
+        status: 'present' as AttendanceStatus,
+        remarks: '',
+        fromClass: true,
+      }));
+      if (rows.length === 0) {
+        toast.error('No students found in this class');
+        return;
+      }
+      setStudents(rows);
+      toast.success(`Loaded ${rows.length} students from ${selectedClass?.name}`);
+    } catch {
+      toast.error('Failed to load students from class');
+    } finally {
+      setLoadingStudents(false);
+    }
+  }, [currentInstituteId, selectedClass]);
 
   const addStudent = () => {
     setStudents(prev => [
@@ -99,6 +139,8 @@ const BulkAttendancePage: React.FC = () => {
     setResults(null);
 
     try {
+      const isInstituteScope = !selectedClass;
+
       const payload: BulkAttendancePayload = {
         instituteId: currentInstituteId,
         instituteName: selectedInstitute.name,
@@ -107,7 +149,8 @@ const BulkAttendancePage: React.FC = () => {
         subjectId: selectedSubject?.id?.toString(),
         subjectName: selectedSubject?.name,
         date: selectedDate,
-        eventId: selectedEventId !== DEFAULT_EVENT_ID ? selectedEventId : undefined,
+        // Only include eventId for institute scope (class/subject → eventId is always null)
+        eventId: isInstituteScope && selectedEventId !== DEFAULT_EVENT_ID ? selectedEventId : undefined,
         location: location || undefined,
         markingMethod,
         students: validStudents.map(s => ({
@@ -183,18 +226,21 @@ const BulkAttendancePage: React.FC = () => {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <EventSelector
-                events={calendarInfo.events}
-                selectedEventId={selectedEventId}
-                onEventChange={setSelectedEventId}
-                loading={calendarInfo.loading}
-                disabled={isSubmitting}
-                dayType={calendarInfo.dayType}
-                isAttendanceExpected={calendarInfo.isAttendanceExpected}
-                compact
-              />
-            </div>
+            {/* Event Selector — only for institute scope */}
+            {!selectedClass && (
+              <div>
+                <EventSelector
+                  events={calendarInfo.events}
+                  selectedEventId={selectedEventId}
+                  onEventChange={setSelectedEventId}
+                  loading={calendarInfo.loading}
+                  disabled={isSubmitting}
+                  dayType={calendarInfo.dayType}
+                  isAttendanceExpected={calendarInfo.isAttendanceExpected}
+                  compact
+                />
+              </div>
+            )}
             <div>
               <Label className="text-xs">Location</Label>
               <Input
@@ -225,62 +271,97 @@ const BulkAttendancePage: React.FC = () => {
       {/* Student Entries */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Users className="h-4 w-4" />
               Students ({students.length})
             </CardTitle>
-            <Button size="sm" variant="outline" onClick={addStudent} className="text-xs h-7">
-              <Plus className="h-3 w-3 mr-1" /> Add
-            </Button>
+            <div className="flex gap-2">
+              {selectedClass && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={loadStudentsFromClass}
+                  disabled={loadingStudents || isSubmitting}
+                  className="text-xs h-7"
+                >
+                  {loadingStudents
+                    ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Loading…</>
+                    : <><UserCheck className="h-3 w-3 mr-1" /> Load from {selectedClass.name}</>}
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={addStudent} className="text-xs h-7">
+                <Plus className="h-3 w-3 mr-1" /> Add
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          {students.map((student, idx) => (
-            <div key={student.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
-              <span className="text-xs text-muted-foreground w-6">{idx + 1}</span>
-              <Input
-                value={student.studentId}
-                onChange={e => updateStudent(student.id, 'studentId', e.target.value)}
-                placeholder="Student ID *"
-                className="text-xs h-8 flex-1"
-              />
-              <Input
-                value={student.studentName}
-                onChange={e => updateStudent(student.id, 'studentName', e.target.value)}
-                placeholder="Name (optional)"
-                className="text-xs h-8 flex-1"
-              />
-              <Select
-                value={student.status}
-                onValueChange={v => updateStudent(student.id, 'status', v)}
-              >
-                <SelectTrigger className="text-xs h-8 w-28"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {ALL_ATTENDANCE_STATUSES.map(s => (
-                    <SelectItem key={s} value={s} className="text-xs">
-                      {ATTENDANCE_STATUS_CONFIG[s].icon} {ATTENDANCE_STATUS_CONFIG[s].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                value={student.remarks}
-                onChange={e => updateStudent(student.id, 'remarks', e.target.value)}
-                placeholder="Remarks"
-                className="text-xs h-8 w-24"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeStudent(student.id)}
-                disabled={students.length <= 1}
-                className="h-8 w-8 p-0"
-              >
-                <Trash2 className="h-3 w-3 text-destructive" />
-              </Button>
-            </div>
-          ))}
+          {loadingStudents ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full rounded-lg" />
+            ))
+          ) : (
+            students.map((student, idx) => (
+              <div key={student.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+                <span className="text-xs text-muted-foreground w-6 shrink-0">{idx + 1}</span>
+                {student.fromClass ? (
+                  // Pre-loaded from class — show name+photo, no manual ID input
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <Avatar className="h-7 w-7 shrink-0">
+                      <AvatarImage src={student.imageUrl} />
+                      <AvatarFallback className="text-[10px]">{student.studentName?.charAt(0) ?? '?'}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium truncate">{student.studentName}</span>
+                  </div>
+                ) : (
+                  // Manual entry — show ID + name fields
+                  <>
+                    <Input
+                      value={student.studentId}
+                      onChange={e => updateStudent(student.id, 'studentId', e.target.value)}
+                      placeholder="Student ID *"
+                      className="text-xs h-8 flex-1"
+                    />
+                    <Input
+                      value={student.studentName}
+                      onChange={e => updateStudent(student.id, 'studentName', e.target.value)}
+                      placeholder="Name (optional)"
+                      className="text-xs h-8 flex-1"
+                    />
+                  </>
+                )}
+                <Select
+                  value={student.status}
+                  onValueChange={v => updateStudent(student.id, 'status', v)}
+                >
+                  <SelectTrigger className="text-xs h-8 w-28 shrink-0"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ALL_ATTENDANCE_STATUSES.map(s => (
+                      <SelectItem key={s} value={s} className="text-xs">
+                        {ATTENDANCE_STATUS_CONFIG[s].icon} {ATTENDANCE_STATUS_CONFIG[s].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={student.remarks}
+                  onChange={e => updateStudent(student.id, 'remarks', e.target.value)}
+                  placeholder="Remarks"
+                  className="text-xs h-8 w-24 shrink-0"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeStudent(student.id)}
+                  disabled={students.length <= 1}
+                  className="h-8 w-8 p-0 shrink-0"
+                >
+                  <Trash2 className="h-3 w-3 text-destructive" />
+                </Button>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
 

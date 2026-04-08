@@ -13,6 +13,7 @@ import OrganizationDetails from './OrganizationDetails';
 import CreateOrganizationForm from './forms/CreateOrganizationForm';
 import EnrollOrganizationDialog from './EnrollOrganizationDialog';
 import OrganizationCard from './OrganizationCard';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 interface OrganizationManagementProps {
   userRole: string;
@@ -33,12 +34,15 @@ const OrganizationManagement = ({ userRole, userPermissions, currentInstituteId 
   const [showEnrollmentView, setShowEnrollmentView] = useState(false);
   const [enrollmentOrganizations, setEnrollmentOrganizations] = useState<Organization[]>([]);
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
-  const [enrollmentViewMode, setEnrollmentViewMode] = useState<'card' | 'table'>('card');
+  const [enrollmentViewMode, setEnrollmentViewMode] = useState<'card' | 'table'>(() =>
+    (localStorage.getItem('viewMode') as 'card' | 'table') || 'card'
+  );
   const [enrollmentSearchTerm, setEnrollmentSearchTerm] = useState('');
   const [enrollmentCurrentPage, setEnrollmentCurrentPage] = useState(1);
   const [enrollmentTotalPages, setEnrollmentTotalPages] = useState(1);
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [selectedEnrollOrganization, setSelectedEnrollOrganization] = useState<Organization | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; organization: Organization | null; isDeleting: boolean }>({ open: false, organization: null, isDeleting: false });
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -67,7 +71,7 @@ const OrganizationManagement = ({ userRole, userPermissions, currentInstituteId 
       
       setOrganizations(response.data);
       setTotalPages(response.pagination.totalPages);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching organizations:', error);
       toast({
         title: "Error",
@@ -141,7 +145,7 @@ const OrganizationManagement = ({ userRole, userPermissions, currentInstituteId 
       const response = await organizationApi.getOrganizations(params);
       setEnrollmentOrganizations(response.data);
       setEnrollmentTotalPages(response.pagination.totalPages);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching enrollment organizations:', error);
       toast({
         title: "Error",
@@ -162,25 +166,29 @@ const OrganizationManagement = ({ userRole, userPermissions, currentInstituteId 
     fetchEnrollmentOrganizations(); // Refresh the list
   };
 
-  const handleDeleteOrganization = async (organization: Organization) => {
-    if (!window.confirm(`Are you sure you want to delete "${organization.name}"? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteOrganization = (organization: Organization) => {
+    setDeleteDialog({ open: true, organization, isDeleting: false });
+  };
 
+  const confirmDeleteOrganization = async () => {
+    if (!deleteDialog.organization) return;
+    setDeleteDialog(prev => ({ ...prev, isDeleting: true }));
     try {
-      await organizationApi.deleteOrganization(organization.organizationId);
+      await organizationApi.deleteOrganization(deleteDialog.organization.organizationId);
       toast({
         title: "Success",
         description: "Organization deleted successfully",
       });
-      fetchOrganizations(); // Refresh the list
-    } catch (error) {
+      setDeleteDialog({ open: false, organization: null, isDeleting: false });
+      fetchOrganizations();
+    } catch (error: any) {
       console.error('Error deleting organization:', error);
       toast({
         title: "Error",
         description: "Failed to delete organization",
         variant: "destructive",
       });
+      setDeleteDialog(prev => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -581,6 +589,14 @@ const OrganizationManagement = ({ userRole, userPermissions, currentInstituteId 
           </CardContent>
         </Card>
       )}
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.organization?.name || ''}
+        itemType="organization"
+        onConfirm={confirmDeleteOrganization}
+        isDeleting={deleteDialog.isDeleting}
+      />
     </div>
   );
 };

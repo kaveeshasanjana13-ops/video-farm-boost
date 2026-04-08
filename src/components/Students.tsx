@@ -1,18 +1,17 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Plus, RefreshCw, Users, Search, Filter, UserPlus, ChevronRight, User, Eye, Phone, MapPin, Briefcase, Mail, Home } from 'lucide-react';
+import { Plus, RefreshCw, Users, Search, Filter, UserPlus, ChevronRight, ChevronDown, User, Eye, Phone, MapPin, Briefcase, Mail, Home, LayoutGrid, Table2, Gift, CreditCard, BadgePercent, CircleDollarSign } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
-import { DataCardView } from '@/components/ui/data-card-view';
 import MUITable from '@/components/ui/mui-table';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,12 +24,19 @@ import { getBaseUrl } from '@/contexts/utils/auth.api';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 import ImagePreviewModal from '@/components/ImagePreviewModal';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
+import { enrollmentApi, type ClassEnrollmentSummaryItem } from '@/api/enrollment.api';
 import { CACHE_TTL } from '@/config/cacheTTL';
 import StudentDetailsDialog from '@/components/forms/StudentDetailsDialog';
+import { useViewMode } from '@/hooks/useViewMode';
+import { EmptyState } from '@/components/ui/EmptyState';
+import ScrollAnimationWrapper from '@/components/ScrollAnimationWrapper';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 
 interface InstituteStudent {
   id: string;
   name: string;
+  nameWithInitials?: string;
   email?: string;
   addressLine1?: string;
   addressLine2?: string;
@@ -45,6 +51,7 @@ interface InstituteStudent {
   emergencyContact?: string;
   medicalConditions?: string;
   allergies?: string;
+  studentType?: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid';
   father?: {
     id: string;
     name: string;
@@ -118,9 +125,23 @@ const Students = () => {
   const [instituteStudents, setInstituteStudents] = useState<InstituteStudent[]>([]);
   const [loading, setLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [showSubjectAssignDialog, setShowSubjectAssignDialog] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+
+  // Enrollment type state
+  const [studentTypeMap, setStudentTypeMap] = useState<Record<string, 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid'>>({});
+  const [classSummary, setClassSummary] = useState<ClassEnrollmentSummaryItem[]>([]);
+  const [updatingTypeFor, setUpdatingTypeFor] = useState<string | null>(null);
+  // Give Free Card / Update Type dialog
+  const [showTypeDialog, setShowTypeDialog] = useState(false);
+  const [typeDialogSearch, setTypeDialogSearch] = useState('');
+  const [typeDialogSearchCommitted, setTypeDialogSearchCommitted] = useState('');
+  const [typeDialogStudentId, setTypeDialogStudentId] = useState('');
+  const [typeDialogType, setTypeDialogType] = useState<'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid'>('free_card');
+  const [typeDialogLoading, setTypeDialogLoading] = useState(false);
+  const [studentTypeFilter, setStudentTypeFilter] = useState<'all' | 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid'>('all');
   
   // Use ref to track if we're currently fetching to prevent duplicate calls
   const isFetchingRef = useRef(false);
@@ -160,8 +181,10 @@ const Students = () => {
     open: false,
     student: null
   });
-
-  // Enhanced pagination with useTableData hook - DISABLE AUTO-LOADING
+  const { viewMode } = useViewMode();
+  const [pageViewMode, setPageViewMode] = useState<'card' | 'table'>(viewMode);
+  const [showAllStudentCards, setShowAllStudentCards] = useState(false);
+  const [expandedStudentId, setExpandedStudentId] = useState<string | null>(null);
   const {
     state: { data: paginatedStudents, loading: tableLoading },
     pagination,
@@ -219,7 +242,7 @@ const Students = () => {
         title: "Students Loaded",
         description: `Successfully loaded ${data.data.length} students.`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching students:', error);
       toast({
         title: "Error",
@@ -264,11 +287,16 @@ const Students = () => {
       );
       
       setInstituteStudents(data.data);
-      const totalStudents = data.meta.total;
-      const currentPage = data.meta.page;
-      const totalPages = data.meta.totalPages;
       setDataLoaded(true);
       
+      // Build type map directly from the student data (API now returns studentType)
+      const typeMap: Record<string, 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid'> = {};
+      data.data.forEach(s => {
+        typeMap[s.id] = s.studentType ?? 'normal';
+      });
+      setStudentTypeMap(typeMap);
+      setClassSummary([]);
+
       // Only show toast when force refreshing
       if (forceRefresh) {
         toast({
@@ -276,7 +304,7 @@ const Students = () => {
           description: `Successfully loaded ${data.data.length} students.`
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching class students:', error);
       toast({
         title: "Error",
@@ -327,11 +355,16 @@ const Students = () => {
       );
       
       setInstituteStudents(data.data);
-      const totalStudents = data.meta.total;
-      const currentPage = data.meta.page;
-      const totalPages = data.meta.totalPages;
       setDataLoaded(true);
-      
+
+      // Build type map directly from the student data (API now returns studentType from subject enrollment)
+      const typeMap: Record<string, 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid'> = {};
+      data.data.forEach(s => {
+        typeMap[s.id] = s.studentType ?? 'normal';
+      });
+      setStudentTypeMap(typeMap);
+      setClassSummary([]);
+
       // Only show toast when force refreshing
       if (forceRefresh) {
         toast({
@@ -339,7 +372,7 @@ const Students = () => {
           description: `Successfully loaded ${data.data.length} students.`
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching subject students:', error);
       toast({
         title: "Error",
@@ -446,81 +479,145 @@ const Students = () => {
     return parts.join(' → ');
   };
 
-  // Columns for both student types
-  const studentColumns = [
+  const canManageType = ['InstituteAdmin', 'Teacher'].includes(userRole || '');
+
+  const handleStudentTypeChange = async (studentId: string, newType: 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid') => {
+    if (!selectedInstitute?.id || !selectedClass?.id || !selectedSubject?.id) return;
+    setUpdatingTypeFor(studentId);
+    try {
+      await enrollmentApi.updateStudentType(
+        selectedInstitute.id, selectedClass.id, selectedSubject.id, studentId, newType,
+        { userId: user?.id, role: userRole }
+      );
+      setStudentTypeMap(prev => ({ ...prev, [studentId]: newType }));
+      toast({ title: 'Student Type Updated', description: `Changed to ${newType === 'free_card' ? 'Free Card' : newType === 'half_paid' ? 'Half Paid' : newType === 'quarter_paid' ? 'Quarter Paid' : newType.charAt(0).toUpperCase() + newType.slice(1)}` });
+    } catch (e: any) {
+      toast({ title: 'Update Failed', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setUpdatingTypeFor(null);
+    }
+  };
+
+  const dialogFilteredStudents = useMemo(() => {
+    const source = instituteStudents.length > 0 ? instituteStudents : classSummary.map(s => ({
+      id: s.studentId, name: s.name, email: s.email, imageUrl: s.imageUrl
+    } as InstituteStudent));
+    if (!typeDialogSearchCommitted.trim()) return [];
+    const q = typeDialogSearchCommitted.toLowerCase();
+    return source
+      .filter(s =>
+        s.name.toLowerCase().includes(q) ||
+        (s.email || '').toLowerCase().includes(q) ||
+        s.id.includes(q)
+      )
+      .slice(0, 20);
+  }, [instituteStudents, classSummary, typeDialogSearchCommitted]);
+
+  const handleClassTypeDialogSubmit = async () => {
+    if (!selectedInstitute?.id || !selectedClass?.id || !typeDialogStudentId.trim()) return;
+    setTypeDialogLoading(true);
+    try {
+      await enrollmentApi.updateClassEnrollmentStudentType(
+        selectedInstitute.id, selectedClass.id, typeDialogStudentId.trim(), typeDialogType,
+        { userId: user?.id, role: userRole }
+      );
+      setStudentTypeMap(prev => ({ ...prev, [typeDialogStudentId.trim()]: typeDialogType }));
+      setInstituteStudents(prev => prev.map(s =>
+        s.id === typeDialogStudentId.trim() ? { ...s, studentType: typeDialogType } : s
+      ));
+      toast({ title: 'Student Type Updated', description: `Set to ${typeDialogType === 'free_card' ? 'Free Card' : typeDialogType === 'half_paid' ? 'Half Paid' : typeDialogType === 'quarter_paid' ? 'Quarter Paid' : typeDialogType.charAt(0).toUpperCase() + typeDialogType.slice(1)} for all subjects` });
+      setShowTypeDialog(false);
+    } catch (e: any) {
+      toast({ title: 'Update Failed', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setTypeDialogLoading(false);
+    }
+  };
+
+  // --- Configurable column definitions ---
+  const allColumnDefs: ColumnDef[] = useMemo(() => [
     {
       key: 'student',
       header: 'Student',
+      locked: true,
+      defaultVisible: true,
+      defaultWidth: 220,
+      minWidth: 160,
       render: (value: any, row: Student | InstituteStudent) => {
-        // Handle different data structures
-        const name = 'user' in row ? `${row.user.firstName} ${row.user.lastName}` : row.name;
-        const email = 'user' in row ? row.user.email : (row as InstituteStudent).email || 'N/A';
+        const name = 'user' in row ? `${row.user.firstName} ${row.user.lastName}` : ((row as InstituteStudent).nameWithInitials || row.name);
         const imageUrl = 'user' in row ? row.user.imageUrl : (row as InstituteStudent).imageUrl;
-        const userIdByInstitute = 'user' in row ? 'N/A' : (row as InstituteStudent).userIdByInstitute || row.id;
-        
         return (
           <div className="flex items-center space-x-3">
-            <div 
-              className="cursor-pointer flex-shrink-0"
-              onClick={() => {
-                if (imageUrl) {
-                  setImagePreview({ 
-                    isOpen: true, 
-                    url: imageUrl, 
-                    title: name 
-                  });
-                }
-              }}
-            >
+            <div className="cursor-pointer flex-shrink-0" onClick={() => { if (imageUrl) { setImagePreview({ isOpen: true, url: imageUrl, title: name }); } }}>
               <Avatar className="h-8 w-8 sm:h-10 sm:w-10 hover:opacity-80 transition-opacity">
                 <AvatarImage src={getImageUrl(imageUrl)} alt={name} />
-                <AvatarFallback className="text-xs">
-                  {name.split(' ').map(n => n.charAt(0)).join('')}
-                </AvatarFallback>
+                <AvatarFallback className="text-xs">{name.split(' ').map(n => n.charAt(0)).join('')}</AvatarFallback>
               </Avatar>
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-medium truncate">{name}</p>
-              <p className="text-sm text-muted-foreground truncate">ID: {userIdByInstitute}</p>
             </div>
           </div>
         );
       }
     },
     {
-      key: 'contact',
-      header: 'Contact Information',
-      render: (value: any, row: Student | InstituteStudent) => {
-        const phone = 'user' in row ? row.user.phoneNumber : (row as InstituteStudent).phoneNumber;
+      key: 'studentId',
+      header: 'Student ID',
+      defaultVisible: true,
+      defaultWidth: 130,
+      minWidth: 90,
+      render: (_: any, row: Student | InstituteStudent) => {
+        const userIdByInstitute = 'user' in row ? 'N/A' : (row as InstituteStudent).userIdByInstitute || row.id;
+        return <span className="text-sm">{userIdByInstitute}</span>;
+      }
+    },
+    {
+      key: 'uuid',
+      header: 'UUID',
+      defaultVisible: false,
+      defaultWidth: 160,
+      minWidth: 100,
+      render: (_: any, row: Student | InstituteStudent) => {
+        const uuid = 'user' in row ? row.userId : (row as InstituteStudent).id;
+        return <span className="font-mono text-sm break-all select-all">{uuid || 'N/A'}</span>;
+      }
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      defaultVisible: false,
+      defaultWidth: 200,
+      minWidth: 140,
+      render: (_: any, row: Student | InstituteStudent) => {
         const email = 'user' in row ? row.user.email : (row as InstituteStudent).email;
-        
-        return (
-          <div className="space-y-1">
-            <div className="flex items-center text-sm">
-              <span className="truncate">{email || 'N/A'}</span>
-            </div>
-            <div className="flex items-center text-sm">
-              <span className="truncate">{phone || 'N/A'}</span>
-            </div>
-          </div>
-        );
+        return <span className="text-sm truncate">{email || 'N/A'}</span>;
+      }
+    },
+    {
+      key: 'phone',
+      header: 'Phone',
+      defaultVisible: true,
+      defaultWidth: 150,
+      minWidth: 110,
+      render: (_: any, row: Student | InstituteStudent) => {
+        const phone = 'user' in row ? row.user.phoneNumber : (row as InstituteStudent).phoneNumber;
+        return <span className="text-sm">{phone || 'N/A'}</span>;
       }
     },
     {
       key: 'address',
       header: 'Address',
-      render: (value: any, row: Student | InstituteStudent) => {
-        if ('user' in row) {
-          return <span className="text-sm text-muted-foreground">N/A</span>;
-        }
-        
+      defaultVisible: false,
+      defaultWidth: 200,
+      minWidth: 120,
+      render: (_: any, row: Student | InstituteStudent) => {
+        if ('user' in row) return <span className="text-sm text-muted-foreground">N/A</span>;
         const student = row as InstituteStudent;
         return (
           <div className="space-y-1 text-sm">
             <p className="truncate">{student.addressLine1 || 'N/A'}</p>
-            {student.addressLine2 && (
-              <p className="text-muted-foreground truncate">{student.addressLine2}</p>
-            )}
+            {student.addressLine2 && <p className="text-muted-foreground truncate">{student.addressLine2}</p>}
           </div>
         );
       }
@@ -528,82 +625,106 @@ const Students = () => {
     {
       key: 'dateOfBirth',
       header: 'Date of Birth',
-      render: (value: any, row: Student | InstituteStudent) => {
-        const dateOfBirth = 'user' in row ? row.user.dateOfBirth : (row as InstituteStudent).dateOfBirth;
-        
-        return (
-          <div className="text-sm">
-            {dateOfBirth 
-              ? new Date(dateOfBirth).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric'
-                })
-              : 'N/A'
-            }
-          </div>
-        );
+      defaultVisible: false,
+      defaultWidth: 140,
+      minWidth: 100,
+      render: (_: any, row: Student | InstituteStudent) => {
+        const dob = 'user' in row ? row.user.dateOfBirth : (row as InstituteStudent).dateOfBirth;
+        return <div className="text-sm">{dob ? new Date(dob).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}</div>;
       }
     },
     {
       key: 'guardians',
       header: 'Parent/Guardian',
-      render: (value: any, row: Student | InstituteStudent) => {
+      defaultVisible: false,
+      defaultWidth: 180,
+      minWidth: 120,
+      render: (_: any, row: Student | InstituteStudent) => {
         const student = row as InstituteStudent;
-        const hasParent = student.father || student.fatherId || student.motherId || student.guardianId;
-        
         if ('user' in row) {
-          // Original Student structure
           return (
             <div className="space-y-1">
-              {row.fatherId && (
-                <Badge variant="outline" className="text-xs">
-                  Father: {row.fatherId}
-                </Badge>
-              )}
-              {row.motherId && (
-                <Badge variant="outline" className="text-xs">
-                  Mother: {row.motherId}
-                </Badge>
-              )}
-              {row.guardianId && (
-                <Badge variant="outline" className="text-xs">
-                  Guardian: {row.guardianId}
-                </Badge>
-              )}
-              {!row.fatherId && !row.motherId && !row.guardianId && (
-                <span className="text-sm text-muted-foreground">N/A</span>
+              {row.fatherId && <Badge variant="outline" className="text-xs">Father: {row.fatherId}</Badge>}
+              {row.motherId && <Badge variant="outline" className="text-xs">Mother: {row.motherId}</Badge>}
+              {row.guardianId && <Badge variant="outline" className="text-xs">Guardian: {row.guardianId}</Badge>}
+              {!row.fatherId && !row.motherId && !row.guardianId && <span className="text-sm text-muted-foreground">N/A</span>}
+            </div>
+          );
+        }
+        return (
+          <div className="space-y-1">
+            {student.fatherId && <Badge variant="outline" className="text-xs">Father</Badge>}
+            {student.motherId && <Badge variant="outline" className="text-xs">Mother</Badge>}
+            {student.guardianId && <Badge variant="outline" className="text-xs">Guardian</Badge>}
+            {!student.fatherId && !student.motherId && !student.guardianId && <span className="text-sm text-muted-foreground">N/A</span>}
+          </div>
+        );
+      }
+    },
+    {
+      key: 'studentType',
+      header: 'Type',
+      defaultVisible: true,
+      defaultWidth: 140,
+      minWidth: 100,
+      render: (_: any, row: Student | InstituteStudent) => {
+        if ('user' in row) return <span className="text-xs text-muted-foreground">N/A</span>;
+        const student = row as InstituteStudent;
+        const studentId = student.id;
+        const type = studentTypeMap[studentId] ?? student.studentType ?? 'normal';
+        const typeColors: Record<string, string> = {
+          free_card: 'bg-purple-100 text-purple-800 border-purple-300',
+          paid: 'bg-green-100 text-green-800 border-green-300',
+          half_paid: 'bg-amber-100 text-amber-800 border-amber-300',
+          quarter_paid: 'bg-sky-100 text-sky-800 border-sky-300',
+          normal: 'bg-gray-100 text-gray-700 border-gray-300',
+        };
+
+        // Subject-level: inline dropdown for canManageType
+        if (selectedSubject && canManageType) {
+          return (
+            <div className="flex items-center gap-1">
+              {updatingTypeFor === studentId ? (
+                <span className="text-xs text-muted-foreground">Updating...</span>
+              ) : (
+                <select
+                  value={type}
+                  onChange={e => handleStudentTypeChange(studentId, e.target.value as 'normal' | 'paid' | 'free_card' | 'half_paid' | 'quarter_paid')}
+                  className="text-xs border rounded px-1 py-0.5 bg-background"
+                >
+                  <option value="normal">Normal</option>
+                  <option value="paid">Paid</option>
+                  <option value="free_card">Free Card</option>
+                  <option value="half_paid">Half Paid</option>
+                  <option value="quarter_paid">Quarter Paid</option>
+                </select>
               )}
             </div>
           );
         }
-        
-        // InstituteStudent structure - show badges only (no View button)
+
+        // Class-level or read-only: plain badge
         return (
-          <div className="space-y-1">
-            {student.fatherId && (
-              <Badge variant="outline" className="text-xs">
-                Father
-              </Badge>
-            )}
-            {student.motherId && (
-              <Badge variant="outline" className="text-xs">
-                Mother
-              </Badge>
-            )}
-            {student.guardianId && (
-              <Badge variant="outline" className="text-xs">
-                Guardian
-              </Badge>
-            )}
-            {!student.fatherId && !student.motherId && !student.guardianId && (
-              <span className="text-sm text-muted-foreground">N/A</span>
-            )}
-          </div>
+          <span className={`text-xs px-2 py-1 rounded border ${typeColors[type] || typeColors.normal}`}>
+            {type === 'free_card' ? 'Free Card' : type === 'half_paid' ? 'Half Paid' : type === 'quarter_paid' ? 'Quarter Paid' : type.charAt(0).toUpperCase() + type.slice(1)}
+          </span>
         );
       }
     }
-  ];
+  ], [studentTypeMap, selectedSubject, canManageType, updatingTypeFor, handleStudentTypeChange]);
+
+  const { colState, visibleColumns: visColDefs, toggleColumn, resetColumns } = useColumnConfig(allColumnDefs, 'students');
+
+  // Map FULL column list to MUITable format — MUITable manages visibility + ColumnConfigurator internally
+  const muiColumns = useMemo(() =>
+    allColumnDefs.map(col => ({
+      id: col.key,
+      label: col.header,
+      minWidth: col.minWidth || 170,
+      format: col.render,
+    })),
+    [allColumnDefs]
+  );
 
   // Get the current dataset to filter and display
   const getCurrentStudentData = () => {
@@ -641,15 +762,21 @@ const Students = () => {
       ('user' in student && statusFilter === 'active' && student.isActive) || 
       ('user' in student && statusFilter === 'inactive' && !student.isActive) ||
       !('user' in student); // Institute students don't have status filter
+
+    // Student type filter
+    const sid = 'user' in student ? (student as any).userId : (student as InstituteStudent).id;
+    const matchesType = studentTypeFilter === 'all' || (studentTypeMap[sid] || 'normal') === studentTypeFilter;
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   if (!user) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-600 dark:text-gray-400">Please log in to view students.</p>
-      </div>
+      <EmptyState
+        icon={Users}
+        title="Not Logged In"
+        description="Please log in to view students."
+      />
     );
   }
 
@@ -687,51 +814,11 @@ const Students = () => {
           </div>
         </div>
 
-        {!selectedClass ? (
-          <Card>
-            <CardContent className="text-center py-12">
-              <Users className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Select Class Required
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Please select an institute and class to view students.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardContent className="text-center py-12">
-              <Users className="h-16 w-16 mx-auto mb-4 text-blue-600" />
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                Load Students
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-2">
-                Current Selection: {getCurrentSelection()}
-              </p>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Click the button below to load students for your selection.
-              </p>
-              <Button 
-                onClick={getLoadFunction()} 
-                disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    {getLoadButtonText()}
-                  </>
-                ) : (
-                  <>
-                    <Users className="h-4 w-4 mr-2" />
-                    {getLoadButtonText()}
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+        <EmptyState
+          icon={Users}
+          title="Select a Class"
+          description="Please select an institute and class to view students."
+        />
       </div>
     );
   }
@@ -770,7 +857,7 @@ const Students = () => {
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="flex items-center gap-1">
             <Users className="h-4 w-4" />
-            {pagination.totalCount} Students
+            {filteredStudents.length} Students
           </Badge>
           {/* Assign User Buttons - Only for InstituteAdmin and Teacher */}
           {shouldUseInstituteApi && selectedClass && (userRole === 'InstituteAdmin' || userRole === 'Teacher') && (
@@ -796,16 +883,96 @@ const Students = () => {
                   <span className="sm:hidden">Assign</span>
                 </Button>
               )}
+
             </>
           )}
+          {/* Give Free Card Button - Only at class level for admins/teachers */}
+          {shouldUseInstituteApi && selectedClass && !selectedSubject && canManageType && (
+            <Button
+              variant="outline"
+              onClick={() => { setTypeDialogSearch(''); setTypeDialogSearchCommitted(''); setTypeDialogStudentId(''); setTypeDialogType('free_card'); setShowTypeDialog(true); }}
+              className="flex items-center gap-2 flex-1 sm:flex-none"
+              size="sm"
+            >
+              <Gift className="h-4 w-4" />
+              <span className="hidden sm:inline">Give Free Card</span>
+              <span className="sm:hidden">Free Card</span>
+            </Button>
+          )}
+          <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                className="md:hidden flex items-center gap-2 flex-1 sm:flex-none"
+                size="sm"
+              >
+                <Filter className="h-4 w-4" />
+                <span>Filters</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="md:hidden flex flex-col max-h-[80vh] rounded-t-2xl">
+              <SheetHeader>
+                <SheetTitle>Filter Students</SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto py-4">
+                <div className="grid grid-cols-1 gap-4 px-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search students..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  {!shouldUseInstituteApi && (
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {shouldUseInstituteApi && (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="includeParentInfo" 
+                        checked={includeParentInfo}
+                        onCheckedChange={(checked) => setIncludeParentInfo(checked === true)}
+                      />
+                      <Label htmlFor="includeParentInfo" className="text-sm font-medium cursor-pointer">
+                        Include Parent Info
+                      </Label>
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('all');
+                      setIncludeParentInfo(false);
+                      setIsFilterSheetOpen(false);
+                    }}
+                    className="w-full"
+                  >
+                    Clear Filters
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
           <Button
             variant="outline"
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 flex-1 sm:flex-none"
+            className="hidden md:flex items-center gap-2 flex-1 sm:flex-none"
             size="sm"
           >
             <Filter className="h-4 w-4" />
-            <span className="hidden sm:inline">Filters</span>
+            <span>Filters</span>
           </Button>
           <Button 
             onClick={getLoadFunction()} 
@@ -826,12 +993,23 @@ const Students = () => {
               </>
             )}
           </Button>
+          <ColumnConfigurator
+            allColumns={allColumnDefs}
+            colState={colState}
+            onToggle={toggleColumn}
+            onReset={resetColumns}
+          />
+          <div className="flex items-center border border-border rounded-lg overflow-hidden">
+            <button onClick={() => setPageViewMode('card')} className={`p-1.5 transition-colors ${pageViewMode === 'card' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Card view"><LayoutGrid className="h-4 w-4" /></button>
+            <button onClick={() => setPageViewMode('table')} className={`p-1.5 transition-colors ${pageViewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Table view"><Table2 className="h-4 w-4" /></button>
+          </div>
         </div>
       </div>
 
-      {/* Filter Controls */}
+      {/* Filter Controls - Desktop Only */}
       {showFilters && (
-        <Card>
+        <ScrollAnimationWrapper animationType="slide-up" className="hidden md:block">
+          <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Filter className="h-5 w-5" />
@@ -887,49 +1065,112 @@ const Students = () => {
             </div>
           </CardContent>
         </Card>
+      </ScrollAnimationWrapper>
       )}
 
       {/* Students Table/Cards */}
       {filteredStudents.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-12">
-            <Users className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-              No Students Found
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400">
-              {searchTerm || statusFilter !== 'all' 
-                ? 'No students match your current filters.' 
-                : 'No students have been created yet.'}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Users}
+          title="No Students Found"
+          description={searchTerm || statusFilter !== 'all' ? 'No students match your current filters.' : 'No students have been created yet.'}
+        />
       ) : (
         <>
-          {/* MUI Table View - All Screen Sizes */}
-          <MUITable
-            title=""
-            data={filteredStudents}
-            columns={studentColumns.map(col => ({
-              id: col.key,
-              label: col.header,
-              minWidth: 170,
-              format: col.render
-            }))}
-            onAdd={undefined}
-            onEdit={undefined}
-            onDelete={undefined}
-            onView={(row: InstituteStudent) => setStudentDetailsDialog({ open: true, student: row })}
-            page={pagination.page}
-            rowsPerPage={pagination.limit}
-            totalCount={filteredStudents.length}
-            onPageChange={actions.setPage}
-            onRowsPerPageChange={actions.setLimit}
-            sectionType="students"
-            allowAdd={false}
-            allowEdit={false}
-            allowDelete={false}
-          />
+          {pageViewMode === 'card' ? (
+            <div className="grid grid-cols-1 gap-4">
+              {(showAllStudentCards ? (filteredStudents as InstituteStudent[]) : (filteredStudents as InstituteStudent[]).slice(0, 8)).map(student => {
+                const isExpanded = expandedStudentId === student.id;
+                const sType = (studentTypeMap[student.id] ?? student.studentType ?? 'normal') as string;
+                const cardTypeBadge: Record<string, string> = {
+                  free_card: 'text-purple-700 border-purple-300 bg-purple-50 dark:bg-purple-950 dark:text-purple-300',
+                  paid: 'text-green-700 border-green-300 bg-green-50 dark:bg-green-950 dark:text-green-300',
+                  half_paid: 'text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-950 dark:text-amber-300',
+                  quarter_paid: 'text-sky-700 border-sky-300 bg-sky-50 dark:bg-sky-950 dark:text-sky-300',
+                };
+                const cardTypeLabel: Record<string, string> = {
+                  free_card: 'Free Card', paid: 'Paid', half_paid: 'Half Paid', quarter_paid: 'Quarter Paid',
+                };
+                return (
+                  <Card key={student.id} className="hover:shadow-md transition-shadow">
+                    <div className="p-4 flex items-center gap-3">
+                      <Avatar
+                        className="h-12 w-12 shrink-0 border-2 border-border cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => { if (student.imageUrl) setImagePreview({ isOpen: true, url: getImageUrl(student.imageUrl), title: student.name }); }}
+                      >
+                        <AvatarImage src={getImageUrl(student.imageUrl)} />
+                        <AvatarFallback>{student.name?.[0] || 'S'}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-semibold text-sm truncate">{student.name}</p>
+                          {shouldUseInstituteApi && cardTypeBadge[sType] && (
+                            <span className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${cardTypeBadge[sType]}`}>
+                              {sType === 'free_card' && <Gift className="h-2.5 w-2.5" />}
+                              {sType === 'paid' && <CreditCard className="h-2.5 w-2.5" />}
+                              {sType === 'half_paid' && <BadgePercent className="h-2.5 w-2.5" />}
+                              {sType === 'quarter_paid' && <CircleDollarSign className="h-2.5 w-2.5" />}
+                              {cardTypeLabel[sType]}
+                            </span>
+                          )}
+                        </div>
+                        {student.userIdByInstitute && <p className="text-xs text-muted-foreground font-mono">Institute ID: {student.userIdByInstitute}</p>}
+                        {student.studentId && <p className="text-xs text-muted-foreground font-mono">Student ID: {student.studentId}</p>}
+                        <p className="text-xs text-muted-foreground font-mono">ID: {student.id}</p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-auto">
+                        <Button size="sm" variant="outline" onClick={() => setStudentDetailsDialog({ open: true, student })}>
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        <button
+                          onClick={() => setExpandedStudentId(isExpanded ? null : student.id)}
+                          className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                        >
+                          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <div className="px-4 pb-4 border-t pt-3 space-y-2">
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          {student.email && <div className="flex items-center gap-2"><Mail className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{student.email}</span></div>}
+                          {student.phoneNumber && <div className="flex items-center gap-2"><Phone className="h-3.5 w-3.5 shrink-0" /><span>{student.phoneNumber}</span></div>}
+                          {student.dateOfBirth && <div className="flex items-center gap-2"><span className="font-medium text-foreground">DOB:</span><span>{new Date(student.dateOfBirth).toLocaleDateString()}</span></div>}
+                          {student.addressLine1 && <div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{student.addressLine1}</span></div>}
+                          {student.addressLine2 && <div className="flex items-center gap-2"><Home className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{student.addressLine2}</span></div>}
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+              {filteredStudents.length > 8 && (
+                <Button variant="outline" onClick={() => setShowAllStudentCards((prev) => !prev)} className="w-full">
+                  {showAllStudentCards ? 'Show less' : `Show all ${filteredStudents.length} students`}
+                </Button>
+              )}
+            </div>
+          ) : (
+            <MUITable
+              title=""
+              data={filteredStudents}
+              columns={muiColumns}
+              storageKey="students"
+              onAdd={undefined}
+              onEdit={undefined}
+              onDelete={undefined}
+              onView={(row: InstituteStudent) => setStudentDetailsDialog({ open: true, student: row })}
+              page={pagination.page}
+              rowsPerPage={pagination.limit}
+              totalCount={filteredStudents.length}
+              onPageChange={actions.setPage}
+              onRowsPerPageChange={actions.setLimit}
+              sectionType="students"
+              allowAdd={false}
+              allowEdit={false}
+              allowDelete={false}
+            />
+          )}
         </>
       )}
 
@@ -1080,6 +1321,95 @@ const Students = () => {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Give Free Card Dialog */}
+      <Dialog open={showTypeDialog} onOpenChange={setShowTypeDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-primary" />
+              Give Free Card / Set Student Type
+            </DialogTitle>
+            <DialogDescription>
+              Search and select a student to update their enrollment type for all subjects in this class.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  className="w-full pl-9 pr-3 py-2 border rounded text-sm bg-background"
+                  placeholder="Search by name, email, or ID..."
+                  value={typeDialogSearch}
+                  onChange={e => { setTypeDialogSearch(e.target.value); setTypeDialogStudentId(''); }}
+                  onKeyDown={e => { if (e.key === 'Enter') { setTypeDialogSearchCommitted(typeDialogSearch); setTypeDialogStudentId(''); } }}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="shrink-0"
+                onClick={() => { setTypeDialogSearchCommitted(typeDialogSearch); setTypeDialogStudentId(''); }}
+                disabled={!typeDialogSearch.trim()}
+              >
+                Search
+              </Button>
+            </div>
+            {typeDialogSearchCommitted && dialogFilteredStudents.length === 0 && !typeDialogStudentId && (
+              <p className="text-sm text-muted-foreground text-center py-2">No students found.</p>
+            )}
+            {typeDialogSearchCommitted && dialogFilteredStudents.length > 0 && !typeDialogStudentId && (
+              <div className="border rounded max-h-48 overflow-y-auto divide-y">
+                {dialogFilteredStudents.map(s => (
+                  <button
+                    key={s.id}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+                    onClick={() => { setTypeDialogStudentId(s.id); setTypeDialogSearch(s.name); }}
+                  >
+                    <Avatar className="h-8 w-8 flex-shrink-0">
+                      <AvatarImage src={getImageUrl(s.imageUrl)} alt={s.name} />
+                      <AvatarFallback className="text-xs">{s.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{s.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{s.email}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {typeDialogStudentId && (
+              <div className="flex items-center gap-2 p-2 bg-muted/40 rounded border text-sm">
+                <CreditCard className="h-4 w-4 text-primary" />
+                <span className="font-medium">Selected:</span>
+                <span>{typeDialogSearch}</span>
+                <button className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setTypeDialogStudentId(''); setTypeDialogSearch(''); setTypeDialogSearchCommitted(''); }}>Clear</button>
+              </div>
+            )}
+            <div>
+              <label className="text-sm font-medium block mb-1">Enrollment Type</label>
+              <div className="flex flex-wrap gap-2">
+                {(['free_card', 'paid', 'half_paid', 'quarter_paid', 'normal'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTypeDialogType(t)}
+                    className={`flex-1 min-w-[80px] py-2 rounded border text-sm font-medium transition-colors ${typeDialogType === t ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted/50'}`}
+                  >
+                    {t === 'free_card' ? 'Free Card' : t === 'half_paid' ? 'Half Paid' : t === 'quarter_paid' ? 'Quarter Paid' : t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTypeDialog(false)} disabled={typeDialogLoading}>Cancel</Button>
+            <Button onClick={handleClassTypeDialogSubmit} disabled={!typeDialogStudentId || typeDialogLoading}>
+              {typeDialogLoading ? 'Updating...' : 'Apply'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

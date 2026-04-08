@@ -14,6 +14,7 @@ import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { HomeworkReferencesSection } from '@/components/homework/index';
+import { getErrorMessage } from '@/api/apiError';
 
 interface UpdateHomeworkFormProps {
   homework: any;
@@ -24,6 +25,7 @@ interface UpdateHomeworkFormProps {
 const UpdateHomeworkForm = ({ homework, onClose, onSuccess }: UpdateHomeworkFormProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   
   const toDateString = (value: any): string => {
     if (!value) return '';
@@ -49,6 +51,14 @@ const UpdateHomeworkForm = ({ homework, onClose, onSuccess }: UpdateHomeworkForm
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+        const errors: Record<string, string> = {};
+    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
+    if (!formData.description && formData.description !== 0) errors.description = 'Description is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -72,11 +82,11 @@ const UpdateHomeworkForm = ({ homework, onClose, onSuccess }: UpdateHomeworkForm
       });
       onSuccess();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating homework:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update homework",
+        description: getErrorMessage(error, 'Failed to update homework'),
         variant: "destructive"
       });
     } finally {
@@ -85,6 +95,8 @@ const UpdateHomeworkForm = ({ homework, onClose, onSuccess }: UpdateHomeworkForm
   };
 
   const handleInputChange = (field: string, value: any) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -98,7 +110,10 @@ const UpdateHomeworkForm = ({ homework, onClose, onSuccess }: UpdateHomeworkForm
           onChange={(e) => handleInputChange('title', e.target.value)}
           placeholder="Enter homework title"
           required
+              className={`${fieldErrors.title ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
         />
+
+        {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
       </div>
 
       <div>
@@ -109,7 +124,10 @@ const UpdateHomeworkForm = ({ homework, onClose, onSuccess }: UpdateHomeworkForm
           onChange={(e) => handleInputChange('description', e.target.value)}
           placeholder="Enter homework description"
           required
+              className={`${fieldErrors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
         />
+
+        {fieldErrors.description && <p className="text-xs text-red-500 mt-1">{fieldErrors.description}</p>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

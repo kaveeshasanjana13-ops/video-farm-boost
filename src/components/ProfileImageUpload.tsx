@@ -8,9 +8,20 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Camera, Upload, User, X, Check } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
-import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
+import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop, convertToPixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { fileUploader, UploadProgress } from '@/utils/uploadHelper';
+import { profileImageApi } from '@/api/profileImage.api';
+
+// 35mm × 45mm = 7:9 aspect ratio
+const PROFILE_ASPECT_RATIO = 7 / 9;
+
+function centerAspectCrop(mediaWidth: number, mediaHeight: number, aspect: number): Crop {
+  return centerCrop(
+    makeAspectCrop({ unit: '%', width: 80 }, aspect, mediaWidth, mediaHeight),
+    mediaWidth,
+    mediaHeight,
+  );
+}
 
 interface ProfileImageUploadProps {
   currentImageUrl?: string | null;
@@ -38,20 +49,11 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
     : setShowUploadDialog;
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imageSrc, setImageSrc] = useState<string>('');
-  const [crop, setCrop] = useState<Crop>({
-    unit: '%',
-    width: 50,
-    height: 50,
-    x: 25,
-    y: 25
-  });
+  const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<UploadProgress>({
-    stage: 'idle',
-    message: '',
-    progress: 0
-  });
+  const [uploadProgressMsg, setUploadProgressMsg] = useState('');
+  const [uploadProgressPct, setUploadProgressPct] = useState(0);
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -98,14 +100,9 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
 
   const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
-    const crop = {
-      unit: '%' as const,
-      width: 50,
-      height: 50,
-      x: 25,
-      y: 25
-    };
+    const crop = centerAspectCrop(width, height, PROFILE_ASPECT_RATIO);
     setCrop(crop);
+    setCompletedCrop(convertToPixelCrop(crop, width, height));
   }, []);
 
   const getCroppedImg = (image: HTMLImageElement, crop: PixelCrop): Promise<Blob> => {
@@ -162,44 +159,33 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
         lastModified: Date.now()
       });
 
-      // Upload using new signed URL system
-      const publicUrl = await fileUploader.uploadFile(
+      // Complete 4-step upload: sign → GCS PUT → verify/publish → submit for review
+      await profileImageApi.uploadProfileImage(
+        user.id,
         croppedFile,
-        'profile-images',
-        (progress) => {
-          setUploadProgress(progress);
-          console.log(`Upload progress: ${progress.stage} - ${progress.progress}%`);
+        (step, percent) => {
+          const messages: Record<string, string> = {
+            validating: 'Validating file...',
+            signing: 'Getting upload URL...',
+            uploading: 'Uploading to storage...',
+            submitting: 'Submitting for review...',
+            done: 'Done!',
+          };
+          setUploadProgressMsg(messages[step] ?? step);
+          setUploadProgressPct(percent);
+          console.log(`Upload: ${step} ${percent}%`);
         }
       );
 
-      console.log('Upload successful, received URL:', publicUrl);
-      
-      // Update profile image URL in backend
-      const baseUrl = import.meta.env.VITE_LMS_BASE_URL || 'https://lms.api.suraksha.lk';
-      const token = localStorage.getItem('access_token');
-      
-      const response = await fetch(`${baseUrl}/users/${user.id}/profile`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          profileImageUrl: publicUrl
-        })
-      });
+      console.log('Upload successful — image pending admin review.');
 
-      if (!response.ok) {
-        throw new Error('Failed to update profile image');
-      }
-
-      onImageUpdate(publicUrl);
+      onImageUpdate('');
       toast({
-        title: "Success",
-        description: "Profile image updated successfully!"
+        title: 'Image Submitted',
+        description: 'Your photo has been submitted for admin review.',
       });
       handleCloseDialog();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading image:', error);
       toast({
         title: "Upload failed",
@@ -208,11 +194,8 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
       });
     } finally {
       setUploading(false);
-      setUploadProgress({
-        stage: 'idle',
-        message: '',
-        progress: 0
-      });
+      setUploadProgressMsg('');
+      setUploadProgressPct(0);
     }
   };
 
@@ -220,7 +203,7 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
     setDialogOpen(false);
     setSelectedFile(null);
     setImageSrc('');
-    setCrop({ unit: '%', width: 50, height: 50, x: 25, y: 25 });
+    setCrop(undefined);
     setCompletedCrop(undefined);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -317,18 +300,19 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
       />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md overflow-visible">
           <DialogHeader>
-            <DialogTitle>Crop Profile Image</DialogTitle>
+            <DialogTitle>Crop Profile Image (35mm × 45mm)</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
             {imageSrc && (
-              <div className="flex justify-center">
+              <div style={{ display: 'flex', justifyContent: 'center', overflow: 'visible' }}>
               <ReactCrop
                   crop={crop}
                   onChange={(_, percentCrop) => setCrop(percentCrop)}
                   onComplete={(c) => setCompletedCrop(c)}
+                  aspect={PROFILE_ASPECT_RATIO}
                   minWidth={30}
                   minHeight={30}
                   keepSelection
@@ -337,7 +321,7 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
                     ref={imgRef}
                     alt="Crop me"
                     src={imageSrc}
-                    style={{ maxHeight: '400px', maxWidth: '100%' }}
+                    style={{ maxHeight: '400px', maxWidth: '100%', display: 'block' }}
                     onLoad={onImageLoad}
                   />
                 </ReactCrop>
@@ -360,7 +344,7 @@ const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
                 {uploading ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    {uploadProgress.message || 'Uploading...'}
+                    {uploadProgressMsg || 'Uploading...'}
                   </>
                 ) : (
                   <>

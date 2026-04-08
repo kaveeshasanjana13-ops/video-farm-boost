@@ -22,9 +22,9 @@ const SetupGuide = () => {
     },
     {
       id: 'institute-select',
-      title: 'Select Institute',
+      title: 'Institutes',
       description: 'Choose your institute to access institute-specific features',
-      action: 'Select Institute',
+      action: 'Go to Institutes',
       status: localStorage.getItem('selectedInstitute') ? 'completed' : 'pending',
       route: 'select-institute'
     },

@@ -2,15 +2,26 @@ import React, { useState, useEffect } from 'react';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CreditCard, ArrowLeft, Download, Search, BookOpen, Eye, CheckCircle, Clock, FileText, History, Shield, Plus, RefreshCw, XCircle } from 'lucide-react';
+import { CreditCard, ArrowLeft, Download, Search, BookOpen, Eye, CheckCircle, Clock, FileText, History, Shield, Plus, RefreshCw, XCircle, ChevronDown, AlertCircle, Calendar, LayoutGrid, Table2, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { subjectPaymentsApi, SubjectPayment, SubjectPaymentsResponse } from '@/api/subjectPayments.api';
 import { institutePaymentsApi, PaymentSubmission } from '@/api/institutePayments.api';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import VerifySubmissionDialog from '@/components/forms/VerifySubmissionDialog';
 import StudentSubmissionsDialog from '@/components/StudentSubmissionsDialog';
 import CreateSubjectPaymentForm from '@/components/forms/CreateSubjectPaymentForm';
@@ -24,19 +35,26 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useViewMode } from '@/hooks/useViewMode';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 const SubjectPayments = () => {
   const {
     user,
     selectedInstitute,
     selectedClass,
     selectedSubject,
-    isViewingAsParent
+    isViewingAsParent,
+    selectedChild
   } = useAuth();
+  // When parent is viewing as child, use the child's student ID
+  const effectiveStudentId = isViewingAsParent && selectedChild ? selectedChild.id : undefined;
   const instituteRole = useInstituteRole();
   
   // Check if institute type is tuition_institute
   const isTuitionInstitute = selectedInstitute?.type === 'tuition_institute';
-  const subjectLabel = isTuitionInstitute ? 'Sub Class' : 'Subject';
+  const { subjectLabel } = useInstituteLabels();
   const navigate = useNavigate();
   const {
     toast
@@ -55,8 +73,10 @@ const SubjectPayments = () => {
   // Pagination state
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
-
-  // Track current context to prevent unnecessary reloads
+  const { viewMode, setViewMode } = useViewMode();
+  const [expandedPaymentId, setExpandedPaymentId] = useState<string | null>(null);
+  const [deleteConfirmPayment, setDeleteConfirmPayment] = useState<SubjectPayment | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const contextKey = `${selectedInstitute?.id}-${selectedClass?.id}-${selectedSubject?.id}`;
   const [lastLoadedContext, setLastLoadedContext] = useState<string>('');
 
@@ -79,7 +99,8 @@ const SubjectPayments = () => {
         selectedClass.id, 
         selectedSubject.id,
         1,
-        100
+        100,
+        effectiveStudentId
       );
       
       // Create a map of paymentId -> submission status
@@ -96,7 +117,7 @@ const SubjectPayments = () => {
         });
       }
       setMySubmissionsMap(submissionsMap);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load my submissions:', error);
     }
   };
@@ -116,7 +137,7 @@ const SubjectPayments = () => {
       let response: SubjectPaymentsResponse;
       if (instituteRole === 'Student') {
         // For students, use my-payments endpoint
-        response = await subjectPaymentsApi.getMySubjectPayments(selectedInstitute.id, selectedClass.id, selectedSubject.id, pageNum + 1, limitNum, forceRefresh);
+        response = await subjectPaymentsApi.getMySubjectPayments(selectedInstitute.id, selectedClass.id, selectedSubject.id, pageNum + 1, limitNum, forceRefresh, effectiveStudentId);
         // Also load submissions to get status
         await loadMySubmissions();
       } else if (instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') {
@@ -171,6 +192,37 @@ const SubjectPayments = () => {
       return;
     }
     navigate(`/payment-submissions?paymentId=${payment.id}&paymentTitle=${encodeURIComponent(payment.title)}`);
+  };
+
+  // View physical payment submissions (admins/teachers only)
+  const viewPhysicalPayments = (payment: SubjectPayment) => {
+    navigate(
+      `/payment-submissions-pysical?paymentId=${payment.id}&paymentTitle=${encodeURIComponent(payment.title)}` +
+      `&instituteId=${selectedInstitute?.id ?? ''}&classId=${selectedClass?.id ?? ''}&subjectId=${selectedSubject?.id ?? ''}`
+    );
+  };
+
+  // Soft delete a subject payment (admin/teacher, blocked if submissions exist)
+  const handleDeletePayment = async () => {
+    if (!deleteConfirmPayment) return;
+    setDeleting(true);
+    try {
+      await subjectPaymentsApi.deletePayment(deleteConfirmPayment.id);
+      toast({
+        title: "Payment Deleted",
+        description: `"${deleteConfirmPayment.title}" has been deleted successfully.`,
+      });
+      setDeleteConfirmPayment(null);
+      loadSubjectPayments(page, rowsPerPage, true);
+    } catch (error: any) {
+      toast({
+        title: "Cannot Delete Payment",
+        description: error.message || 'Failed to delete payment. It may have submissions.',
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Handle view my submissions for students
@@ -241,44 +293,123 @@ const SubjectPayments = () => {
     });
   }, [subjectPaymentsData?.data, searchQuery]);
 
-  // Table columns configuration
-  const columns = [{
-    id: 'title',
-    label: 'Title',
-    minWidth: 200
-  }, {
-    id: 'amount',
-    label: 'Amount (Rs)',
-    minWidth: 120,
-    align: 'right' as const
-  }, {
-    id: 'status',
-    label: 'Status',
-    minWidth: 100
-  }, ...(instituteRole !== 'Student' ? [{
-    id: 'priority',
-    label: 'Priority',
-    minWidth: 100
-  }] : []), {
-    id: 'dueDate',
-    label: 'Due Date',
-    minWidth: 120
-  }, 
-  // Submission status column for students
-  ...(instituteRole === 'Student' ? [{
-    id: 'mySubmissionStatus',
-    label: 'My Submission',
-    minWidth: 120
-  }] : []),
-  ...(instituteRole !== 'Student' ? [{
-    id: 'submissions',
-    label: 'Submissions',
-    minWidth: 150
-  }] : []), {
-    id: 'actions',
-    label: 'Actions',
-    minWidth: 200
-  }];
+  // Column definitions (role-aware, each with resize + visibility control)
+  const spColDefs = React.useMemo<ColumnDef[]>(() => [
+    { key: 'title', header: 'Title', locked: true, defaultWidth: 200, minWidth: 120 },
+    { key: 'amount', header: 'Amount (Rs)', defaultVisible: true, defaultWidth: 120, minWidth: 80 },
+    { key: 'status', header: 'Status', defaultVisible: true, defaultWidth: 100, minWidth: 80 },
+    ...(instituteRole !== 'Student' ? [{ key: 'priority', header: 'Priority', defaultVisible: true, defaultWidth: 100, minWidth: 80 } as ColumnDef] : []),
+    { key: 'dueDate', header: 'Due Date', defaultVisible: true, defaultWidth: 120, minWidth: 80 },
+    ...(instituteRole === 'Student' ? [{ key: 'mySubmissionStatus', header: 'My Submission', defaultVisible: true, defaultWidth: 140, minWidth: 80 } as ColumnDef] : []),
+    ...(instituteRole !== 'Student' ? [{ key: 'submissions', header: 'Submissions', defaultVisible: true, defaultWidth: 150, minWidth: 100 } as ColumnDef] : []),
+    ...(instituteRole !== 'Student' ? [{ key: 'onlinePayment', header: 'Online Payment', defaultVisible: true, defaultWidth: 150, minWidth: 120 } as ColumnDef] : []),
+    ...(instituteRole !== 'Student' ? [{ key: 'physicalPayment', header: 'Physical Payment', defaultVisible: true, defaultWidth: 160, minWidth: 120 } as ColumnDef] : []),
+    ...(instituteRole !== 'Student' ? [{ key: 'deletePayment', header: 'Delete', defaultVisible: true, defaultWidth: 90, minWidth: 70 } as ColumnDef] : []),
+    ...(instituteRole === 'Student' ? [{ key: 'submitPayment', header: 'Submit', locked: true, defaultWidth: 160, minWidth: 120 } as ColumnDef] : []),
+  ], [instituteRole]);
+  const spColIds = React.useMemo(() => spColDefs.map(c => c.key), [spColDefs]);
+  const spColDefaultWidths = React.useMemo(() => {
+    const m: Record<string, number> = {};
+    spColDefs.forEach(c => { m[c.key] = c.defaultWidth || 120; });
+    return m;
+  }, [spColDefs]);
+  const { getWidth: getSPColWidth, setHoveredCol: setSPHoveredCol, ResizeHandle: SPResizeHandle } = useResizableColumns(spColIds, spColDefaultWidths);
+  const { colState: spColState, visibleColumns: spVisDefs, toggleColumn: toggleSPCol, resetColumns: resetSPCols } = useColumnConfig(spColDefs, 'subject-payments');
+
+  const renderSPCell = (colKey: string, payment: SubjectPayment): React.ReactNode => {
+    switch (colKey) {
+      case 'title':
+        return (
+          <div>
+            <div className="font-medium text-foreground">{payment.title}</div>
+            <div className="text-sm text-muted-foreground mt-1 line-clamp-2">{payment.description || '-'}</div>
+            <div className="text-xs text-muted-foreground mt-1">Target: {payment.targetType}</div>
+          </div>
+        );
+      case 'amount':
+        return <div className="font-semibold text-lg text-primary">Rs {Number(payment.amount).toLocaleString()}</div>;
+      case 'status':
+        return <Badge className={getStatusColor(payment.status)}>{payment.status}</Badge>;
+      case 'priority':
+        return <Badge className={getPriorityColor(payment.priority)}>{payment.priority}</Badge>;
+      case 'dueDate': {
+        const d = new Date(payment.lastDate);
+        const overdue = d < new Date() && d.toDateString() !== new Date().toDateString();
+        return (
+          <div className={`text-sm ${overdue ? 'text-destructive font-medium' : 'text-foreground'}`}>
+            {d.toLocaleDateString()}
+            {overdue && <div className="text-xs text-destructive">⚠ Overdue</div>}
+          </div>
+        );
+      }
+      case 'mySubmissionStatus': {
+        const submissionData = mySubmissionsMap[payment.id];
+        const hasSubmitted = submissionData || payment.hasSubmitted || payment.mySubmissionStatus;
+        const status = submissionData?.status || payment.mySubmissionStatus;
+        if (!hasSubmitted) return <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">Not Submitted</Badge>;
+        switch (status) {
+          case 'VERIFIED': return <Badge className="bg-green-100 text-green-800 border-green-200"><CheckCircle className="h-3 w-3 mr-1" />Verified</Badge>;
+          case 'PENDING': return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
+          case 'REJECTED': return <Badge className="bg-red-100 text-red-800 border-red-200"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>;
+          default: return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Submitted</Badge>;
+        }
+      }
+      case 'submissions':
+        return (
+          <div className="text-xs space-y-1">
+            <div className="flex items-center space-x-1"><FileText className="h-3 w-3" /><span>Total: {payment.submissionsCount || 0}</span></div>
+            <div className="flex items-center space-x-1 text-green-600"><CheckCircle className="h-3 w-3" /><span>Verified: {payment.verifiedSubmissionsCount || 0}</span></div>
+            <div className="flex items-center space-x-1 text-yellow-600"><Clock className="h-3 w-3" /><span>Pending: {payment.pendingSubmissionsCount || 0}</span></div>
+          </div>
+        );
+      case 'onlinePayment':
+        return (
+          <Button variant="default" size="sm" onClick={() => viewSubmissions(payment)} className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white">
+            <Eye className="h-3 w-3" /><span>Online Payment</span>
+          </Button>
+        );
+      case 'physicalPayment':
+        return (
+          <Button variant="outline" size="sm" onClick={() => viewPhysicalPayments(payment)} className="flex items-center space-x-1 border-green-500 text-green-700 hover:bg-green-50">
+            <CreditCard className="h-3 w-3" /><span>Physical Payment</span>
+          </Button>
+        );
+      case 'deletePayment':
+        return (payment.submissionsCount ?? 0) === 0 ? (
+          <Button variant="destructive" size="sm" onClick={() => setDeleteConfirmPayment(payment)} className="flex items-center space-x-1">
+            <Trash2 className="h-3 w-3" /><span>Delete</span>
+          </Button>
+        ) : null;
+      case 'submitPayment': {
+        const submissionData = mySubmissionsMap[payment.id];
+        const hasSubmitted = submissionData || payment.hasSubmitted || payment.mySubmissionStatus;
+        const status = submissionData?.status || payment.mySubmissionStatus;
+        if (hasSubmitted) {
+          return (
+            <div className="flex flex-col space-y-1">
+              <Badge className={status === 'VERIFIED' ? "bg-green-100 text-green-800 border-green-200" : status === 'PENDING' ? "bg-yellow-100 text-yellow-800 border-yellow-200" : status === 'REJECTED' ? "bg-red-100 text-red-800 border-red-200" : "bg-blue-100 text-blue-800 border-blue-200"}>
+                {status === 'VERIFIED' && <CheckCircle className="h-3 w-3 mr-1" />}
+                {status === 'PENDING' && <Clock className="h-3 w-3 mr-1" />}
+                {status === 'REJECTED' && <XCircle className="h-3 w-3 mr-1" />}
+                Already Submitted
+              </Badge>
+              {status === 'REJECTED' && (
+                <Button variant="destructive" size="sm" onClick={() => { setSelectedPaymentForSubmission(payment); setSubmitPaymentDialogOpen(true); }} className="flex items-center space-x-1">
+                  <CreditCard className="h-3 w-3" /><span>Resubmit</span>
+                </Button>
+              )}
+            </div>
+          );
+        }
+        return (
+          <Button variant="default" size="sm" onClick={() => { setSelectedPaymentForSubmission(payment); setSubmitPaymentDialogOpen(true); }} className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white">
+            <CreditCard className="h-3 w-3" /><span>Submit</span>
+          </Button>
+        );
+      }
+      default: return null;
+    }
+  };
   return <PageContainer className="h-full">
       {/* Header Section - Mobile Optimized */}
       <div className="flex flex-col space-y-3 sm:space-y-4">
@@ -327,11 +458,19 @@ const SubjectPayments = () => {
                 <Input placeholder="Search payments..." className="pl-9 sm:pl-10 w-full text-sm" value={searchQuery} onChange={e => handleSearch(e.target.value)} />
               </div>
             </div>
-            <div className="flex gap-2 shrink-0">
+            <div className="flex gap-2 shrink-0 items-center">
               <Button variant="outline" onClick={() => loadSubjectPayments(page, rowsPerPage, true)} disabled={loading || !selectedInstitute || !selectedClass || !selectedSubject} size="sm" className="flex-1 sm:flex-none">
                 <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 <span className="ml-1.5 sm:ml-2">{loading ? 'Loading...' : 'Refresh'}</span>
               </Button>
+              {/* View Mode Toggle */}
+              <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+                <button onClick={() => setViewMode('card')} className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} title="Card View"><LayoutGrid className="h-4 w-4" /></button>
+                <button onClick={() => setViewMode('table')} className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} title="Table View"><Table2 className="h-4 w-4" /></button>
+              </div>
+              {viewMode === 'table' && (
+                <ColumnConfigurator allColumns={spColDefs} colState={spColState} onToggle={toggleSPCol} onReset={resetSPCols} />
+              )}
             </div>
           </div>
         </CardContent>
@@ -363,51 +502,156 @@ const SubjectPayments = () => {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            {!subjectPaymentsData ? <div className="flex flex-col items-center justify-center py-20 px-6">
-                <h2 className="text-3xl font-bold text-foreground mb-4">
-                  Subject Payments
-                </h2>
-                <p className="text-muted-foreground text-base mb-8 text-center max-w-md">
-                  Click the button below to load payments data
-                </p>
-                <Button 
-                  onClick={() => loadSubjectPayments()} 
-                  disabled={loading || !selectedInstitute || !selectedClass || !selectedSubject}
-                  size="lg"
-                  className="px-8 py-6 text-base"
-                >
-                  <RefreshCw className={`h-5 w-5 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  {loading ? 'Loading...' : 'Load Data'}
-                </Button>
-              </div> : <Paper sx={{
+            {filteredPayments.length === 0 ? <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+                  <CreditCard className="h-7 w-7 opacity-40" />
+                </div>
+                <p className="font-medium text-foreground">No payments found</p>
+                <p className="text-sm text-muted-foreground">No payment records available for this subject.</p>
+              </div> : viewMode === 'card' ? (
+                <div className="p-4 grid grid-cols-1 gap-4">
+                  {filteredPayments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(payment => {
+                    const isExpanded = expandedPaymentId === payment.id;
+                    const dueDate = payment.lastDate ? new Date(payment.lastDate) : null;
+                    const isOverdue = dueDate ? dueDate < new Date() && dueDate.toDateString() !== new Date().toDateString() : false;
+                    const isMandatory = payment.priority === 'MANDATORY';
+                    const totalSubs = payment.submissionsCount ?? 0;
+                    const verifiedSubs = payment.verifiedSubmissionsCount ?? 0;
+                    const progressPct = totalSubs > 0 ? Math.round((verifiedSubs / totalSubs) * 100) : 0;
+                    return (
+                      <Card key={payment.id} className={`hover:shadow-lg transition-all duration-200 overflow-hidden ${
+                        isOverdue ? 'border-destructive' : isMandatory ? 'border-orange-400/60' : 'border-border'
+                      }`}>
+                        {/* Accent bar */}
+                        <div className={`h-1.5 w-full ${
+                          isOverdue ? 'bg-destructive' : isMandatory ? 'bg-orange-500' : 'bg-primary'
+                        }`} />
+                        {/* Header */}
+                        <div
+                          className="p-4 flex items-start gap-3 cursor-pointer select-none"
+                          onClick={() => setExpandedPaymentId(isExpanded ? null : payment.id)}
+                        >
+                          <div className={`p-2.5 rounded-xl shrink-0 ${
+                            isOverdue ? 'bg-destructive/10' : isMandatory ? 'bg-orange-100 dark:bg-orange-900/20' : 'bg-primary/10'
+                          }`}>
+                            <CreditCard className={`h-5 w-5 ${
+                              isOverdue ? 'text-destructive' : isMandatory ? 'text-orange-500' : 'text-primary'
+                            }`} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{payment.title}</p>
+                            <div className="text-2xl font-extrabold text-foreground leading-tight mt-0.5">Rs {Number(payment.amount).toLocaleString()}</div>
+                            {dueDate && (
+                              <p className={`text-xs mt-1 flex items-center gap-1 ${
+                                isOverdue ? 'text-destructive font-semibold' : 'text-muted-foreground'
+                              }`}>
+                                {isOverdue ? <AlertCircle className="h-3 w-3" /> : <Calendar className="h-3 w-3" />}
+                                {isOverdue ? 'Overdue · ' : 'Due '}{dueDate.toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <Badge className={getStatusColor(payment.status)}>{payment.status}</Badge>
+                            {instituteRole !== 'Student' && <Badge className={`text-xs ${getPriorityColor(payment.priority)}`}>{payment.priority}</Badge>}
+                            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                          </div>
+                        </div>
+                        {/* Expandable body */}
+                        {isExpanded && (
+                          <div className="px-4 pb-4 border-t pt-3 space-y-3">
+                            {payment.description && (
+                              <p className="text-xs text-muted-foreground leading-relaxed">{payment.description}</p>
+                            )}
+                            {payment.targetType && (
+                              <p className="text-xs text-muted-foreground">Target: <span className="font-medium text-foreground">{payment.targetType}</span></p>
+                            )}
+                            {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && totalSubs > 0 && (
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span>Submissions</span>
+                                  <span className="font-medium">{verifiedSubs}/{totalSubs} verified</span>
+                                </div>
+                                <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+                                </div>
+                              </div>
+                            )}
+                            <div className="pt-2 border-t">
+                              {instituteRole === 'Student' && (() => {
+                                const submissionData = mySubmissionsMap[payment.id];
+                                const hasSubmitted = submissionData || payment.hasSubmitted || payment.mySubmissionStatus;
+                                const status = submissionData?.status || payment.mySubmissionStatus;
+                                if (hasSubmitted) return (
+                                  <div className="flex flex-col gap-1.5">
+                                    <Badge className={`w-full justify-center py-1.5 ${
+                                      status === 'VERIFIED' ? 'bg-green-100 text-green-800 border-green-200' :
+                                      status === 'PENDING' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                      'bg-red-100 text-red-800 border-red-200'
+                                    }`}>
+                                      {status === 'VERIFIED' && <CheckCircle className="h-3 w-3 mr-1" />}
+                                      {status === 'PENDING' && <Clock className="h-3 w-3 mr-1" />}
+                                      {status === 'REJECTED' && <XCircle className="h-3 w-3 mr-1" />}
+                                      {status || 'Submitted'}
+                                    </Badge>
+                                    {status === 'REJECTED' && (
+                                      <Button size="sm" variant="destructive" className="w-full" onClick={() => { setSelectedPaymentForSubmission(payment); setSubmitPaymentDialogOpen(true); }}>
+                                        <CreditCard className="h-3.5 w-3.5 mr-1.5" />Resubmit Payment
+                                      </Button>
+                                    )}
+                                  </div>
+                                );
+                                return <Button size="sm" className="w-full" onClick={() => { setSelectedPaymentForSubmission(payment); setSubmitPaymentDialogOpen(true); }}><CreditCard className="h-3.5 w-3.5 mr-1.5" />Submit Payment</Button>;
+                              })()}
+                              {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && (
+                                <div className="flex flex-col gap-1.5">
+                                  <Button variant="outline" size="sm" className="w-full" onClick={() => viewSubmissions(payment)}><Eye className="h-3.5 w-3.5 mr-1.5" />Online Payment</Button>
+                                  <Button variant="outline" size="sm" className="w-full border-green-500 text-green-700 hover:bg-green-50" onClick={() => viewPhysicalPayments(payment)}><CreditCard className="h-3.5 w-3.5 mr-1.5" />Physical Payment</Button>
+                                  {(payment.submissionsCount ?? 0) === 0 && (
+                                    <Button variant="destructive" size="sm" className="w-full" onClick={() => setDeleteConfirmPayment(payment)}>
+                                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />Delete Payment
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : <Paper sx={{
             width: '100%',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            height: 'calc(100vh - 420px)',
+            display: 'flex',
+            flexDirection: 'column',
           }}>
                 <TableContainer sx={{
-              minHeight: '500px',
+              flex: 1,
               overflow: 'auto'
             }}>
-                  <Table stickyHeader aria-label="subject payments table">
+                  <Table stickyHeader aria-label="subject payments table" sx={{ tableLayout: 'fixed', minWidth: spVisDefs.reduce((sum, col) => sum + getSPColWidth(col.key), 0) }}>
                     <TableHead>
                       <TableRow>
-                        {columns.map(column => <TableCell key={column.id} align={column.align} style={{
-                      minWidth: column.minWidth
-                    }} sx={{
-                      fontWeight: 600,
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 2,
-                      backgroundColor: 'hsl(var(--muted))',
-                      color: 'hsl(var(--foreground))',
-                      borderBottom: '1px solid hsl(var(--border))'
-                    }}>
-                            {column.label}
-                          </TableCell>)}
+                        {spVisDefs.map(col => (
+                          <TableCell
+                            key={col.key}
+                            align={col.key === 'amount' ? 'right' : undefined}
+                            onMouseEnter={() => setSPHoveredCol(col.key)}
+                            onMouseLeave={() => setSPHoveredCol(null)}
+                            style={{ position: 'relative', width: getSPColWidth(col.key), userSelect: 'none' }}
+                            sx={{ fontWeight: 600, backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))' }}
+                          >
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 12 }}>{col.header}</div>
+                            <SPResizeHandle colId={col.key} />
+                          </TableCell>
+                        ))}
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {filteredPayments.length === 0 ? <TableRow>
-                          <TableCell colSpan={columns.length} align="center">
+                          <TableCell colSpan={spVisDefs.length} align="center">
                             <div className="py-12">
                               <CreditCard className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                               <p className="text-muted-foreground text-lg mb-2">
@@ -418,139 +662,15 @@ const SubjectPayments = () => {
                               </p>
                             </div>
                           </TableCell>
-                        </TableRow> : filteredPayments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(payment => <TableRow hover role="checkbox" tabIndex={-1} key={payment.id}>
-                              <TableCell>
-                                <div>
-                                  <div className="font-medium text-foreground">
-                                    {payment.title}
-                                  </div>
-                                  <div className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                    {payment.description || '-'}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    Target: {payment.targetType}
-                                  </div>
-                                </div>
+                        </TableRow> : filteredPayments.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(payment => (
+                          <TableRow hover role="checkbox" tabIndex={-1} key={payment.id}>
+                            {spVisDefs.map(col => (
+                              <TableCell key={col.key} align={col.key === 'amount' ? 'right' : undefined} style={{ width: getSPColWidth(col.key), maxWidth: getSPColWidth(col.key) }}>
+                                {renderSPCell(col.key, payment)}
                               </TableCell>
-                              <TableCell align="right">
-                                <div className="font-semibold text-lg text-primary">
-                                  Rs {Number(payment.amount).toLocaleString()}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge className={getStatusColor(payment.status)}>
-                                  {payment.status}
-                                </Badge>
-                              </TableCell>
-                              {instituteRole !== 'Student' && (
-                                <TableCell>
-                                  <Badge className={getPriorityColor(payment.priority)}>
-                                    {payment.priority}
-                                  </Badge>
-                                </TableCell>
-                              )}
-                              <TableCell>
-                                {new Date(payment.lastDate).toLocaleDateString()}
-                              </TableCell>
-                              {/* Submission status for students */}
-                              {instituteRole === 'Student' && (
-                                <TableCell>
-                                  {(() => {
-                                    const submissionData = mySubmissionsMap[payment.id];
-                                    const hasSubmitted = submissionData || payment.hasSubmitted || payment.mySubmissionStatus;
-                                    const status = submissionData?.status || payment.mySubmissionStatus;
-                                    
-                                    if (!hasSubmitted) {
-                                      return <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300">Not Submitted</Badge>;
-                                    }
-                                    switch (status) {
-                                      case 'VERIFIED':
-                                        return <Badge className="bg-green-100 text-green-800 border-green-200"><CheckCircle className="h-3 w-3 mr-1" />Verified</Badge>;
-                                      case 'PENDING':
-                                        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
-                                      case 'REJECTED':
-                                        return <Badge className="bg-red-100 text-red-800 border-red-200"><XCircle className="h-3 w-3 mr-1" />Rejected</Badge>;
-                                      default:
-                                        return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Submitted</Badge>;
-                                    }
-                                  })()}
-                                </TableCell>
-                              )}
-                              {instituteRole !== 'Student' && (
-                                <TableCell>
-                                  {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && <div className="text-xs space-y-1">
-                                      <div className="flex items-center space-x-1">
-                                        <FileText className="h-3 w-3" />
-                                        <span>Total: {payment.submissionsCount || 0}</span>
-                                      </div>
-                                      <div className="flex items-center space-x-1 text-green-600">
-                                        <CheckCircle className="h-3 w-3" />
-                                        <span>Verified: {payment.verifiedSubmissionsCount || 0}</span>
-                                      </div>
-                                      <div className="flex items-center space-x-1 text-yellow-600">
-                                        <Clock className="h-3 w-3" />
-                                        <span>Pending: {payment.pendingSubmissionsCount || 0}</span>
-                                      </div>
-                                    </div>}
-                                </TableCell>
-                              )}
-                              <TableCell>
-                                <div className="flex flex-col space-y-1">
-                                  {instituteRole === 'Student' && (
-                                    (() => {
-                                      // Parent viewing mode - show view only badge
-                                      if (isViewingAsParent) {
-                                        return (
-                                          <Badge variant="secondary" className="bg-muted text-muted-foreground">
-                                            <Eye className="h-3 w-3 mr-1" />
-                                            View Only
-                                          </Badge>
-                                        );
-                                      }
-                                      
-                                      const submissionData = mySubmissionsMap[payment.id];
-                                      const hasSubmitted = submissionData || payment.hasSubmitted || payment.mySubmissionStatus;
-                                      const status = submissionData?.status || payment.mySubmissionStatus;
-                                      
-                                      if (hasSubmitted) {
-                                        return (
-                                          <Badge 
-                                            className={
-                                              status === 'VERIFIED' 
-                                                ? "bg-green-100 text-green-800 border-green-200"
-                                                : status === 'PENDING'
-                                                ? "bg-yellow-100 text-yellow-800 border-yellow-200"
-                                                : status === 'REJECTED'
-                                                ? "bg-red-100 text-red-800 border-red-200"
-                                                : "bg-blue-100 text-blue-800 border-blue-200"
-                                            }
-                                          >
-                                            {status === 'VERIFIED' && <CheckCircle className="h-3 w-3 mr-1" />}
-                                            {status === 'PENDING' && <Clock className="h-3 w-3 mr-1" />}
-                                            {status === 'REJECTED' && <XCircle className="h-3 w-3 mr-1" />}
-                                            Already Submitted
-                                          </Badge>
-                                        );
-                                      }
-                                      return (
-                                        <Button variant="default" size="sm" onClick={() => {
-                                          setSelectedPaymentForSubmission(payment);
-                                          setSubmitPaymentDialogOpen(true);
-                                        }} className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white">
-                                          <CreditCard className="h-3 w-3" />
-                                          <span>Submit</span>
-                                        </Button>
-                                      );
-                                    })()
-                                  )}
-                                  
-                                  {(instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher') && <Button variant="default" size="sm" onClick={() => viewSubmissions(payment)} className="flex items-center space-x-1 bg-blue-600 hover:bg-blue-700 text-white">
-                                      <Eye className="h-3 w-3" />
-                                      <span>View</span>
-                                    </Button>}
-                                </div>
-                              </TableCell>
-                            </TableRow>)}
+                            ))}
+                          </TableRow>
+                        ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -612,14 +732,37 @@ const SubjectPayments = () => {
         {user?.userType === 'Student' && selectedInstitute && selectedClass && selectedSubject && <StudentSubmissionsDialog open={submissionsDialogOpen} onOpenChange={setSubmissionsDialogOpen} instituteId={selectedInstitute.id} classId={selectedClass.id} subjectId={selectedSubject.id} />}
 
         {/* Create Subject Payment Dialog */}
-        {selectedInstitute && selectedClass && selectedSubject && <CreateSubjectPaymentForm open={createPaymentDialogOpen} onOpenChange={setCreatePaymentDialogOpen} instituteId={selectedInstitute.id} classId={selectedClass.id} subjectId={selectedSubject.id} onSuccess={loadSubjectPayments} />}
+        {selectedInstitute && selectedClass && selectedSubject && <CreateSubjectPaymentForm open={createPaymentDialogOpen} onOpenChange={setCreatePaymentDialogOpen} instituteId={selectedInstitute.id} classId={selectedClass.id} subjectId={selectedSubject.id} onSuccess={() => loadSubjectPayments(0, rowsPerPage, true)} />}
 
-        {/* Submit Payment Dialog for Students - disabled for parent viewing */}
-        {instituteRole === 'Student' && !isViewingAsParent && selectedPaymentForSubmission && <SubmitSubjectPaymentDialog open={submitPaymentDialogOpen} onOpenChange={setSubmitPaymentDialogOpen} payment={selectedPaymentForSubmission} onSuccess={() => {
+        {/* Submit Payment Dialog for Students/Parents */}
+        {instituteRole === 'Student' && selectedPaymentForSubmission && <SubmitSubjectPaymentDialog open={submitPaymentDialogOpen} onOpenChange={setSubmitPaymentDialogOpen} payment={selectedPaymentForSubmission} onSuccess={() => {
         setSubmitPaymentDialogOpen(false);
         setSelectedPaymentForSubmission(null);
         loadSubjectPayments();
       }} />}
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!deleteConfirmPayment} onOpenChange={(open) => { if (!open) setDeleteConfirmPayment(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Payment</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete the payment <strong>"{deleteConfirmPayment?.title}"</strong> (Rs {Number(deleteConfirmPayment?.amount || 0).toLocaleString()})?
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeletePayment}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
     </PageContainer>;
 };

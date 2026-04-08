@@ -11,6 +11,7 @@
     <!-- Background colors -->
     <color name="colorBackgroundMistBlue">#F0F6FF</color>
     <color name="colorBackgroundWhite">#FFFFFF</color>
+    <color name="colorBackgroundDark">#FFFFFF</color>
     
     <!-- Push notification colors -->
     <color name="notification_color">#0039B3</color>

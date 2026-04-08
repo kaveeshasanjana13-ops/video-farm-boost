@@ -1,4 +1,6 @@
 import { apiClient, ApiResponse } from './client';
+import { enhancedCachedClient } from './enhancedCachedClient';
+import { CACHE_TTL } from '@/config/cacheTTL';
 
 // =================== TYPES ===================
 
@@ -133,8 +135,7 @@ class HomeworkReferencesApi {
    * GET /homework-references?homeworkId={homeworkId}
    */
   async getReferences(params?: ReferenceQueryParams): Promise<ApiResponse<HomeworkReference[]>> {
-    console.log('📎 Fetching homework references:', params);
-    return apiClient.get<ApiResponse<HomeworkReference[]>>(this.basePath, params);
+    return enhancedCachedClient.get<ApiResponse<HomeworkReference[]>>(this.basePath, params, { ttl: CACHE_TTL.HOMEWORK });
   }
 
   /**
@@ -142,8 +143,8 @@ class HomeworkReferencesApi {
    * GET /homework-references/homework/{homeworkId}
    */
   async getReferencesByHomework(homeworkId: string): Promise<HomeworkReference[]> {
-    console.log('📎 Fetching references for homework:', homeworkId);
-    return apiClient.get<HomeworkReference[]>(`${this.basePath}/homework/${homeworkId}`);
+    const result = await enhancedCachedClient.get<{ data: HomeworkReference[] } | HomeworkReference[]>(`${this.basePath}/homework/${homeworkId}`, undefined, { ttl: CACHE_TTL.HOMEWORK });
+    return (result as any).data ?? result;
   }
 
   /**
@@ -151,16 +152,14 @@ class HomeworkReferencesApi {
    * GET /homework-references/{id}
    */
   async getReferenceById(id: string): Promise<HomeworkReference> {
-    console.log('📎 Fetching reference:', id);
-    return apiClient.get<HomeworkReference>(`${this.basePath}/${id}`);
+    return enhancedCachedClient.get<HomeworkReference>(`${this.basePath}/${id}`, undefined, { ttl: CACHE_TTL.HOMEWORK });
   }
 
   /**
    * Get reference summary for a homework
    */
   async getReferenceSummary(homeworkId: string): Promise<ReferenceSummary> {
-    console.log('📊 Fetching reference summary for homework:', homeworkId);
-    return apiClient.get<ReferenceSummary>(`${this.basePath}/homework/${homeworkId}/summary`);
+    return enhancedCachedClient.get<ReferenceSummary>(`${this.basePath}/homework/${homeworkId}/summary`, undefined, { ttl: CACHE_TTL.HOMEWORK });
   }
 
   // =================== S3 UPLOAD FLOW ===================
@@ -171,7 +170,8 @@ class HomeworkReferencesApi {
    */
   async generateUploadUrl(data: S3UploadUrlRequest): Promise<S3UploadUrlResponse> {
     console.log('🔗 Generating S3 upload URL:', data);
-    return apiClient.post<S3UploadUrlResponse>(`${this.basePath}/upload/generate-url`, data);
+    const result = await apiClient.post<{ success: boolean; data: S3UploadUrlResponse }>(`${this.basePath}/upload/generate-url`, data);
+    return (result as any).data ?? result;
   }
 
   /**
@@ -220,7 +220,8 @@ class HomeworkReferencesApi {
    */
   async confirmS3Upload(data: S3ConfirmUploadData): Promise<HomeworkReference> {
     console.log('✅ Confirming S3 upload:', data);
-    return apiClient.post<HomeworkReference>(`${this.basePath}/upload/confirm`, data);
+    const result = await apiClient.post<{ success: boolean; data: HomeworkReference }>(`${this.basePath}/upload/confirm`, data);
+    return (result as any).data ?? result;
   }
 
   /**
@@ -276,7 +277,8 @@ class HomeworkReferencesApi {
    */
   async createFromGoogleDrive(data: GoogleDriveReferenceData): Promise<HomeworkReference> {
     console.log('📁 Creating reference from Google Drive:', data);
-    return apiClient.post<HomeworkReference>(`${this.basePath}/google-drive`, data);
+    const result = await apiClient.post<{ success: boolean; data: HomeworkReference }>(`${this.basePath}/google-drive`, data);
+    return (result as any).data ?? result;
   }
 
   // =================== EXTERNAL LINK ===================
@@ -287,7 +289,8 @@ class HomeworkReferencesApi {
    */
   async createFromLink(data: LinkReferenceData): Promise<HomeworkReference> {
     console.log('🔗 Creating reference from link:', data);
-    return apiClient.post<HomeworkReference>(`${this.basePath}/link`, data);
+    const result = await apiClient.post<{ success: boolean; data: HomeworkReference }>(`${this.basePath}/link`, data);
+    return (result as any).data ?? result;
   }
 
   // =================== UPDATE OPERATIONS ===================

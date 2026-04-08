@@ -79,7 +79,7 @@ const EnrollClass = () => {
       
       const enrolledIds = enrolledData.data?.map((item: any) => item.classId) || [];
       setEnrolledClasses(enrolledIds);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading enrolled classes:', error);
     }
   };
@@ -152,7 +152,7 @@ const EnrollClass = () => {
         setHasData(true); // Still show the section but with "no classes" message
         toast.error('No classes found');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error loading classes:', error);
       toast.error('Failed to load classes');
       setHasData(false);
@@ -195,7 +195,7 @@ const EnrollClass = () => {
       
       // Refresh classes to show updated enrollment status
       handleLoadClasses();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error enrolling in class:', error);
       // Better error handling
       const errorMessage = error instanceof Error ? error.message : '';

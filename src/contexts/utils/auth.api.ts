@@ -8,8 +8,8 @@ export const getBaseUrl = (): string => {
 };
 
 export const getBaseUrl2 = (): string => {
-  const storedUrl = localStorage.getItem('baseUrl2');
-  if (storedUrl) return storedUrl;
+  // NEVER read the base URL from localStorage — an attacker who achieves XSS could
+  // redirect all credentialed requests to an attacker-controlled server.
   const envUrl = import.meta.env.VITE_API_BASE_URL_2;
   if (envUrl) return envUrl;
   return '';
@@ -26,13 +26,26 @@ export const getApiHeaders = (): Record<string, string> => {
   return getAuthHeadersSync();
 };
 
+/** Returns true only if token is a structurally valid JWT (header.payload.signature) */
+function isValidJwtFormat(token: string): boolean {
+  const parts = token.split('.');
+  return parts.length === 3 && parts.every(p => p.length > 0);
+}
+
 export const getApiHeadersAsync = async (): Promise<Record<string, string>> => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json'
   };
   const token = await tokenStorageService.getAccessToken();
   if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
+    if (isValidJwtFormat(token)) {
+      headers['Authorization'] = `Bearer ${token}`;
+    } else {
+      // Don't send a malformed token — the server will return 401,
+      // which triggers the normal handle401Error → refreshAccessToken flow.
+      // No side effects here; clearing storage from a headers function is too risky.
+      console.warn('[auth] Skipping malformed access token — 401 refresh flow will handle recovery');
+    }
   }
   return headers;
 };
@@ -53,7 +66,7 @@ export const getOrgAccessTokenAsync = async (): Promise<string | null> => {
       return null;
     }
   }
-  return localStorage.getItem('org_access_token');
+  return sessionStorage.getItem('org_access_token');
 };
 
 export const setOrgAccessTokenAsync = async (token: string): Promise<void> => {
@@ -61,7 +74,7 @@ export const setOrgAccessTokenAsync = async (token: string): Promise<void> => {
     const { SecureStoragePlugin } = await import('capacitor-secure-storage-plugin');
     await SecureStoragePlugin.set({ key: 'org_access_token', value: token });
   } else {
-    localStorage.setItem('org_access_token', token);
+    sessionStorage.setItem('org_access_token', token);
   }
 };
 
@@ -74,7 +87,7 @@ export const removeOrgAccessTokenAsync = async (): Promise<void> => {
       // Key didn't exist
     }
   } else {
-    localStorage.removeItem('org_access_token');
+    sessionStorage.removeItem('org_access_token');
   }
 };
 
@@ -103,13 +116,21 @@ export const loginUser = async (credentials: LoginCredentials): Promise<ApiRespo
       password: credentials.password,
       rememberMe: !!credentials.rememberMe,
       remember_me: !!credentials.rememberMe,
-      ...(isMobile && { deviceId: await tokenStorageService.getDeviceId() })
+      ...(isMobile && { deviceId: await tokenStorageService.getDeviceId() }),
+      ...(credentials.subdomain && { subdomain: credentials.subdomain }),
+      ...(credentials.customDomain && { customDomain: credentials.customDomain }),
+      ...(credentials.loginMethod && { loginMethod: credentials.loginMethod }),
     })
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `Login failed: ${response.status}`);
+    // Use a generic message to prevent user/credential enumeration.
+    // The server's specific error is only logged in dev mode.
+    if (import.meta.env.DEV) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Login failed (dev only):', errorData);
+    }
+    throw new Error('Invalid credentials. Please check your username and password.');
   }
 
   const data = await response.json();
@@ -140,6 +161,16 @@ export const loginUser = async (credentials: LoginCredentials): Promise<ApiRespo
       userType: data.user.userType,
       imageUrl: data.user.imageUrl
     });
+  }
+
+  // 🏢 Multi-tenant: Store preSelectedInstituteId so InstituteSelector can auto-skip
+  // This is set when the user logs in via a subdomain or custom domain login page.
+  // Cleared by InstituteSelector after use.
+  if (data.preSelectedInstituteId && !isNativePlatform()) {
+    sessionStorage.setItem('tenant_preSelectedInstituteId', data.preSelectedInstituteId);
+    if (data.preSelectedInstituteName) {
+      sessionStorage.setItem('tenant_preSelectedInstituteName', data.preSelectedInstituteName);
+    }
   }
 
   return data;
@@ -184,24 +215,23 @@ export const refreshAccessToken = async (): Promise<ApiUserResponse> => {
           })
         });
       } else {
-        // Web: Always include refresh_token in body.
-        // httpOnly cookies don't work cross-origin (preview domain ≠ API domain),
-        // so we must send the stored token explicitly.
+        // Web: Send stored refresh_token in body when available.
+        // Also use credentials: 'include' so the httpOnly cookie is sent as a
+        // fallback (e.g. new browser window where sessionStorage is empty but
+        // the cookie is still valid). The backend accepts the token from either
+        // cookie or body, so this covers both scenarios.
         const storedRefreshToken = await tokenStorageService.getRefreshToken();
-        if (!storedRefreshToken) {
-          throw new Error('No refresh token available');
-        }
-        
+
         response = await fetch(`${baseUrl}/v2/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: storedRefreshToken })
+          body: JSON.stringify(storedRefreshToken ? { refresh_token: storedRefreshToken } : {})
         });
       }
 
       if (!response.ok) {
-        console.error('❌ Token refresh failed:', response.status);
+        if (import.meta.env.DEV) console.error('Token refresh failed:', response.status);
         await clearAuthData();
         window.dispatchEvent(new CustomEvent('auth:refresh-failed'));
         throw new Error('Token refresh failed');
@@ -313,7 +343,7 @@ export const validateToken = async (): Promise<ApiUserResponse> => {
     });
 
     return userData;
-  } catch (error) {
+  } catch (error: any) {
     await clearAuthData();
     throw error;
   }
@@ -340,10 +370,13 @@ export const logoutUser = async (): Promise<void> => {
         });
       }
     } else {
-      await fetch(`${baseUrl}/auth/logout`, {
+      // Use v2 endpoint which accepts refresh_token from both cookie and body
+      const storedRefreshToken = await tokenStorageService.getRefreshToken();
+      await fetch(`${baseUrl}/v2/auth/logout`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(storedRefreshToken ? { refresh_token: storedRefreshToken } : {})
       });
     }
   } catch {
@@ -380,6 +413,10 @@ export const getActiveSessions = async (params?: { page?: number; limit?: number
 };
 
 export const revokeSession = async (sessionId: string): Promise<void> => {
+  // Validate format before interpolating into URL to prevent path traversal
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(sessionId)) throw new Error('Invalid session ID format');
+
   const baseUrl = getBaseUrl();
   const headers = await getApiHeadersAsync();
   const response = await fetch(`${baseUrl}/auth/sessions/revoke/${sessionId}`, {
@@ -465,3 +502,173 @@ function parseExpiresIn(value: any): number {
   }
   return 60 * 60 * 1000; // fallback: 1 hour
 }
+
+// ============= INSTITUTE-LEVEL LOGIN =============
+
+export interface InstituteLoginCredentials {
+  instituteId: string;
+  userIdByInstitute: string;
+  password: string;
+  rememberMe?: boolean;
+}
+
+export interface InstituteLoginResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  refresh_expires_in: number;
+  user: {
+    userId: string;
+    instituteId: string;
+    userIdByInstitute: string;
+    instituteUserType: string;
+    instituteName: string;
+    firstName?: string;
+    lastName?: string;
+    imageUrl?: string | null;
+  };
+}
+
+export const instituteLogin = async (credentials: InstituteLoginCredentials): Promise<InstituteLoginResponse> => {
+  const baseUrl = getBaseUrl();
+  const isMobile = isNativePlatform();
+
+  await tokenStorageService.setRememberMe(!!credentials.rememberMe);
+
+  const response = await fetch(`${baseUrl}/v2/auth/institute/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: isMobile ? 'omit' : 'include',
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    if (import.meta.env.DEV) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Institute login failed (dev only):', errorData);
+    }
+    throw new Error('Invalid credentials. Please check your institute user ID and password.');
+  }
+
+  const data: InstituteLoginResponse = await response.json();
+
+  if (data.access_token) {
+    await tokenStorageService.setAccessToken(data.access_token);
+  }
+  if (data.refresh_token) {
+    await tokenStorageService.setRefreshToken(data.refresh_token);
+  }
+  if (data.expires_in) {
+    const expiryMs = parseExpiresIn(data.expires_in);
+    await tokenStorageService.setTokenExpiry(Date.now() + expiryMs);
+  }
+  if (data.user) {
+    await tokenStorageService.setUserData({
+      id: data.user.userId,
+      email: '',
+      nameWithInitials: `${data.user.firstName || ''} ${data.user.lastName || ''}`.trim(),
+      userType: data.user.instituteUserType,
+      imageUrl: data.user.imageUrl || null,
+    });
+  }
+
+  // 🏢 Multi-tenant: Store preSelectedInstituteId so InstituteSelector auto-skips
+  // The institute login endpoint already authenticates against one specific institute,
+  // so we can immediately tell InstituteSelector which institute was selected.
+  if (data.user?.instituteId && !isNativePlatform()) {
+    sessionStorage.setItem('tenant_preSelectedInstituteId', data.user.instituteId);
+    if (data.user.instituteName) {
+      sessionStorage.setItem('tenant_preSelectedInstituteName', data.user.instituteName);
+    }
+  }
+
+  return data;
+};
+
+// ============= INSTITUTE PASSWORD RESET =============
+
+export const initiateInstitutePasswordReset = async (params: {
+  instituteId: string;
+  userIdByInstitute: string;
+  channel: 'EMAIL' | 'PHONE';
+  useParentContact?: boolean;
+}): Promise<{ message: string; sentTo: string; channel: string; isParentContact: boolean }> => {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/v2/auth/institute/password-reset/initiate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: 'Failed to send OTP' }));
+    throw new Error(errorData.message || 'Failed to send OTP');
+  }
+
+  return response.json();
+};
+
+export const verifyInstitutePasswordReset = async (params: {
+  instituteId: string;
+  userIdByInstitute: string;
+  otpCode: string;
+  newPassword: string;
+}): Promise<{ message: string }> => {
+  const baseUrl = getBaseUrl();
+  const response = await fetch(`${baseUrl}/v2/auth/institute/password-reset/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: 'Password reset failed' }));
+    throw new Error(errorData.message || 'Password reset failed');
+  }
+
+  return response.json();
+};
+
+export const changeInstitutePassword = async (params: {
+  instituteId: string;
+  currentPassword: string;
+  newPassword: string;
+}): Promise<{ message: string }> => {
+  const baseUrl = getBaseUrl();
+  const headers = await getApiHeadersAsync();
+  const response = await fetch(`${baseUrl}/v2/auth/institute/change-password`, {
+    method: 'PUT',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    credentials: getCredentialsMode(),
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: 'Password change failed' }));
+    throw new Error(errorData.message || 'Password change failed');
+  }
+
+  return response.json();
+};
+
+export const setInstituteUserPassword = async (params: {
+  instituteId: string;
+  targetUserId: string;
+  newPassword: string;
+}): Promise<{ message: string }> => {
+  const baseUrl = getBaseUrl();
+  const headers = await getApiHeadersAsync();
+  const response = await fetch(`${baseUrl}/v2/auth/institute/set-password`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    credentials: getCredentialsMode(),
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: 'Failed to set password' }));
+    throw new Error(errorData.message || 'Failed to set password');
+  }
+
+  return response.json();
+};

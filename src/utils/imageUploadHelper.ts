@@ -22,11 +22,11 @@ export const getSignedUrl = async (
   fileSize: number
 ): Promise<SignedUrlResponse> => {
   const token = await getAccessTokenAsync();
-  
+
   if (!token) {
-    throw new Error('No authentication token found');
+    throw new Error('Authentication required to upload files');
   }
-  
+
   const params = new URLSearchParams({
     folder,
     fileName,
@@ -34,33 +34,22 @@ export const getSignedUrl = async (
     fileSize: fileSize.toString()
   });
 
-  console.log('📤 Requesting signed URL:', {
-    url: `${getBaseUrl()}/upload/get-signed-url?${params}`,
-    folder,
-    fileName,
-    contentType,
-    fileSize
-  });
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${token}`,
+  };
 
   const response = await fetch(`${getBaseUrl()}/upload/get-signed-url?${params}`, {
     method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
+    headers
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('❌ Signed URL error:', {
-      status: response.status,
-      statusText: response.statusText,
-      error: errorText
-    });
-    throw new Error(`Failed to get signed URL: ${response.status} ${errorText}`);
+    if (import.meta.env.DEV) console.error('Signed URL error:', response.status, errorText);
+    throw new Error('Upload failed. Please try again.');
   }
 
   const result = await response.json();
-  console.log('✅ Signed URL response:', result);
   return result;
 };
 
@@ -69,12 +58,9 @@ export const uploadToSignedUrl = async (
   file: Blob,
   fields?: Record<string, string>
 ): Promise<void> => {
-  console.log('📤 Uploading to cloud storage:', { size: file.size, hasFields: !!fields });
-  
   try {
     if (fields && Object.keys(fields).length > 0) {
       // AWS S3 POST with FormData
-      console.log('📤 Using AWS S3 POST method with fields');
       const formData = new FormData();
       
       // IMPORTANT: Add all fields from backend BEFORE the file
@@ -108,7 +94,7 @@ export const uploadToSignedUrl = async (
         method: 'PUT',
         headers: {
           'Content-Type': file.type || 'application/octet-stream',
-          'x-goog-content-length-range': `0,${100 * 1024 * 1024}` // 100MB max - MUST match backend signature
+          'x-goog-content-length-range': `0,${5 * 1024 * 1024}` // 5MB max - MUST match backend signature
         },
         body: file
       });
@@ -124,10 +110,10 @@ export const uploadToSignedUrl = async (
       
       console.log('✅ File uploaded successfully to GCS');
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Upload failed:', error);
     if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-      throw new Error('Network error: Unable to upload file. Check your internet connection.');
+      throw new Error('Network error: Unable to upload file. Check your internet connection.', { cause: error });
     }
     throw error;
   }
@@ -137,17 +123,19 @@ export const verifyAndPublish = async (relativePath: string): Promise<void> => {
   const token = await getAccessTokenAsync();
   
   if (!token) {
-    throw new Error('No authentication token found');
+    throw new Error('Authentication required to verify upload');
   }
   
-  console.log('📤 Verifying and publishing:', { relativePath });
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+  
+  console.log('📤 Verifying and publishing:', { relativePath, authMethod: token ? 'JWT' : 'API Key' });
   
   const response = await fetch(`${getBaseUrl()}/upload/verify-and-publish`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ relativePath }),
   });
 
@@ -208,7 +196,7 @@ export const uploadFileSimple = async (
     // Step 4: Return relativePath
     onProgress?.('Upload complete!', 100);
     return signedUrlData.relativePath;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Upload failed:', error);
     throw error;
   }

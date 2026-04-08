@@ -1,20 +1,34 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MapPin, CheckCircle, Loader2, User, ArrowLeft } from 'lucide-react';
+import { MapPin, CheckCircle, Loader2, User, ArrowLeft, Building2, GraduationCap, BookOpen } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { childAttendanceApi } from '@/api/childAttendance.api';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 import { buildAttendanceAddress } from '@/utils/attendanceAddress';
-import { AttendanceStatus, ALL_ATTENDANCE_STATUSES, ATTENDANCE_STATUS_CONFIG } from '@/types/attendance.types';
+import { AttendanceStatus, ALL_ATTENDANCE_STATUSES, ATTENDANCE_STATUS_CONFIG, AddressCoordinates } from '@/types/attendance.types';
 import { Capacitor } from '@capacitor/core';
 import { useTodayCalendarEvents, DEFAULT_EVENT_ID } from '@/hooks/useTodayCalendarEvents';
 import EventSelector from '@/components/attendance/EventSelector';
+import AttendanceLocationViewer from '@/components/dialogs/AttendanceLocationViewer';
+
+interface LocationViewData {
+  studentName: string;
+  studentId: string;
+  status: string;
+  address?: AddressCoordinates;
+  location?: string;
+  instituteName?: string;
+  className?: string;
+  date?: string;
+  markingTime?: string;
+  markingMethod: string;
+}
 
 interface LastAttendance {
   instituteCardId: string;
@@ -33,9 +47,11 @@ const InstituteMarkAttendance = () => {
   const [status, setStatus] = useState<AttendanceStatus>('present');
   const [selectedEventId, setSelectedEventId] = useState(DEFAULT_EVENT_ID);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [location, setLocation] = useState<string>('');
+  const [location, setLocation] = useState<{ latitude: number; longitude: number; address: string } | null>(null);
   const [lastAttendance, setLastAttendance] = useState<LastAttendance | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [locationViewerOpen, setLocationViewerOpen] = useState(false);
+  const [locationViewData, setLocationViewData] = useState<LocationViewData | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const clearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -51,12 +67,12 @@ const InstituteMarkAttendance = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const buildAddress = (loc?: string) => {
+  const buildAddress = (loc?: { address: string } | null) => {
     return buildAttendanceAddress({
       instituteName: selectedInstitute?.name,
       className: selectedClass?.name,
       subjectName: selectedSubject?.name,
-      location: loc,
+      location: loc?.address,
     });
   };
 
@@ -78,19 +94,19 @@ const InstituteMarkAttendance = () => {
           latitude = pos.coords.latitude;
           longitude = pos.coords.longitude;
         } else {
-          setLocation('Gate Scanner - Main Entrance');
+          setLocation(null);
           return;
         }
         try {
           const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
           const data = await response.json();
-          setLocation(data.display_name || 'Unknown Location');
+          setLocation({ latitude, longitude, address: data.display_name || 'Unknown Location' });
         } catch {
-          setLocation('Location detected');
+          setLocation({ latitude, longitude, address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}` });
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error getting location:', error);
-        setLocation('Gate Scanner - Main Entrance');
+        setLocation(null);
       }
     };
     getLocation();
@@ -117,19 +133,37 @@ const InstituteMarkAttendance = () => {
 
     setIsProcessing(true);
     try {
+      const address = buildAttendanceAddress({
+        instituteName: selectedInstitute.name,
+        className: selectedClass?.name,
+        subjectName: selectedSubject?.name,
+        location: location?.address,
+      });
+
+      // ✅ NEW: Build address coordinates object
+      const addressCoordinates: AddressCoordinates | undefined = location
+        ? {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          }
+        : undefined;
+
       const request: any = {
         instituteCardId: instituteCardId.trim(),
         instituteId: currentInstituteId.toString(),
         instituteName: selectedInstitute.name,
-        address: buildAddress(location),
+        // ✅ NEW: Use address object instead of string
+        address: addressCoordinates,
+        // Location display name (human-readable address)
+        location: location?.address,
         markingMethod: 'rfid/nfc',
         status: status,
         date: new Date().toISOString().split('T')[0],
-        location: location || 'Gate Scanner - Main Entrance'
       };
 
-      // Only send eventId for special (non-default) events
-      if (selectedEventId !== DEFAULT_EVENT_ID) {
+      // Only send eventId for institute scope (class/subject scope → eventId is always null)
+      const isInstituteScope = !selectedClass;
+      if (isInstituteScope && selectedEventId !== DEFAULT_EVENT_ID) {
         request.eventId = selectedEventId;
       }
 
@@ -160,11 +194,44 @@ const InstituteMarkAttendance = () => {
       } else {
         throw new Error(result.message || 'Failed to mark attendance');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Attendance marking error:', error);
-      toast({ title: "Error", description: error instanceof Error ? error.message : 'Failed to mark attendance', variant: "destructive" });
+      
+      let errorMessage = 'Failed to mark attendance';
+      if (error instanceof Error) {
+        const errorMsg = error.message;
+        // Check for 404 "User not found" error
+        if (errorMsg.includes('404') && errorMsg.includes('User not found')) {
+          errorMessage = 'Invalid user id';
+        } else {
+          errorMessage = errorMsg;
+        }
+      }
+      
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const openLocationViewer = () => {
+    if (lastAttendance && location) {
+      setLocationViewData({
+        studentName: lastAttendance.studentName,
+        studentId: lastAttendance.userIdByInstitute,
+        status: lastAttendance.status,
+        address: {
+          latitude: location.latitude,
+          longitude: location.longitude,
+        },
+        location: location.address,
+        instituteName: selectedInstitute?.name,
+        className: selectedClass?.name,
+        date: currentTime.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+        markingTime: currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        markingMethod: 'barcode',
+      });
+      setLocationViewerOpen(true);
     }
   };
 
@@ -177,7 +244,19 @@ const InstituteMarkAttendance = () => {
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={() => navigate(-1)} className="flex items-center gap-2 rounded-full border-primary text-primary hover:bg-primary hover:text-primary-foreground">
+          <Button variant="outline" onClick={() => {
+            const instituteId = currentInstituteId || selectedInstitute?.id;
+            if (instituteId) {
+              let url = `/institute/${instituteId}`;
+              if (selectedClass?.id) {
+                url += `/class/${selectedClass.id}`;
+                if (selectedSubject?.id) url += `/subject/${selectedSubject.id}`;
+              }
+              navigate(`${url}/select-attendance-mark-type`);
+            } else {
+              navigate('/dashboard');
+            }
+          }} className="flex items-center gap-2 rounded-full border-primary text-primary hover:bg-primary hover:text-primary-foreground">
             <ArrowLeft className="h-4 w-4" /> Back
           </Button>
           <div className="flex-1">
@@ -186,16 +265,39 @@ const InstituteMarkAttendance = () => {
         </div>
 
         {/* Current Selection */}
-        <Card className="border-primary/20 bg-card shadow-sm">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground mb-1">Current Selection</p>
-            <p className="font-semibold text-foreground">Institute: {selectedInstitute?.name || 'Not selected'}</p>
-            {location && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                <MapPin className="h-3 w-3" /> {location}
-              </p>
+        <Card className="border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Current Selection
+            </CardTitle>
+          </CardHeader>
+          <div className="px-6 pb-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className={`font-semibold text-sm ${selectedInstitute ? 'text-foreground' : 'text-muted-foreground italic'}`}>
+                {selectedInstitute?.name || 'No institute selected'}
+              </span>
+            </div>
+            {selectedClass && (
+              <div className="flex items-center gap-2 pl-4 border-l-2 border-primary/30 ml-2">
+                <GraduationCap className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-sm font-medium text-foreground">{selectedClass.name}</span>
+              </div>
             )}
-          </CardContent>
+            {selectedSubject && (
+              <div className="flex items-center gap-2 pl-4 border-l-2 border-primary/20 ml-6">
+                <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                <span className="text-sm font-medium text-foreground">{selectedSubject.name}</span>
+              </div>
+            )}
+            {location && (
+              <div className="flex items-start gap-2 pt-1">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-xs text-muted-foreground break-words">{location.address}</p>
+              </div>
+            )}
+          </div>
         </Card>
 
         {/* Main Card */}
@@ -262,6 +364,15 @@ const InstituteMarkAttendance = () => {
                       <p>Card ID: <span className="font-medium">{lastAttendance.instituteCardId}</span></p>
                       <p>User ID: <span className="font-medium">{lastAttendance.userIdByInstitute}</span></p>
                     </div>
+                    <Button 
+                      onClick={openLocationViewer} 
+                      disabled={!location} 
+                      variant="outline" 
+                      className="mt-4 w-full"
+                    >
+                      <MapPin className="h-4 w-4 mr-2" />
+                      View Location
+                    </Button>
                   </div>
                 )}
               </div>
@@ -302,16 +413,18 @@ const InstituteMarkAttendance = () => {
                   </Select>
                 </div>
 
-                {/* Event Selector */}
-                <EventSelector
-                  events={calendarInfo.events}
-                  selectedEventId={selectedEventId}
-                  onEventChange={setSelectedEventId}
-                  loading={calendarInfo.loading}
-                  disabled={isProcessing}
-                  dayType={calendarInfo.dayType}
-                  isAttendanceExpected={calendarInfo.isAttendanceExpected}
-                />
+                {/* Event Selector — only for institute scope (events belong to institute, not class/subject) */}
+                {!selectedClass && (
+                  <EventSelector
+                    events={calendarInfo.events}
+                    selectedEventId={selectedEventId}
+                    onEventChange={setSelectedEventId}
+                    loading={calendarInfo.loading}
+                    disabled={isProcessing}
+                    dayType={calendarInfo.dayType}
+                    isAttendanceExpected={calendarInfo.isAttendanceExpected}
+                  />
+                )}
 
                 {/* Mark Button */}
                 <Button onClick={handleMarkAttendance} disabled={isProcessing || !instituteCardId.trim()} className="w-full font-semibold" size="xl">
@@ -321,6 +434,24 @@ const InstituteMarkAttendance = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Location Viewer Dialog */}
+        {locationViewData && (
+          <AttendanceLocationViewer
+            open={locationViewerOpen}
+            onOpenChange={setLocationViewerOpen}
+            studentName={locationViewData.studentName}
+            studentId={locationViewData.studentId}
+            status={locationViewData.status}
+            address={locationViewData.address}
+            location={locationViewData.location}
+            instituteName={locationViewData.instituteName}
+            className={locationViewData.className}
+            date={locationViewData.date}
+            markingTime={locationViewData.markingTime}
+            markingMethod={locationViewData.markingMethod}
+          />
+        )}
       </div>
     </div>
   );

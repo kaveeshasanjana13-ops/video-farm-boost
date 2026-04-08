@@ -226,7 +226,7 @@ const OrganizationHeader = ({ title }: OrganizationHeaderProps) => {
       setCompletedCrop(undefined);
       setIsUploading(false);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving image:', error);
       toast({
         title: "Error saving image",

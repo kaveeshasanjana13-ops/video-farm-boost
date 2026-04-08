@@ -2,7 +2,8 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Menu, LogOut, User, Bell, ChevronDown, ChevronLeft, School, BookOpen } from 'lucide-react';
+import { Menu, LogOut, User, Bell, ChevronDown, ChevronLeft, School, BookOpen, Search } from 'lucide-react';
+import GlobalSearch from '@/components/GlobalSearch';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +27,7 @@ import { cachedApiClient } from '@/api/cachedClient';
 import SafeImage from '@/components/ui/SafeImage';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
-import { useNotificationStore } from '@/stores/useNotificationStore';
+import { useNotificationStore, refreshContextCount } from '@/stores/useNotificationStore';
 import { buildSidebarUrl } from '@/utils/pageNavigation';
 
 interface HeaderProps {
@@ -39,14 +40,15 @@ const Header = ({ onMenuClick }: HeaderProps) => {
     selectedInstitute, setSelectedInstitute, loadUserInstitutes,
     selectedClass, setSelectedClass, selectedSubject, setSelectedSubject,
     selectedChild, selectedOrganization, selectedTransport,
-    currentInstituteId
+    currentInstituteId, isViewingAsParent
   } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const effectiveRole = useInstituteRole();
-  const { globalUnreadCount: unreadCount, initUnreadCount } = useNotificationStore();
+  const { contextUnreadCount: unreadCount, initUnreadCount } = useNotificationStore();
   const [instituteDrawerOpen, setInstituteDrawerOpen] = useState(false);
   const [classDrawerOpen, setClassDrawerOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   
   // Institute switcher state
   const [institutes, setInstitutes] = useState<any[]>([]);
@@ -100,6 +102,11 @@ const Header = ({ onMenuClick }: HeaderProps) => {
   React.useEffect(() => {
     initUnreadCount();
   }, [initUnreadCount]);
+
+  // Refresh context-specific unread count when selection changes
+  React.useEffect(() => {
+    refreshContextCount(selectedInstitute?.id);
+  }, [selectedInstitute?.id]);
 
   // Reset classes loaded when institute changes
   React.useEffect(() => {
@@ -211,12 +218,15 @@ const Header = ({ onMenuClick }: HeaderProps) => {
 
   const handleLogout = () => { logout(); };
 
-  const avatarImageUrl = instituteAvatarUrl 
-    ? getImageUrl(instituteAvatarUrl) 
-    : (user?.imageUrl ? getImageUrl(user.imageUrl) : '');
+  const avatarImageUrl = isViewingAsParent && selectedChild?.user?.imageUrl
+    ? getImageUrl(selectedChild.user.imageUrl)
+    : (instituteAvatarUrl
+      ? getImageUrl(instituteAvatarUrl)
+      : (user?.imageUrl ? getImageUrl(user.imageUrl) : ''));
 
   // Determine switcher context level
   const showClassSwitcher = !!selectedClass && !!selectedInstitute;
+  const isParentWithChild = isViewingAsParent && !!selectedChild;
 
   return (
     <header className="lg:hidden bg-background/95 backdrop-blur-md border-b border-border/50 px-2 sm:px-4 py-2.5 sm:py-3 sticky top-0 z-40 pt-safe-top">
@@ -234,12 +244,11 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           )}
 
           {showClassSwitcher ? (
-            /* === CLASS SWITCHER (Bottom Sheet) === */
-            <Drawer open={classDrawerOpen} onOpenChange={(open) => { setClassDrawerOpen(open); if (open) loadClasses(); }}>
+            /* === CLASS SWITCHER (Bottom Sheet) === */            <Drawer open={classDrawerOpen} onOpenChange={(open) => { setClassDrawerOpen(open); if (open) loadClasses(); }}>
               <DrawerTrigger asChild>
                 <button className="flex items-center gap-2 focus:outline-none hover:bg-muted/50 active:scale-[0.97] rounded-xl px-2 py-1.5 transition-all min-w-0">
                   <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <School className="h-4.5 w-4.5 text-primary" />
+                    <School className="h-[18px] w-[18px] text-primary" />
                   </div>
                   <div className="flex flex-col items-start min-w-0">
                     <span className="text-[10px] text-muted-foreground leading-tight truncate max-w-[130px]">
@@ -301,6 +310,34 @@ const Header = ({ onMenuClick }: HeaderProps) => {
                 </div>
               </DrawerContent>
             </Drawer>
+          ) : isParentWithChild ? (
+            /* === PARENT CHILD DISPLAY === */
+            <button
+              onClick={() => navigate('/my-children')}
+              className="flex items-center gap-2 focus:outline-none hover:bg-muted/50 active:scale-[0.97] rounded-xl px-1.5 py-1.5 transition-all min-w-0"
+            >
+              <Avatar className="h-9 w-9 shrink-0 border border-border">
+                {selectedChild?.user?.imageUrl ? (
+                  <AvatarImage
+                    src={getImageUrl(selectedChild.user.imageUrl)}
+                    alt={selectedChild.user.nameWithInitials || selectedChild.user.firstName || 'Child'}
+                    className="object-cover"
+                  />
+                ) : null}
+                <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                  {(selectedChild?.user?.nameWithInitials || selectedChild?.user?.firstName || '?').charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col items-start min-w-0">
+                <h1 className="text-sm font-semibold text-foreground truncate leading-tight max-w-[140px]">
+                  {selectedChild?.user?.nameWithInitials ||
+                    `${selectedChild?.user?.firstName || ''} ${selectedChild?.user?.lastName || ''}`.trim() ||
+                    'Child'}
+                </h1>
+                <span className="text-[10px] text-muted-foreground leading-tight">Child Mode</span>
+              </div>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-0.5" />
+            </button>
           ) : (
             /* === INSTITUTE SWITCHER (Bottom Sheet) === */
             <Drawer open={instituteDrawerOpen} onOpenChange={(open) => { setInstituteDrawerOpen(open); if (open) loadInstitutes(); }}>
@@ -363,6 +400,15 @@ const Header = ({ onMenuClick }: HeaderProps) => {
         </div>
         
         <div className="flex items-center gap-1 shrink-0">
+          {/* Global Search */}
+          <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="p-2.5 rounded-xl hover:bg-muted/60 active:scale-95 transition-all"
+            aria-label="Search"
+          >
+            <Search className="h-5 w-5 text-foreground" />
+          </button>
           {/* Notification Bell */}
           <button
             onClick={() => {
@@ -371,11 +417,13 @@ const Header = ({ onMenuClick }: HeaderProps) => {
                   instituteId: selectedInstitute.id,
                   classId: selectedClass?.id,
                   subjectId: selectedSubject?.id,
+                  childId: selectedChild?.id,
+                  organizationId: selectedOrganization?.id,
+                  transportId: selectedTransport?.id,
                 };
-                const url = buildSidebarUrl('institute-notifications', context);
-                navigate(url);
+                navigate(buildSidebarUrl('institute-notifications', context));
               } else {
-                navigate('/notifications');
+                navigate('/all-notifications');
               }
             }}
             className="relative p-2.5 rounded-xl hover:bg-muted/60 active:scale-95 transition-all"
@@ -383,7 +431,7 @@ const Header = ({ onMenuClick }: HeaderProps) => {
           >
             <Bell className="h-5 w-5 text-foreground" />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-4.5 min-w-4.5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
+              <span className="absolute -top-0.5 -right-0.5 h-[18px] min-w-[18px] flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold px-1">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}

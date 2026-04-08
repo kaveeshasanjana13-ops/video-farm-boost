@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import calendarApi from '@/api/calendar.api';
+import { getErrorMessage } from '@/api/apiError';
 import type {
   CalendarEvent,
   CreateEventPayload,
@@ -20,19 +21,10 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Calendar } from 'lucide-react';
 import ResponsiveDatePicker from './ResponsiveDatePicker';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 import { ALL_CALENDAR_EVENT_TYPES, ALL_EVENT_STATUSES, ALL_ATTENDANCE_OPEN_TO, ALL_TARGET_SCOPES } from '@/types/calendar.types';
 
@@ -73,7 +65,8 @@ const EventManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [editEvent, setEditEvent] = useState<CalendarEvent | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filterDate, setFilterDate] = useState('');
   const [form, setForm] = useState<CreateEventPayload>(emptyFormFactory());
@@ -127,7 +120,7 @@ const EventManagement: React.FC = () => {
       setForm(emptyFormFactory());
       setTargetClassCsv(''); setTargetSubjectCsv('');
       await loadEvents();
-    } catch (error: any) { toast.error(error?.message || 'Failed to create event'); } finally { setSaving(false); }
+    } catch (error: any) { toast.error(getErrorMessage(error, 'Failed to create event')); } finally { setSaving(false); }
   };
 
   const handleUpdate = async () => {
@@ -148,17 +141,18 @@ const EventManagement: React.FC = () => {
       toast.success('Event updated successfully');
       setEditEvent(null);
       await loadEvents();
-    } catch (error: any) { toast.error(error?.message || 'Failed to update event'); } finally { setSaving(false); }
+    } catch (error: any) { toast.error(getErrorMessage(error, 'Failed to update event')); } finally { setSaving(false); }
   };
 
   const handleDelete = async () => {
-    if (!currentInstituteId || !deleteId) return;
+    if (!currentInstituteId || !deleteTarget) return;
+    setIsDeleting(true);
     try {
-      await calendarApi.deleteEvent(currentInstituteId, deleteId);
+      await calendarApi.deleteEvent(currentInstituteId, deleteTarget.id);
       toast.success('Event deleted');
-      setDeleteId(null);
+      setDeleteTarget(null);
       await loadEvents();
-    } catch (error: any) { toast.error(error?.message || 'Failed to delete event'); }
+    } catch (error: any) { toast.error(getErrorMessage(error, 'Failed to delete event')); } finally { setIsDeleting(false); }
   };
 
   const openCreate = () => {
@@ -409,7 +403,7 @@ const EventManagement: React.FC = () => {
                       <Pencil className="h-3 w-3" />
                     </Button>
                     {!event.isDefault && (
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => setDeleteId(event.id)}>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" onClick={() => setDeleteTarget({ id: event.id, title: event.title })}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     )}
@@ -443,18 +437,14 @@ const EventManagement: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Event?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        itemName={deleteTarget?.title || ''}
+        itemType="event"
+        onConfirm={handleDelete}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

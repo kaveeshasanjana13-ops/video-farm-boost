@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { AlertTriangle, Clock, Trash2, ShieldAlert, RefreshCw, Undo2, CalendarClock } from 'lucide-react';
 import { format } from 'date-fns';
+import { getErrorMessage } from '@/api/apiError';
 
 const DeleteAccountTab = () => {
   const { logout } = useAuth();
@@ -48,8 +49,7 @@ const DeleteAccountTab = () => {
       // Log the user out
       setTimeout(() => logout(), 2000);
     } catch (error: any) {
-      const message = error?.response?.data?.message || error?.message || 'Failed to process request';
-      toast({ title: 'Error', description: message, variant: 'destructive' });
+      toast({ title: 'Error', description: getErrorMessage(error, 'Failed to process request'), variant: 'destructive' });
     } finally {
       setDeleting(false);
     }
@@ -62,8 +62,7 @@ const DeleteAccountTab = () => {
       toast({ title: 'Deletion Cancelled', description: res.message });
       fetchStatus();
     } catch (error: any) {
-      const message = error?.response?.data?.message || error?.message || 'Failed to cancel';
-      toast({ title: 'Error', description: message, variant: 'destructive' });
+      toast({ title: 'Error', description: getErrorMessage(error, 'Failed to cancel'), variant: 'destructive' });
     } finally {
       setCancelling(false);
     }

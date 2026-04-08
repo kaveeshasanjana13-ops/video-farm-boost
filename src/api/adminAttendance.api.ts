@@ -38,6 +38,47 @@ export interface MultiWindowResult {
   summary: AttendanceSummary;
 }
 
+export interface DailyAttendanceDayCount {
+  date: string;
+  day: number;
+  presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  leftCount: number;
+  leftEarlyCount: number;
+  leftLatelyCount: number;
+  totalRecords: number;
+}
+
+export interface DailyAttendanceCount {
+  success: boolean;
+  message: string;
+  instituteId: string;
+  classId?: string;
+  subjectId?: string;
+  year: number;
+  month: number;
+  days: DailyAttendanceDayCount[];
+}
+
+export interface MonthlyAttendanceCount {
+  success: boolean;
+  message: string;
+  instituteId: string;
+  classId?: string;
+  subjectId?: string;
+  year: number;
+  month: number;
+  totalRecords: number;
+  presentCount: number;
+  absentCount: number;
+  lateCount: number;
+  leftCount: number;
+  leftEarlyCount: number;
+  leftLatelyCount: number;
+  attendanceRate: number;
+}
+
 // ── Helpers ────────────────────────────────────────────────────
 
 /** Fetch attendance in ≤5-day windows (backend constraint for institute/class/subject queries) */
@@ -464,6 +505,94 @@ const adminAttendanceApi = {
   ) {
     return attendanceApiClient.get<AttendanceQueryResponse>(
       `/api/attendance/calendar/institute/${instituteId}/student/${studentId}/event/${eventId}`,
+      params,
+      options
+    );
+  },
+
+  // ── Daily Attendance Count (day-by-day per month) ────────────
+
+  /** Get day-by-day attendance count for entire institute */
+  getInstituteDailyCount(
+    instituteId: string,
+    params: { year: number; month: number },
+    options?: CachedRequestOptions
+  ) {
+    return attendanceApiClient.get<DailyAttendanceCount>(
+      `/api/attendance/institute/${instituteId}/daily-count`,
+      params,
+      options
+    );
+  },
+
+  /** Get day-by-day attendance count for a class */
+  getClassDailyCount(
+    instituteId: string,
+    classId: string,
+    params: { year: number; month: number },
+    options?: CachedRequestOptions
+  ) {
+    return attendanceApiClient.get<DailyAttendanceCount>(
+      `/api/attendance/institute/${instituteId}/class/${classId}/daily-count`,
+      params,
+      options
+    );
+  },
+
+  /** Get day-by-day attendance count for a class + subject */
+  getSubjectDailyCount(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    params: { year: number; month: number },
+    options?: CachedRequestOptions
+  ) {
+    return attendanceApiClient.get<DailyAttendanceCount>(
+      `/api/attendance/institute/${instituteId}/class/${classId}/subject/${subjectId}/daily-count`,
+      params,
+      options
+    );
+  },
+
+  // ── Monthly Attendance Count ─────────────────────────────────
+
+  /** Get monthly attendance count for entire institute */
+  getInstituteMonthlyCount(
+    instituteId: string,
+    params: { year: number; month: number },
+    options?: CachedRequestOptions
+  ) {
+    return attendanceApiClient.get<MonthlyAttendanceCount>(
+      `/api/attendance/institute/${instituteId}/monthly-count`,
+      params,
+      options
+    );
+  },
+
+  /** Get monthly attendance count for a class */
+  getClassMonthlyCount(
+    instituteId: string,
+    classId: string,
+    params: { year: number; month: number },
+    options?: CachedRequestOptions
+  ) {
+    return attendanceApiClient.get<MonthlyAttendanceCount>(
+      `/api/attendance/institute/${instituteId}/class/${classId}/monthly-count`,
+      params,
+      options
+    );
+  },
+
+  /** Get monthly attendance count for a class + subject */
+  getSubjectMonthlyCount(
+    instituteId: string,
+    classId: string,
+    subjectId: string,
+    params: { year: number; month: number },
+    options?: CachedRequestOptions
+  ) {
+    return attendanceApiClient.get<MonthlyAttendanceCount>(
+      `/api/attendance/institute/${instituteId}/class/${classId}/subject/${subjectId}/monthly-count`,
       params,
       options
     );

@@ -5,31 +5,40 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Plus } from 'lucide-react';
 import { transportApi } from '@/api/transport.api';
+import BookhireSelect from '@/components/ui/BookhireSelect';
 import { toast } from 'sonner';
 
 interface EnrollTransportDialogProps {
   studentId: string;
   onEnrollmentSuccess: () => void;
+  instituteId?: string;
 }
 
 const EnrollTransportDialog: React.FC<EnrollTransportDialogProps> = ({ 
   studentId, 
-  onEnrollmentSuccess 
+  onEnrollmentSuccess,
+  instituteId,
 }) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [bookhireId, setBookhireId] = useState('');
   const [formData, setFormData] = useState({
-    bookhireId: '',
     pickupLocation: '',
     dropoffLocation: '',
-    monthlyFee: ''
+    monthlyFee: '',
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.bookhireId || !formData.pickupLocation || !formData.dropoffLocation) {
-      toast.error('Please fill in all required fields');
+    const errors: Record<string, string> = {};
+    if (!bookhireId) errors.bookhireId = 'Please select a transport service';
+    if (!formData.pickupLocation) errors.pickupLocation = 'Pickup location is required';
+    if (!formData.dropoffLocation) errors.dropoffLocation = 'Drop-off location is required';
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -37,22 +46,19 @@ const EnrollTransportDialog: React.FC<EnrollTransportDialogProps> = ({
       setLoading(true);
       await transportApi.enrollTransport({
         studentId,
-        bookhireId: parseInt(formData.bookhireId),
+        bookhireId: parseInt(bookhireId),
         pickupLocation: formData.pickupLocation,
         dropoffLocation: formData.dropoffLocation,
-        monthlyFee: parseFloat(formData.monthlyFee) || 0
+        monthlyFee: parseFloat(formData.monthlyFee) || 0,
       });
 
       toast.success('Successfully enrolled in transport service');
       setOpen(false);
-      setFormData({
-        bookhireId: '',
-        pickupLocation: '',
-        dropoffLocation: '',
-        monthlyFee: ''
-      });
+      setBookhireId('');
+      setFieldErrors({});
+      setFormData({ pickupLocation: '', dropoffLocation: '', monthlyFee: '' });
       onEnrollmentSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to enroll in transport:', error);
       toast.error('Failed to enroll in transport service');
     } finally {
@@ -73,18 +79,15 @@ const EnrollTransportDialog: React.FC<EnrollTransportDialogProps> = ({
           <DialogTitle>Enroll in Transport Service</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="bookhireId">
-              Bookhire ID <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="bookhireId"
-              type="number"
-              value={formData.bookhireId}
-              onChange={(e) => setFormData({ ...formData, bookhireId: e.target.value })}
-              placeholder="Enter bookhire ID"
+          <div className="space-y-1">
+            <BookhireSelect
+              value={bookhireId}
+              onChange={(id) => { setBookhireId(id); setFieldErrors(prev => ({ ...prev, bookhireId: '' })); }}
+              instituteId={instituteId}
+              label="Transport Service"
               required
             />
+            {fieldErrors.bookhireId && <p className="text-xs text-red-500">{fieldErrors.bookhireId}</p>}
           </div>
 
           <div className="space-y-2">
@@ -94,10 +97,11 @@ const EnrollTransportDialog: React.FC<EnrollTransportDialogProps> = ({
             <Input
               id="pickupLocation"
               value={formData.pickupLocation}
-              onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
+              onChange={(e) => { setFormData({ ...formData, pickupLocation: e.target.value }); setFieldErrors(prev => ({ ...prev, pickupLocation: '' })); }}
               placeholder="Enter pickup location"
-              required
+              className={fieldErrors.pickupLocation ? 'border-red-500 focus-visible:ring-red-500' : ''}
             />
+            {fieldErrors.pickupLocation && <p className="text-xs text-red-500">{fieldErrors.pickupLocation}</p>}
           </div>
 
           <div className="space-y-2">
@@ -107,10 +111,11 @@ const EnrollTransportDialog: React.FC<EnrollTransportDialogProps> = ({
             <Input
               id="dropoffLocation"
               value={formData.dropoffLocation}
-              onChange={(e) => setFormData({ ...formData, dropoffLocation: e.target.value })}
+              onChange={(e) => { setFormData({ ...formData, dropoffLocation: e.target.value }); setFieldErrors(prev => ({ ...prev, dropoffLocation: '' })); }}
               placeholder="Enter drop-off location"
-              required
+              className={fieldErrors.dropoffLocation ? 'border-red-500 focus-visible:ring-red-500' : ''}
             />
+            {fieldErrors.dropoffLocation && <p className="text-xs text-red-500">{fieldErrors.dropoffLocation}</p>}
           </div>
 
           <div className="space-y-2">
@@ -126,15 +131,10 @@ const EnrollTransportDialog: React.FC<EnrollTransportDialogProps> = ({
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={loading}
-            >
+            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || !bookhireId}>
               {loading ? 'Enrolling...' : 'Enroll'}
             </Button>
           </div>

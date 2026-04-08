@@ -77,10 +77,10 @@ const ActiveSessionsPage = () => {
     try {
       const data = await getActiveSessions({ sortBy: 'createdAt', sortOrder: 'DESC' });
       setSessions(Array.isArray(data.sessions) ? data.sessions : []);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Failed to load active sessions',
+        description: error.message || 'Failed to load active sessions',
         variant: 'destructive',
       });
     } finally {

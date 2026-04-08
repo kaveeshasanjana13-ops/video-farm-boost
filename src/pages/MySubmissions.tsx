@@ -9,9 +9,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import MUITable from '@/components/ui/mui-table';
 import { getImageUrl } from '@/utils/imageUrlHelper';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const MySubmissions = () => {
-  const { selectedInstitute } = useAuth();
+  const { selectedInstitute, isViewingAsParent, selectedChild } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('PENDING');
   const [loading, setLoading] = useState(false);
@@ -19,21 +20,19 @@ const MySubmissions = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
 
-  // Remove auto-load on mount, only load when refresh is clicked
-
-  const loadSubmissions = async () => {
+  const loadSubmissions = async (forceRefresh = false) => {
     if (!selectedInstitute?.id) return;
     
     setLoading(true);
     try {
-      const response = await institutePaymentsApi.getMySubmissions(selectedInstitute.id);
+      let response: MySubmissionsResponse;
+      if (isViewingAsParent && selectedChild) {
+        response = await institutePaymentsApi.getStudentSubmissions(selectedInstitute.id, selectedChild.id, undefined, forceRefresh);
+      } else {
+        response = await institutePaymentsApi.getMySubmissions(selectedInstitute.id, undefined, forceRefresh);
+      }
       setSubmissionsData(response);
-      
-      toast({
-        title: "Success",
-        description: "Submissions loaded successfully",
-      });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load submissions:', error);
       toast({
         title: "Error",
@@ -45,9 +44,13 @@ const MySubmissions = () => {
     }
   };
 
+  useEffect(() => {
+    loadSubmissions();
+  }, [selectedInstitute?.id, selectedChild?.id]);
+
   // Filter submissions by status on frontend
   const getFilteredSubmissions = (status: string) => {
-    if (!submissionsData) return [];
+    if (!submissionsData?.data?.submissions) return [];
     return submissionsData.data.submissions.filter(submission => submission.status === status);
   };
 
@@ -148,19 +151,19 @@ const MySubmissions = () => {
       id: 'dueDate',
       label: 'Due Date',
       minWidth: 130,
-      format: (value: string) => new Date(value).toLocaleDateString()
+      format: (value: string) => value ? new Date(value).toLocaleDateString() : '-'
     },
     {
       id: 'paymentDate',
       label: 'Payment Date',
       minWidth: 130,
-      format: (value: string) => new Date(value).toLocaleDateString()
+      format: (value: string) => value ? new Date(value).toLocaleDateString() : '-'
     },
     {
       id: 'createdAt',
       label: 'Submitted',
       minWidth: 130,
-      format: (value: string) => new Date(value).toLocaleDateString()
+      format: (value: string) => value ? new Date(value).toLocaleDateString() : '-'
     },
     {
       id: 'verifiedAt',
@@ -173,7 +176,7 @@ const MySubmissions = () => {
       label: 'Days Since',
       minWidth: 100,
       align: 'center' as const,
-      format: (value: number) => `${value} days`
+      format: (value: number) => value != null ? `${value} days` : '-'
     },
     {
       id: 'paymentRemarks',
@@ -232,7 +235,7 @@ const MySubmissions = () => {
               </p>
             )}
           </div>
-          <Button onClick={loadSubmissions} disabled={loading} variant="outline">
+          <Button onClick={() => loadSubmissions(true)} disabled={loading} variant="outline">
             {loading ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -248,7 +251,7 @@ const MySubmissions = () => {
         </div>
 
         {/* Summary Stats */}
-        {submissionsData && (
+        {submissionsData && submissionsData.data?.summary && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
@@ -299,26 +302,25 @@ const MySubmissions = () => {
 
         {/* Submissions Tabs */}
         {!submissionsData ? (
-          <div className="text-center py-12">
-            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground text-lg mb-2">
-              {loading ? 'Loading your payment submissions...' : 'Click "Refresh" to view your payment submissions'}
-            </p>
-          </div>
+          <EmptyState
+            icon={FileText}
+            title="No Submissions"
+            description={loading ? 'Loading your payment submissions...' : 'Click "Refresh" to view your payment submissions'}
+          />
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="PENDING" className="flex items-center space-x-2">
                 {getTabIcon('PENDING')}
-                <span>Pending ({submissionsData.data.summary.byStatus.pending})</span>
+                <span>Pending ({getFilteredSubmissions('PENDING').length})</span>
               </TabsTrigger>
               <TabsTrigger value="VERIFIED" className="flex items-center space-x-2">
                 {getTabIcon('VERIFIED')}
-                <span>Verified ({submissionsData.data.summary.byStatus.verified})</span>
+                <span>Verified ({getFilteredSubmissions('VERIFIED').length})</span>
               </TabsTrigger>
               <TabsTrigger value="REJECTED" className="flex items-center space-x-2">
                 {getTabIcon('REJECTED')}
-                <span>Rejected ({submissionsData.data.summary.byStatus.rejected})</span>
+                <span>Rejected ({getFilteredSubmissions('REJECTED').length})</span>
               </TabsTrigger>
             </TabsList>
             

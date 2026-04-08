@@ -9,6 +9,7 @@ import { usersApi, UserCreateData } from '@/api';
 import { toast } from 'sonner';
 import { CalendarIcon } from 'lucide-react';
 import PassportImageCropUpload from '@/components/common/PassportImageCropUpload';
+import { getErrorMessage } from '@/api/apiError';
 
 interface CreateUserFormProps {
   onSubmit: (data: any) => void;
@@ -37,7 +38,7 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
       const day = String(date.getDate()).padStart(2, '0');
       
       return `${year}-${month}-${day}`;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error formatting date:', error);
       return '';
     }
@@ -80,8 +81,11 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleInputChange = (field: string, value: any) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -94,6 +98,17 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+        const errors: Record<string, string> = {};
+    if (!formData.nameWithInitials && formData.nameWithInitials !== 0) errors.nameWithInitials = 'Name With Initials is required';
+    if (!formData.firstName && formData.firstName !== 0) errors.firstName = 'First Name is required';
+    if (!formData.lastName && formData.lastName !== 0) errors.lastName = 'Last Name is required';
+
+    if (!formData.dateOfBirth && formData.dateOfBirth !== 0) errors.dateOfBirth = 'Date Of Birth is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
     setIsLoading(true);
     
     try {
@@ -144,7 +159,7 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
       }
     } catch (error: any) {
       console.error('Error creating user:', error);
-      toast.error(error?.message || 'Failed to create user');
+      toast.error(getErrorMessage(error, 'Failed to create user'));
     } finally {
       setIsLoading(false);
     }
@@ -197,10 +212,12 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
                       id="nameWithInitials"
                       value={formData.nameWithInitials}
                       onChange={(e) => handleInputChange('nameWithInitials', e.target.value)}
-                      className="mt-2 h-12 text-base"
+                      className={`mt-2 h-12 text-base${fieldErrors.nameWithInitials ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                       placeholder="e.g., J. Doe"
                       required
                     />
+
+                    {fieldErrors.nameWithInitials && <p className="text-xs text-red-500 mt-1">{fieldErrors.nameWithInitials}</p>}
                   </div>
                   <div>
                     <Label htmlFor="firstName" className="text-base font-semibold text-foreground">First Name *</Label>
@@ -208,10 +225,12 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
                       id="firstName"
                       value={formData.firstName}
                       onChange={(e) => handleInputChange('firstName', e.target.value)}
-                      className="mt-2 h-12 text-base"
+                      className={`mt-2 h-12 text-base${fieldErrors.firstName ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                       placeholder="Enter first name"
                       required
                     />
+
+                    {fieldErrors.firstName && <p className="text-xs text-red-500 mt-1">{fieldErrors.firstName}</p>}
                   </div>
                   <div>
                     <Label htmlFor="lastName" className="text-base font-semibold text-foreground">Last Name *</Label>
@@ -219,34 +238,38 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
                       id="lastName"
                       value={formData.lastName}
                       onChange={(e) => handleInputChange('lastName', e.target.value)}
-                      className="mt-2 h-12 text-base"
+                      className={`mt-2 h-12 text-base${fieldErrors.lastName ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                       placeholder="Enter last name"
                       required
                     />
+
+                    {fieldErrors.lastName && <p className="text-xs text-red-500 mt-1">{fieldErrors.lastName}</p>}
                   </div>
                   <div>
-                    <Label htmlFor="email" className="text-base font-semibold text-foreground">Email Address *</Label>
+                    <Label htmlFor="email" className="text-base font-semibold text-foreground">Email Address</Label>
                     <Input
                       id="email"
                       type="email"
                       value={formData.email}
                       onChange={(e) => handleInputChange('email', e.target.value)}
-                      className="mt-2 h-12 text-base"
-                      placeholder="Enter email address"
-                      required
+                      className={`mt-2 h-12 text-base${fieldErrors.email ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
+                      placeholder="Optional - for user login"
                     />
+
+                    {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
                   </div>
 
                   <div>
-                    <Label htmlFor="phoneNumber" className="text-base font-semibold text-foreground">Phone Number *</Label>
+                    <Label htmlFor="phoneNumber" className="text-base font-semibold text-foreground">Phone Number</Label>
                     <Input
                       id="phoneNumber"
                       value={formData.phoneNumber}
                       onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
-                      className="mt-2 h-12 text-base"
-                      placeholder="Enter phone number"
-                      required
+                      className={`mt-2 h-12 text-base${fieldErrors.phoneNumber ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
+                      placeholder="Optional"
                     />
+
+                    {fieldErrors.phoneNumber && <p className="text-xs text-red-500 mt-1">{fieldErrors.phoneNumber}</p>}
                   </div>
 
                   <div>
@@ -272,10 +295,12 @@ const CreateUserForm = ({ onSubmit, onCancel, loading = false, initialData }: Cr
                         type="date"
                         value={formData.dateOfBirth}
                         onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                        className="h-12 text-base"
+                        className={`h-12 text-base${fieldErrors.dateOfBirth ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                         placeholder="mm/dd/yyyy"
                         required
                       />
+
+                      {fieldErrors.dateOfBirth && <p className="text-xs text-red-500 mt-1">{fieldErrors.dateOfBirth}</p>}
                       <CalendarIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                     </div>
                   </div>

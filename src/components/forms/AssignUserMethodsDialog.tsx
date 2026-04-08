@@ -8,9 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/api/client';
-import { UserPlus, Phone, CreditCard, User, Eye, Mail, Upload, Camera, X, Loader2 } from 'lucide-react';
+import { UserPlus, Phone, CreditCard, User, Eye, Mail, Upload, Camera, Loader2 } from 'lucide-react';
 import { uploadWithSignedUrl, detectFolder } from '@/utils/signedUploadHelper';
 import PassportImageCropUpload from '@/components/common/PassportImageCropUpload';
+import { getErrorMessage } from '@/api/apiError';
 
 interface AssignUserMethodsDialogProps {
   open: boolean;
@@ -290,7 +291,7 @@ const AssignUserMethodsDialog = ({ open, onClose, instituteId, onSuccess }: Assi
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || 'User not found',
+        description: getErrorMessage(error, 'User not found'),
         variant: "destructive"
       });
     } finally {
@@ -317,7 +318,7 @@ const AssignUserMethodsDialog = ({ open, onClose, instituteId, onSuccess }: Assi
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || 'User not found',
+        description: getErrorMessage(error, 'User not found'),
         variant: "destructive"
       });
     } finally {
@@ -343,7 +344,7 @@ const AssignUserMethodsDialog = ({ open, onClose, instituteId, onSuccess }: Assi
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || 'User not found',
+        description: getErrorMessage(error, 'User not found'),
         variant: "destructive"
       });
     } finally {
@@ -369,7 +370,7 @@ const AssignUserMethodsDialog = ({ open, onClose, instituteId, onSuccess }: Assi
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || 'User not found',
+        description: getErrorMessage(error, 'User not found'),
         variant: "destructive"
       });
     } finally {
@@ -432,7 +433,7 @@ const AssignUserMethodsDialog = ({ open, onClose, instituteId, onSuccess }: Assi
           videoRef.current.srcObject = stream;
         }
       }, 100);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Camera Error",
         description: "Failed to access camera. Please check permissions.",
@@ -985,16 +986,7 @@ const AssignUserMethodsDialog = ({ open, onClose, instituteId, onSuccess }: Assi
         <Dialog open={showCamera} onOpenChange={stopCamera}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle className="flex items-center justify-between">
-                <span>Capture Photo</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={stopCamera}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </DialogTitle>
+              <DialogTitle>Capture Photo</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="relative w-full aspect-video bg-muted rounded-lg overflow-hidden">

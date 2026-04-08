@@ -10,18 +10,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Edit3, Trash2 } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 const DAY_TYPES: CalendarDayType[] = [
   'REGULAR',
@@ -145,7 +137,7 @@ const CalendarDayManagement: React.FC = () => {
       setEditDay(null);
       await loadDays();
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to update day');
+      toast.error(getErrorMessage(error, 'Failed to update day'));
     } finally {
       setSaving(false);
     }
@@ -161,7 +153,7 @@ const CalendarDayManagement: React.FC = () => {
       setEditDay(null);
       await loadDays();
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to delete day');
+      toast.error(getErrorMessage(error, 'Failed to delete day'));
     } finally {
       setDeleting(false);
     }
@@ -228,9 +220,8 @@ const CalendarDayManagement: React.FC = () => {
               {calendarGrid.map((cell, i) => (
                 <div
                   key={i}
-                  className={`min-h-[50px] p-1 rounded border text-center text-xs ${
-                    cell ? (cell.day ? 'cursor-pointer hover:border-primary' : 'border-dashed border-muted') : 'border-transparent'
-                  }`}
+                  className={`min-h-[50px] p-1 rounded border text-center text-xs ${cell ? (cell.day ? 'cursor-pointer hover:border-primary' : 'border-dashed border-muted') : 'border-transparent'
+                    }`}
                   onClick={() => cell?.day && openEdit(cell.day)}
                 >
                   {cell && (
@@ -322,22 +313,18 @@ const CalendarDayManagement: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteDay} onOpenChange={(open) => !open && setDeleteDay(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this calendar day?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes the day record for {deleteDay?.calendarDate}. Use only when you really need to regenerate or correct bad data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteDay} disabled={deleting} className="bg-destructive text-destructive-foreground">
-              {deleting ? 'Deleting...' : 'Delete Day'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteDay}
+        onOpenChange={(open) => !open && setDeleteDay(null)}
+        itemName={deleteDay?.calendarDate || ''}
+        itemType="calendar day"
+        bullets={[
+          'This removes the day record — use only when you need to regenerate or correct bad data',
+          'This action is irreversible',
+        ]}
+        onConfirm={handleDeleteDay}
+        isDeleting={deleting}
+      />
     </div>
   );
 };

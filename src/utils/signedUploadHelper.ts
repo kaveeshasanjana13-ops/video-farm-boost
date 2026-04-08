@@ -10,6 +10,7 @@ export type UploadFolder =
   | 'correction-files'
   | 'institute-payment-receipts'
   | 'subject-payment-receipts'
+  | 'enrollment-payment-receipts'
   | 'id-documents'
   | 'bookhire-vehicle-images'
   | 'bookhire-owner-images';
@@ -17,16 +18,17 @@ export type UploadFolder =
 const UPLOAD_MAX_FILE_SIZES: Record<UploadFolder, number> = {
   'profile-images': 5 * 1024 * 1024,        // 5MB
   'student-images': 5 * 1024 * 1024,        // 5MB
-  'institute-images': 10 * 1024 * 1024,     // 10MB
+  'institute-images': 5 * 1024 * 1024,      // 5MB
   'institute-user-images': 5 * 1024 * 1024, // 5MB
   'subject-images': 5 * 1024 * 1024,        // 5MB
-  'homework-files': 20 * 1024 * 1024,       // 20MB
-  'correction-files': 20 * 1024 * 1024,     // 20MB
-  'institute-payment-receipts': 10 * 1024 * 1024,     // 10MB
-  'subject-payment-receipts': 10 * 1024 * 1024,       // 10MB
-  'id-documents': 10 * 1024 * 1024,          // 10MB
-  'bookhire-vehicle-images': 10 * 1024 * 1024,        // 10MB
-  'bookhire-owner-images': 10 * 1024 * 1024           // 10MB
+  'homework-files': 5 * 1024 * 1024,        // 5MB
+  'correction-files': 5 * 1024 * 1024,      // 5MB
+  'institute-payment-receipts': 5 * 1024 * 1024,      // 5MB
+  'subject-payment-receipts': 5 * 1024 * 1024,        // 5MB
+  'enrollment-payment-receipts': 5 * 1024 * 1024,     // 5MB
+  'id-documents': 5 * 1024 * 1024,           // 5MB
+  'bookhire-vehicle-images': 5 * 1024 * 1024,         // 5MB
+  'bookhire-owner-images': 5 * 1024 * 1024            // 5MB
 };
 
 interface SignedUrlResponse {
@@ -100,6 +102,7 @@ function validateFile(file: File, folder: UploadFolder): void {
     'correction-files': ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
     'institute-payment-receipts': ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
     'subject-payment-receipts': ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
+    'enrollment-payment-receipts': ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
     'id-documents': ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'],
     'bookhire-vehicle-images': ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
     'bookhire-owner-images': ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
@@ -124,7 +127,7 @@ export async function uploadWithSignedUrl(
   const token = await getAccessTokenAsync();
 
   if (!token) {
-    throw new Error('No authentication token found');
+    throw new Error('Authentication required to upload files');
   }
 
   // Validate file before upload
@@ -133,7 +136,7 @@ export async function uploadWithSignedUrl(
   try {
     // Step 1: Get signed URL from backend
     onProgress?.('Getting upload URL...', 10);
-    
+
     const contentType = file.type || 'application/octet-stream';
     const params = new URLSearchParams({
       folder,
@@ -142,11 +145,13 @@ export async function uploadWithSignedUrl(
       fileSize: file.size.toString()
     });
 
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+    };
+
     const signedUrlResponse = await fetch(`${baseUrl}/upload/get-signed-url?${params}`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      headers
     });
 
     if (!signedUrlResponse.ok) {
@@ -164,7 +169,7 @@ export async function uploadWithSignedUrl(
       throw new Error('Backend did not return required S3 fields. Backend migration may be incomplete.');
     }
 
-    console.log('📤 Uploading to AWS S3 using POST method');
+    if (import.meta.env.DEV) console.log('Uploading to AWS S3 using POST method');
     const formData = new FormData();
     
     // CRITICAL: Add all fields from backend BEFORE the file
@@ -185,8 +190,8 @@ export async function uploadWithSignedUrl(
 
     if (!uploadResponse.ok) {
       const errorText = await uploadResponse.text().catch(() => 'Unknown error');
-      console.error('S3 upload error:', errorText);
-      throw new Error(`S3 upload failed (${uploadResponse.status}): ${errorText || uploadResponse.statusText}`);
+      if (import.meta.env.DEV) console.error('S3 upload error:', errorText);
+      throw new Error('Upload failed. Please try again.');
     }
     
     console.log('✅ File uploaded to S3 successfully');
@@ -194,12 +199,14 @@ export async function uploadWithSignedUrl(
     // Step 3: Verify and make file public
     onProgress?.('Verifying upload...', 80);
 
+    const verifyHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    };
+
     const verifyResponse = await fetch(`${baseUrl}/upload/verify-and-publish`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
+      headers: verifyHeaders,
       body: JSON.stringify({ relativePath })
     });
 
@@ -217,7 +224,7 @@ export async function uploadWithSignedUrl(
     return relativePath;
   } catch (error: any) {
     console.error('Upload failed:', error);
-    throw new Error(error.message || 'Failed to upload file');
+    throw new Error(error.message || 'Failed to upload file', { cause: error });
   }
 }
 

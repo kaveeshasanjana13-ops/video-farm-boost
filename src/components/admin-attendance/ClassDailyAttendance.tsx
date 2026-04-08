@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import adminAttendanceApi from '@/api/adminAttendance.api';
-import { apiClient } from '@/api/client';
+import { cachedApiClient } from '@/api/cachedClient';
 import { normalizeAttendanceSummary, getAttendanceStatusConfig, AttendanceStatus, ATTENDANCE_STATUS_CONFIG } from '@/types/attendance.types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { RefreshCw, Users, UserCheck, UserX, Clock, Search, TrendingUp, CalendarDays } from 'lucide-react';
+import { RefreshCw, Users, UserCheck, UserX, Clock, Search, TrendingUp, CalendarDays, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getImageUrl } from '@/utils/imageUrlHelper';
+
+const getInitials = (name: string) => name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?';
 
 interface ClassOption { id: string; name: string }
 
@@ -25,14 +29,63 @@ const ClassDailyAttendance: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [studentImagesMap, setStudentImagesMap] = useState<Map<string, string>>(new Map());
 
   // Load classes
   useEffect(() => {
     if (!currentInstituteId) return;
-    apiClient.get(`/institutes/${currentInstituteId}/classes`)
+    cachedApiClient.get(`/institutes/${currentInstituteId}/classes`, undefined, { ttl: 60 })
       .then((res: any) => setClasses(res?.data || res || []))
       .catch(() => {});
   }, [currentInstituteId]);
+
+  // Load student images for the selected class
+  useEffect(() => {
+    if (!currentInstituteId || !selectedClass) {
+      setStudentImagesMap(new Map());
+      return;
+    }
+
+    const fetchStudentImages = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/institutes/${currentInstituteId}/classes/${selectedClass}/students`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          const studentsData = data.data || [];
+          
+          // Create a map of studentId -> imageUrl
+          const imagesMap = new Map<string, string>();
+          studentsData.forEach((student: any) => {
+            if (student.id && student.imageUrl) {
+              imagesMap.set(student.id.toString(), student.imageUrl);
+            }
+          });
+          
+          setStudentImagesMap(imagesMap);
+          console.log('📸 Loaded student images for', imagesMap.size, 'students in class');
+          console.log('📸 Image map keys:', Array.from(imagesMap.keys()));
+        } else {
+          console.warn('Failed to load students:', response.status, response.statusText);
+          setStudentImagesMap(new Map());
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch student images:', error);
+        setStudentImagesMap(new Map());
+      }
+    };
+
+    fetchStudentImages();
+  }, [currentInstituteId, selectedClass]);
 
   const loadAttendance = useCallback(async () => {
     if (!currentInstituteId || !selectedClass) return;
@@ -142,16 +195,41 @@ const ClassDailyAttendance: React.FC = () => {
                 <TableHead className="text-xs">Subject</TableHead>
                 <TableHead className="text-xs text-center">Status</TableHead>
                 <TableHead className="text-xs">Method</TableHead>
+                <TableHead className="text-xs">Date</TableHead>
                 <TableHead className="text-xs">Time</TableHead>
+                <TableHead className="text-xs">User Type</TableHead>
+                <TableHead className="text-xs">Location</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredRecords.length > 0 ? filteredRecords.map((r, i) => {
                 const config = getAttendanceStatusConfig(r.status);
+                const hasLocation = r.latitude && r.longitude;
+                // ✅ NEW: Try to get image from studentImagesMap first, then fall back to API response
+                const mappedImage = studentImagesMap.get(r.studentId);
+                const imageUrl = mappedImage || r.studentImageUrl || r.imageUrl || '';
+                
+                // 🔍 DEBUG: Log image sources
+                if (i === 0) {
+                  console.log(`📸 [Row ${i}] studentId: ${r.studentId}`);
+                  console.log(`📸 [Row ${i}] mappedImage (from fetch): ${mappedImage || 'N/A'}`);
+                  console.log(`📸 [Row ${i}] r.studentImageUrl (from DynamoDB): ${r.studentImageUrl || 'N/A'}`);
+                  console.log(`📸 [Row ${i}] r.imageUrl (from API): ${r.imageUrl || 'N/A'}`);
+                  console.log(`📸 [Row ${i}] final imageUrl: ${imageUrl}`);
+                }
+                
                 return (
                   <TableRow key={i}>
                     <TableCell className="text-xs font-mono">{r.studentId}</TableCell>
-                    <TableCell className="text-xs font-medium">{r.studentName || '—'}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-7 w-7 shrink-0">
+                          <AvatarImage src={getImageUrl(imageUrl)} />
+                          <AvatarFallback className="text-[10px]">{getInitials(r.studentName || '')}</AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs font-medium">{r.studentName || '—'}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs">{r.subjectName || '—'}</TableCell>
                     <TableCell className="text-xs text-center">
                       <Badge className={`${config.bgColor} ${config.color} border text-[10px]`}>
@@ -159,12 +237,32 @@ const ClassDailyAttendance: React.FC = () => {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs capitalize">{r.markingMethod || '—'}</TableCell>
+                    <TableCell className="text-xs">{r.date || r.markedAt ? new Date(r.date || r.markedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}</TableCell>
                     <TableCell className="text-xs">{r.markedAt ? new Date(r.markedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '—'}</TableCell>
+                    <TableCell className="text-xs"><Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">{r.userType || 'Unknown'}</Badge></TableCell>
+                    <TableCell className="text-xs">
+                      {hasLocation ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          onClick={() => {
+                            const url = `https://www.google.com/maps?q=${r.latitude},${r.longitude}`;
+                            window.open(url, '_blank');
+                          }}
+                        >
+                          <MapPin className="h-3 w-3 mr-1" />
+                          View
+                        </Button>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 );
               }) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-sm text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">
                     {!selectedClass ? 'Select a class to view attendance' : 'No attendance records found for this date'}
                   </TableCell>
                 </TableRow>

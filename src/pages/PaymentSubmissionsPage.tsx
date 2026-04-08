@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Eye, CheckCircle, Clock, XCircle, User, Calendar, FileText, DollarSign, Shield, RefreshCw, School, Search, BookOpen } from 'lucide-react';
+import { ArrowLeft, Eye, CheckCircle, Clock, XCircle, User, Calendar, FileText, DollarSign, Shield, RefreshCw, School, Search, BookOpen, ChevronDown } from 'lucide-react';
+import { useViewMode } from '@/hooks/useViewMode';
 import { useToast } from '@/hooks/use-toast';
 import { subjectPaymentsApi, SubjectPaymentSubmission } from '@/api/subjectPayments.api';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -20,7 +21,22 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
-const PaymentSubmissionsPage: React.FC = () => {
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
+
+const PPS_COL_DEFS: ColumnDef[] = [
+  { key: 'username', header: 'Student Name', locked: true, defaultWidth: 160, minWidth: 120 },
+  { key: 'submittedAmount', header: 'Amount', defaultWidth: 110, minWidth: 80 },
+  { key: 'transactionId', header: 'Transaction ID', defaultWidth: 160, minWidth: 120 },
+  { key: 'paymentDate', header: 'Payment Date', defaultWidth: 130, minWidth: 100 },
+  { key: 'status', header: 'Status', defaultWidth: 110, minWidth: 80 },
+  { key: 'uploadedAt', header: 'Submitted At', defaultWidth: 130, minWidth: 100 },
+  { key: 'receipt', header: 'Receipt', defaultWidth: 100, minWidth: 80 },
+  { key: 'actions', header: 'Actions', locked: true, defaultWidth: 150, minWidth: 110 },
+];
+
+const PaymentSubmissionsPage = () => {
   const navigate = useNavigate();
   const {
     toast
@@ -43,6 +59,8 @@ const PaymentSubmissionsPage: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const [totalCount, setTotalCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const { viewMode, setViewMode } = useViewMode();
+  const [expandedSubmissionId, setExpandedSubmissionId] = useState<string | null>(null);
 
   // Check if user can verify submissions (InstituteAdmin or Teacher only)
   const canVerifySubmissions = role === 'InstituteAdmin' || role === 'Teacher';
@@ -125,40 +143,11 @@ const PaymentSubmissionsPage: React.FC = () => {
     setSearchTerm('');
     loadSubmissions(0, rowsPerPage);
   };
-  const columns = [{
-    id: 'username',
-    label: 'Student Name',
-    minWidth: 150
-  }, {
-    id: 'submittedAmount',
-    label: 'Amount',
-    minWidth: 100,
-    align: 'right' as const
-  }, {
-    id: 'transactionId',
-    label: 'Transaction ID',
-    minWidth: 150
-  }, {
-    id: 'paymentDate',
-    label: 'Payment Date',
-    minWidth: 120
-  }, {
-    id: 'status',
-    label: 'Status',
-    minWidth: 100
-  }, {
-    id: 'uploadedAt',
-    label: 'Submitted At',
-    minWidth: 120
-  }, {
-    id: 'receipt',
-    label: 'Receipt',
-    minWidth: 100
-  }, {
-    id: 'actions',
-    label: 'Actions',
-    minWidth: 150
-  }];
+  const ppsColIds = useMemo(() => PPS_COL_DEFS.map(c => c.key), []);
+  const ppsColDefaultWidths = useMemo(() => Object.fromEntries(PPS_COL_DEFS.map(c => [c.key, c.defaultWidth!])), []);
+  const { getWidth: getPPSColWidth, setHoveredCol: setPPSHoveredCol, ResizeHandle: PPSResizeHandle } = useResizableColumns(ppsColIds, ppsColDefaultWidths);
+  const { colState: ppsColState, visibleColumns: ppsVisDefs, toggleColumn: togglePPSCol, resetColumns: resetPPSCols } = useColumnConfig(PPS_COL_DEFS, 'payment-submissions-page');
+  const ppsVisKeys = useMemo(() => new Set(ppsVisDefs.map(c => c.key)), [ppsVisDefs]);
   return <AppLayout>
       <div className="space-y-3 sm:space-y-4 px-2 sm:px-4 py-3 sm:py-4">
         {/* Header */}
@@ -201,6 +190,7 @@ const PaymentSubmissionsPage: React.FC = () => {
                   <RefreshCw className={`h-3 w-3 sm:h-4 sm:w-4 ${loading ? 'animate-spin' : ''}`} />
                   <span>Refresh</span>
                 </Button>
+                <ColumnConfigurator allColumns={PPS_COL_DEFS} colState={ppsColState} onToggle={togglePPSCol} onReset={resetPPSCols} />
               </div>
             </div>
           </CardHeader>
@@ -221,187 +211,71 @@ const PaymentSubmissionsPage: React.FC = () => {
                     <Eye className="h-3 w-3 sm:h-4 sm:w-4" />
                     <span>{loading ? 'Loading...' : 'Load Submissions'}</span>
                   </Button>
-                </div> : <Paper sx={{
-              width: '100%',
-              overflow: 'hidden',
-              height: {
-                xs: 'calc(100vh - 400px)',
-                sm: 'calc(100vh - 360px)',
-                md: 'calc(100vh - 320px)'
-              }
-            }}>
-                  <TableContainer sx={{
-                height: 'calc(100% - 52px)',
-                overflowX: 'auto'
-              }}>
-                    <Table stickyHeader aria-label="payment submissions table" sx={{
-                  minWidth: {
-                    xs: 800,
-                    sm: 900
-                  }
-                }}>
+                </div> : viewMode === 'card' ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredSubmissions.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(submission => {
+                    const isExpanded = expandedSubmissionId === String(submission.id);
+                    return <Card key={submission.id} className="hover:shadow-md transition-shadow">
+                        <div className="p-4 flex items-start gap-3 cursor-pointer select-none" onClick={() => setExpandedSubmissionId(isExpanded ? null : String(submission.id))}>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm truncate">{submission.username || 'Unknown User'}</p>
+                            <p className="text-xs text-muted-foreground">Rs {parseFloat(submission.submittedAmount || '0').toLocaleString()}</p>
+                          </div>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(submission.status)}`}>{submission.status}</span>
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+                        </div>
+                        {isExpanded && <div className="px-4 pb-4 border-t pt-3 space-y-2">
+                            {submission.transactionId && <p className="text-xs text-muted-foreground"><span className="font-medium">Transaction:</span> {submission.transactionId}</p>}
+                            <p className="text-xs text-muted-foreground"><span className="font-medium">Payment Date:</span> {new Date(submission.paymentDate).toLocaleDateString()}</p>
+                            <p className="text-xs text-muted-foreground"><span className="font-medium">Submitted:</span> {new Date(submission.uploadedAt).toLocaleDateString()}</p>
+                            <div className="flex gap-2 pt-2 border-t">
+                              {submission.receiptUrl && <Button variant="outline" size="sm" className="flex-1 flex items-center gap-1 text-xs" onClick={() => window.open(getImageUrl(submission.receiptUrl), '_blank')}><Eye className="h-3 w-3" />View Receipt</Button>}
+                              {canVerifySubmissions && submission.status === 'PENDING' && <Button size="sm" className="flex-1 flex items-center gap-1 text-xs" onClick={() => setVerifyingSubmission(submission)}><Shield className="h-3 w-3" />Verify</Button>}
+                            </div>
+                          </div>}
+                      </Card>;
+                  })}
+                </div> : <Paper sx={{ width: '100%', height: 'calc(100vh - 320px)', display: 'flex', flexDirection: 'column' }}>
+                  <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                    <Table stickyHeader aria-label="payment submissions table" sx={{ tableLayout: 'fixed', minWidth: ppsVisDefs.reduce((s, c) => s + getPPSColWidth(c.key), 0) }}>
                       <TableHead>
                         <TableRow>
-                          {columns.map(column => <TableCell key={column.id} align={column.align} sx={{
-                        minWidth: column.minWidth,
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>
-                              {column.label}
-                            </TableCell>)}
+                          {ppsVisDefs.map((col) => (
+                            <TableCell key={col.key} sx={{ position: 'relative', width: getPPSColWidth(col.key), fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}
+                              onMouseEnter={() => setPPSHoveredCol(col.key)} onMouseLeave={() => setPPSHoveredCol(null)}>
+                              <div style={{ paddingRight: 12 }}>{col.header}</div>
+                              <PPSResizeHandle colId={col.key} />
+                            </TableCell>
+                          ))}
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {filteredSubmissions.length === 0 ? <TableRow>
-                            <TableCell colSpan={columns.length} align="center" sx={{
-                        py: {
-                          xs: 4,
-                          sm: 8
-                        }
-                      }}>
+                        {filteredSubmissions.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={ppsVisDefs.length} align="center" sx={{ py: 8 }}>
                               <div className="text-center px-4">
-                                <FileText className="h-8 w-8 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-                                <p className="text-gray-500 dark:text-gray-400 text-sm sm:text-base mb-1 sm:mb-2">
+                                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                                <p className="text-gray-500 dark:text-gray-400 text-base mb-2">
                                   {searchTerm ? 'No matching submissions found' : 'No submissions found'}
-                                </p>
-                                <p className="text-gray-400 dark:text-gray-500 text-xs sm:text-sm">
-                                  {searchTerm ? 'Try adjusting your search criteria.' : 'Payment submissions will appear here when students submit payments.'}
                                 </p>
                               </div>
                             </TableCell>
-                          </TableRow> : filteredSubmissions.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(submission => <TableRow hover role="checkbox" tabIndex={-1} key={submission.id}>
-                                <TableCell sx={{
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>{submission.username || 'Unknown User'}</TableCell>
-                                <TableCell align="right" sx={{
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>
-                                  Rs {parseFloat(submission.submittedAmount || '0').toLocaleString()}
-                                </TableCell>
-                                <TableCell sx={{
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>{submission.transactionId}</TableCell>
-                                <TableCell sx={{
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>
-                                  {new Date(submission.paymentDate).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell sx={{
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>
-                                  <span className={`inline-flex items-center px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-xs font-medium border ${getStatusColor(submission.status)}`}>
-                                    {submission.status}
-                                  </span>
-                                </TableCell>
-                                <TableCell sx={{
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>
-                                  {new Date(submission.uploadedAt).toLocaleDateString()}
-                                </TableCell>
-                                <TableCell sx={{
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>
-                                  {submission.receiptUrl ? <Button variant="outline" size="sm" onClick={() => {
-                                    window.open(getImageUrl(submission.receiptUrl), '_blank');
-                                  }} className="flex items-center gap-1 text-xs px-2 py-1">
-                                      <Eye className="h-3 w-3" />
-                                      <span className="hidden sm:inline">View</span>
-                                    </Button> : <span className="text-muted-foreground text-xs sm:text-sm">N/A</span>}
-                                </TableCell>
-                                <TableCell sx={{
-                        fontSize: {
-                          xs: '0.75rem',
-                          sm: '0.875rem'
-                        },
-                        padding: {
-                          xs: '8px',
-                          sm: '16px'
-                        }
-                      }}>
-                                  <div className="flex items-center gap-1 sm:gap-2">
-                                    {canVerifySubmissions && submission.status === 'PENDING' && <Button onClick={() => setVerifyingSubmission(submission)} className="flex items-center gap-1 text-xs px-2 py-1" size="sm">
-                                        <Shield className="h-3 w-3" />
-                                        <span className="hidden sm:inline">Verify</span>
-                                      </Button>}
-                                  </div>
-                                </TableCell>
-                              </TableRow>)}
+                          </TableRow>
+                        ) : filteredSubmissions.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(submission => (
+                          <TableRow hover role="checkbox" tabIndex={-1} key={submission.id}>
+                            {ppsVisKeys.has('username') && <TableCell style={{ width: getPPSColWidth('username'), maxWidth: getPPSColWidth('username'), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{submission.username || 'Unknown User'}</TableCell>}
+                            {ppsVisKeys.has('submittedAmount') && <TableCell style={{ width: getPPSColWidth('submittedAmount'), maxWidth: getPPSColWidth('submittedAmount'), overflow: 'hidden' }}>Rs {parseFloat(submission.submittedAmount || '0').toLocaleString()}</TableCell>}
+                            {ppsVisKeys.has('transactionId') && <TableCell style={{ width: getPPSColWidth('transactionId'), maxWidth: getPPSColWidth('transactionId'), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{submission.transactionId}</TableCell>}
+                            {ppsVisKeys.has('paymentDate') && <TableCell style={{ width: getPPSColWidth('paymentDate'), maxWidth: getPPSColWidth('paymentDate'), overflow: 'hidden' }}>{new Date(submission.paymentDate).toLocaleDateString()}</TableCell>}
+                            {ppsVisKeys.has('status') && <TableCell style={{ width: getPPSColWidth('status'), maxWidth: getPPSColWidth('status'), overflow: 'hidden' }}><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(submission.status)}`}>{submission.status}</span></TableCell>}
+                            {ppsVisKeys.has('uploadedAt') && <TableCell style={{ width: getPPSColWidth('uploadedAt'), maxWidth: getPPSColWidth('uploadedAt'), overflow: 'hidden' }}>{new Date(submission.uploadedAt).toLocaleDateString()}</TableCell>}
+                            {ppsVisKeys.has('receipt') && <TableCell style={{ width: getPPSColWidth('receipt'), maxWidth: getPPSColWidth('receipt'), overflow: 'hidden' }}>{submission.receiptUrl ? <Button variant="outline" size="sm" onClick={() => window.open(getImageUrl(submission.receiptUrl), '_blank')} className="flex items-center gap-1 text-xs px-2 py-1"><Eye className="h-3 w-3" />View</Button> : <span className="text-muted-foreground text-xs">N/A</span>}</TableCell>}
+                            {ppsVisKeys.has('actions') && <TableCell style={{ width: getPPSColWidth('actions'), maxWidth: getPPSColWidth('actions'), overflow: 'hidden' }}><div className="flex items-center gap-1">{canVerifySubmissions && submission.status === 'PENDING' && <Button onClick={() => setVerifyingSubmission(submission)} className="flex items-center gap-1 text-xs px-2 py-1" size="sm"><Shield className="h-3 w-3" />Verify</Button>}</div></TableCell>}
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   </TableContainer>
-                  <TablePagination rowsPerPageOptions={[25, 50, 100]} component="div" count={searchTerm ? filteredSubmissions.length : totalCount} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} sx={{
-                '.MuiTablePagination-toolbar': {
-                  fontSize: {
-                    xs: '0.75rem',
-                    sm: '0.875rem'
-                  },
-                  minHeight: {
-                    xs: '48px',
-                    sm: '52px'
-                  }
-                },
-                '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
-                  fontSize: {
-                    xs: '0.75rem',
-                    sm: '0.875rem'
-                  }
-                }
-              }} />
+                  <TablePagination rowsPerPageOptions={[25, 50, 100]} component="div" count={searchTerm ? filteredSubmissions.length : totalCount} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} />
                 </Paper>}
             </div>
           </CardContent>

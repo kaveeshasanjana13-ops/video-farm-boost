@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/api/client';
 import { CalendarIcon, DollarSign } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 interface CreateSubjectPaymentFormProps {
   open: boolean;
@@ -39,6 +40,7 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
 }) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState<CreateSubjectPaymentData>({
     title: '',
     description: '',
@@ -52,13 +54,13 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!formData.title || !formData.description || !formData.amount || !formData.lastDate) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields.",
-        variant: "destructive"
-      });
+    const errors: Record<string, string> = {};
+    if (!formData.title) errors.title = 'Title is required';
+    if (!formData.description) errors.description = 'Description is required';
+    if (!formData.amount || formData.amount <= 0) errors.amount = 'Amount must be greater than 0';
+    if (!formData.lastDate) errors.lastDate = 'Last date is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -84,6 +86,7 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
         title: "Success",
         description: "Subject payment created successfully."
       });
+      setFieldErrors({});
 
       // Reset form
       setFormData({
@@ -102,7 +105,7 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || "Failed to create subject payment.",
+        description: getErrorMessage(error, 'Failed to create subject payment.'),
         variant: "destructive"
       });
     } finally {
@@ -111,6 +114,7 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
   };
 
   const handleInputChange = (field: keyof CreateSubjectPaymentData, value: any) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -135,8 +139,9 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
               value={formData.title}
               onChange={(e) => handleInputChange('title', e.target.value)}
               placeholder="e.g., Monthly Tuition Fee"
-              required
+              className={fieldErrors.title ? 'border-red-500 focus-visible:ring-red-500' : ''}
             />
+            {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
           </div>
 
           <div className="space-y-2">
@@ -146,8 +151,9 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Detailed description of the payment"
-              required
+              className={fieldErrors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}
             />
+            {fieldErrors.description && <p className="text-xs text-red-500 mt-1">{fieldErrors.description}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -195,8 +201,9 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
               value={formData.amount}
               onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
               placeholder="0.00"
-              required
+              className={fieldErrors.amount ? 'border-red-500 focus-visible:ring-red-500' : ''}
             />
+            {fieldErrors.amount && <p className="text-xs text-red-500 mt-1">{fieldErrors.amount}</p>}
           </div>
 
           <div className="space-y-2">
@@ -206,8 +213,9 @@ const CreateSubjectPaymentForm: React.FC<CreateSubjectPaymentFormProps> = ({
               type="datetime-local"
               value={formData.lastDate}
               onChange={(e) => handleInputChange('lastDate', e.target.value)}
-              required
+              className={fieldErrors.lastDate ? 'border-red-500 focus-visible:ring-red-500' : ''}
             />
+            {fieldErrors.lastDate && <p className="text-xs text-red-500 mt-1">{fieldErrors.lastDate}</p>}
           </div>
 
           <div className="space-y-2">

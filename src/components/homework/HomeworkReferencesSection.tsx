@@ -11,6 +11,8 @@ import {
 } from '@/api/homeworkReferences.api';
 import HomeworkReferenceList from './HomeworkReferenceList';
 import AddReferenceDialog from './AddReferenceDialog';
+import { getErrorMessage } from '@/api/apiError';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 interface HomeworkReferencesSectionProps {
   homeworkId: string;
@@ -32,6 +34,8 @@ const HomeworkReferencesSection: React.FC<HomeworkReferencesSectionProps> = ({
   const [summary, setSummary] = useState<ReferenceSummary | null>(null);
   const [isLoading, setIsLoading] = useState(!initialReferences);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null; title: string }>({ open: false, id: null, title: '' });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Determine if user can edit
   const canEdit = editableProp ?? (instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher');
@@ -49,7 +53,7 @@ const HomeworkReferencesSection: React.FC<HomeworkReferencesSectionProps> = ({
       console.error('Failed to fetch references:', error);
       toast({
         title: 'Failed to load references',
-        description: error.message || 'Could not load reference materials',
+        description: getErrorMessage(error, 'Could not load reference materials'),
         variant: 'destructive',
       });
     } finally {
@@ -81,24 +85,24 @@ const HomeworkReferencesSection: React.FC<HomeworkReferencesSectionProps> = ({
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
+    const ref = references.find(r => r.id === id);
+    setDeleteDialog({ open: true, id, title: ref?.title || 'this reference' });
+  };
+  const confirmDelete = async () => {
+    if (!deleteDialog.id) return;
+    setIsDeleting(true);
     try {
-      await homeworkReferencesApi.deleteReference(id);
-      setReferences(prev => prev.filter(ref => ref.id !== id));
-      toast({
-        title: 'Reference deleted',
-        description: 'The reference has been removed',
-      });
-      // Refresh summary
+      await homeworkReferencesApi.deleteReference(deleteDialog.id);
+      setReferences(prev => prev.filter(ref => ref.id !== deleteDialog.id));
+      toast({ title: 'Reference deleted', description: 'The reference has been removed' });
+      setDeleteDialog({ open: false, id: null, title: '' });
       const summaryData = await homeworkReferencesApi.getReferenceSummary(homeworkId);
       setSummary(summaryData);
     } catch (error: any) {
-      console.error('Failed to delete reference:', error);
-      toast({
-        title: 'Delete failed',
-        description: error.message || 'Could not delete reference',
-        variant: 'destructive',
-      });
+      toast({ title: 'Delete failed', description: getErrorMessage(error, 'Could not delete reference'), variant: 'destructive' });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -114,7 +118,7 @@ const HomeworkReferencesSection: React.FC<HomeworkReferencesSectionProps> = ({
       console.error('Failed to reorder references:', error);
       toast({
         title: 'Reorder failed',
-        description: error.message || 'Could not reorder references',
+        description: getErrorMessage(error, 'Could not reorder references'),
         variant: 'destructive',
       });
     }
@@ -134,6 +138,7 @@ const HomeworkReferencesSection: React.FC<HomeworkReferencesSectionProps> = ({
         
         <div className="flex items-center gap-1">
           <Button
+            type="button"
             variant="ghost"
             size="sm"
             onClick={fetchReferences}
@@ -145,6 +150,7 @@ const HomeworkReferencesSection: React.FC<HomeworkReferencesSectionProps> = ({
           
           {canEdit && (
             <Button
+              type="button"
               size="sm"
               onClick={() => setIsAddDialogOpen(true)}
               className="h-7 text-xs px-2"
@@ -181,6 +187,7 @@ const HomeworkReferencesSection: React.FC<HomeworkReferencesSectionProps> = ({
             <p className="text-xs text-muted-foreground">No reference materials</p>
             {canEdit && (
               <Button
+                type="button"
                 variant="link"
                 size="sm"
                 onClick={() => setIsAddDialogOpen(true)}
@@ -207,6 +214,14 @@ const HomeworkReferencesSection: React.FC<HomeworkReferencesSectionProps> = ({
         onClose={() => setIsAddDialogOpen(false)}
         homeworkId={homeworkId}
         onSuccess={handleAddSuccess}
+      />
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.title}
+        itemType="reference"
+        onConfirm={confirmDelete}
+        isDeleting={isDeleting}
       />
     </div>
   );

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CreditCard, Search, User } from 'lucide-react';
 import { toast } from 'sonner';
+import { getImageUrl } from '@/utils/imageUrlHelper';
 
 interface CardUser {
   userId: string;
@@ -102,7 +103,7 @@ const CardManagement: React.FC = () => {
           <CardContent className="space-y-3">
             <div className="flex items-center gap-3">
               {cardUser.imageUrl && (
-                <img src={cardUser.imageUrl} alt="User" className="w-12 h-12 rounded-full object-cover border" />
+                <img src={getImageUrl(cardUser.imageUrl)} alt="User" className="w-12 h-12 rounded-full object-cover border" />
               )}
               <div>
                 <div className="font-medium text-sm">{cardUser.userName}</div>

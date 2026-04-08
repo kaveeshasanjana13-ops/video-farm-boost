@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronRight, School, BookOpen, Building2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 
 interface DashboardQuickNavProps {
   onNavigate: (id: string) => void;
@@ -9,7 +10,7 @@ interface DashboardQuickNavProps {
 
 const DashboardQuickNav: React.FC<DashboardQuickNavProps> = ({ onNavigate, isTuitionInstitute }) => {
   const { selectedInstitute, selectedClass, selectedSubject } = useAuth();
-  const subjectLabel = isTuitionInstitute ? 'Sub Class' : 'Subject';
+  const { subjectLabel } = useInstituteLabels();
 
   return (
     <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar px-0.5 pb-1">

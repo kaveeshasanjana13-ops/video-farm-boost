@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { cachedApiClient } from '@/api/cachedClient';
 import { toast } from 'sonner';
-import { parseContextIds } from '@/utils/pageNavigation';
+import { parseContextIds, buildSidebarUrl, extractPageFromUrl } from '@/utils/pageNavigation';
 
 /**
  * Hook to sync URL params with AuthContext
@@ -133,11 +133,36 @@ export const useRouteContext = () => {
         '/calendar-management',
         '/calendar-view',
       ];
+
+      // Global pages that have their own route and must never clear or restore context
+      const globalPagePaths = ['/profile', '/settings', '/appearance', '/feedback', '/all-notifications'];
+
       const shouldPreserveContext = contextPreservingPaths.some(p => path.startsWith(p));
+      const isGlobalPage = globalPagePaths.some(p => path.startsWith(p));
+
+      // Global pages (profile, settings, appearance etc.) must never clear context —
+      // the user stays on the page and context is preserved for when they navigate back.
+      if (isGlobalPage) return;
       
       if (!shouldPreserveContext) {
         // When leaving /institute/... routes (e.g. to /dashboard), clear stale selections.
+        // BUT: if useContextUrlSync is about to redirect to an institute URL, DON'T clear.
+        // This prevents the race condition where clearing triggers a loop.
         if (latestInstitute) {
+          const currentPageId = extractPageFromUrl(path);
+          const expectedUrl = buildSidebarUrl(currentPageId, {
+            instituteId: latestInstitute.id,
+            classId: latestClass?.id,
+            subjectId: latestSubject?.id,
+          });
+          
+          // If the expected URL with current context IS an institute URL,
+          // useContextUrlSync will redirect there — so don't clear selections
+          if (expectedUrl.startsWith('/institute/')) {
+            console.log('🔗 Skipping institute clear — useContextUrlSync will redirect to:', expectedUrl);
+            return;
+          }
+          
           setSelectedInstitute(null); // also clears class/subject
         } else {
           // Safety: if institute already null but class/subject linger, clear them.
@@ -231,7 +256,7 @@ export const useRouteContext = () => {
             } else {
               console.log('⚠️ Child not found in parent\'s children list');
             }
-          } catch (error) {
+          } catch (error: any) {
             console.error('Error loading child data:', error);
           } finally {
             fetchInProgressRef.current[fetchKey] = false;
@@ -285,7 +310,7 @@ export const useRouteContext = () => {
               fetchInProgressRef.current[fetchKey] = false;
               return;
             }
-          } catch (error) {
+          } catch (error: any) {
             console.error('❌ Error loading institute:', error);
             toast.error('Failed to load institute data');
             navigate('/select-institute', { replace: true });
@@ -377,7 +402,7 @@ export const useRouteContext = () => {
           });
       }
 
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error in syncContextFromUrl:', error);
       } finally {
         clearTimeout(safetyTimeout);
@@ -397,8 +422,7 @@ export const useRouteContext = () => {
     urlSubjectId,
     urlChildId,
     location.pathname,
-    user?.id,
-    user?.institutes?.length
+    user?.id
   ]);
 
   return {

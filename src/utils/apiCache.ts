@@ -51,7 +51,7 @@ class ApiCacheManager {
         console.log('ApiCache: Using IndexedDB storage');
         return;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('IndexedDB initialization failed:', error);
     }
 
@@ -62,7 +62,7 @@ class ApiCacheManager {
         console.log('ApiCache: Using localStorage storage');
         return;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('localStorage not available:', error);
     }
 
@@ -175,7 +175,7 @@ class ApiCacheManager {
         ttl: `${effectiveTTL} minutes`,
         expiresAt: new Date(Date.now() + effectiveTTL * 60 * 1000).toLocaleTimeString()
       });
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to set cache:', error);
     }
   }
@@ -245,7 +245,7 @@ class ApiCacheManager {
         expiresIn: `${(ttl - ((Date.now() - entry.timestamp) / 1000 / 60)).toFixed(1)} minutes`
       });
       return entry.data;
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to get cache:', error);
       return null;
     }
@@ -307,7 +307,7 @@ class ApiCacheManager {
       }
       
       console.log(`Cache cleared for ${endpoint}`);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to clear cache:', error);
     }
   }
@@ -357,7 +357,7 @@ class ApiCacheManager {
       }
 
       console.log(`🔒 Cleared ${keysToRemove.length} cache entries for user ${userId}`);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to clear user cache:', error);
     }
   }
@@ -419,7 +419,7 @@ class ApiCacheManager {
       }
 
       console.log(`Cleared all ${clearedCount} cache entries`);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to clear all cache:', error);
     }
   }
@@ -476,7 +476,7 @@ class ApiCacheManager {
           }
           break;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to get cache stats:', error);
     }
 
@@ -532,7 +532,7 @@ class ApiCacheManager {
       }
       
       console.log(`🧹 Cleared ${clearedCount} expired cache entries`);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Failed to clear expired entries:', error);
     }
     
@@ -581,7 +581,7 @@ class ApiCacheManager {
               keysToRemove.push(key);
             }
           }
-        } catch (error) {
+        } catch (error: any) {
           // If parsing fails, remove the corrupted entry
           keysToRemove.push(key);
         }

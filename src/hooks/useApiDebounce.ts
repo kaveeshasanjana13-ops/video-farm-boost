@@ -40,7 +40,7 @@ export const useApiDebounce = (options: UseApiDebounceOptions = {}) => {
 
               const result = await fn(...args);
               resolve(result);
-            } catch (error) {
+            } catch (error: any) {
               reject(error);
             } finally {
               // Remove from pending requests

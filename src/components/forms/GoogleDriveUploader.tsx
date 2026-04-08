@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
+import { getErrorMessage } from '@/api/apiError';
 import {
   checkDriveConnection,
   getDriveConnectUrl,
@@ -114,7 +115,7 @@ const GoogleDriveUploader: React.FC<GoogleDriveUploaderProps> = ({
       toast({ title: "Uploaded to Google Drive", description: `${driveFile.name} uploaded successfully` });
     } catch (error: any) {
       console.error('Google Drive upload error:', error);
-      toast({ title: "Upload Failed", description: error.message || "Failed to upload", variant: "destructive" });
+      toast({ title: "Upload Failed", description: getErrorMessage(error, 'Failed to upload'), variant: "destructive" });
     } finally {
       setIsUploading(false);
     }

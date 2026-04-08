@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Eye } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 const assignParentByPhoneSchema = z.object({
   phoneNumber: z.string().min(1, 'Phone number is required'),
@@ -114,7 +115,7 @@ const AssignParentByPhoneForm: React.FC<AssignParentByPhoneFormProps> = ({
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error.message || 'User not found',
+        description: getErrorMessage(error, 'User not found'),
         variant: "destructive"
       });
     } finally {
@@ -146,7 +147,7 @@ const AssignParentByPhoneForm: React.FC<AssignParentByPhoneFormProps> = ({
       console.error('Error assigning parent:', error);
       toast({
         title: "Error",
-        description: error?.message || "Failed to assign parent.",
+        description: getErrorMessage(error, 'Failed to assign parent.'),
         variant: "destructive"
       });
     }

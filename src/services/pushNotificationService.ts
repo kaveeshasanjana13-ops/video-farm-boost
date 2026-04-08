@@ -1,7 +1,7 @@
 // src/services/pushNotificationService.ts
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications, Token, PushNotificationSchema, ActionPerformed } from '@capacitor/push-notifications';
-import { messaging, getToken, onMessage, VAPID_KEY, isNativePlatform, isFirebaseConfigured } from '../config/firebase';
+import { messaging, getToken, onMessage, VAPID_KEY, ON_NATIVE_PLATFORM as isNativePlatform, isFirebaseConfigured } from '../config/firebase';
 import { apiClient } from '../api/client';
 
 // Device type enum matching backend
@@ -91,11 +91,19 @@ class PushNotificationService {
       // Foreground notification received
       const receivedListener = await PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
         console.log('📱 Native Push notification received:', notification);
+
+        // Extract image from multiple possible sources (FCM can send in different fields)
+        const imageUrl = notification.data?.image
+          || notification.data?.imageUrl
+          || (notification as any).largeIcon
+          || (notification as any).image
+          || undefined;
+
         const payload: NotificationPayload = {
           notification: {
             title: notification.title,
             body: notification.body,
-            image: notification.data?.image
+            image: imageUrl
           },
           data: notification.data as NotificationPayload['data']
         };
@@ -107,11 +115,19 @@ class PushNotificationService {
       const actionListener = await PushNotifications.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => {
         console.log('📱 Native Push notification action performed:', action);
         const notification = action.notification;
+
+        // Extract image from multiple possible sources
+        const imageUrl = notification.data?.image
+          || notification.data?.imageUrl
+          || (notification as any).largeIcon
+          || (notification as any).image
+          || undefined;
+
         const payload: NotificationPayload = {
           notification: {
             title: notification.title,
             body: notification.body,
-            image: notification.data?.image
+            image: imageUrl
           },
           data: notification.data as NotificationPayload['data']
         };
@@ -130,7 +146,7 @@ class PushNotificationService {
       this.nativeListeners.push(() => actionListener.remove());
 
       console.log('📱 Native push notification listeners initialized');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to initialize native push listeners:', error);
     }
   }
@@ -253,7 +269,7 @@ class PushNotificationService {
           return true;
         }
         return false;
-      } catch (error) {
+      } catch (error: any) {
         console.error('📱 Native permission request failed:', error);
         return false;
       }
@@ -300,7 +316,7 @@ class PushNotificationService {
         console.warn('No FCM token available. Request permission first.');
         return null;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error getting FCM token:', error);
       return null;
     }
@@ -362,7 +378,7 @@ class PushNotificationService {
       }
       
       return response;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to register push token:', error);
       return null;
     }
@@ -385,7 +401,7 @@ class PushNotificationService {
       this.fcmToken = null;
       localStorage.removeItem('fcm_token_id');
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to unregister push token:', error);
       return false;
     }

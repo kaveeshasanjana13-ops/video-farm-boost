@@ -129,7 +129,7 @@ const TeacherClasses = () => {
         title: "Classes Loaded",
         description: `Successfully loaded ${data.data.length} classes.`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching teacher classes:', error);
       toast({
         title: "Error",
@@ -219,7 +219,7 @@ const TeacherClasses = () => {
         <div className="text-center py-12">
           <GraduationCap className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <h2 className="text-2xl font-bold mb-4">
-            Select Institute
+            Institutes
           </h2>
           <p className="text-muted-foreground">
             Please select an institute to view your classes.

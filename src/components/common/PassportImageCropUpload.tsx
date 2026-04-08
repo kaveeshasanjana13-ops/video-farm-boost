@@ -10,10 +10,12 @@ import ReactCrop, {
   type PixelCrop,
   centerCrop,
   makeAspectCrop,
+  convertToPixelCrop,
 } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { getSignedUrl, uploadToSignedUrl, verifyAndPublish } from '@/utils/imageUploadHelper';
 import { getImageUrl } from '@/utils/imageUrlHelper';
+import { getErrorMessage } from '@/api/apiError';
 
 interface PassportImageCropUploadProps {
   currentImageUrl?: string | null;
@@ -107,7 +109,9 @@ const PassportImageCropUpload: React.FC<PassportImageCropUploadProps> = ({
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
-    setCrop(centerAspectCrop(width, height, PASSPORT_ASPECT_RATIO));
+    const crop = centerAspectCrop(width, height, PASSPORT_ASPECT_RATIO);
+    setCrop(crop);
+    setCompletedCrop(convertToPixelCrop(crop, width, height));
   };
 
   const getCroppedImg = useCallback(
@@ -205,11 +209,11 @@ const PassportImageCropUpload: React.FC<PassportImageCropUploadProps> = ({
       });
       
       handleCloseDialog();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading image:', error);
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to upload image. Please try again.",
+        description: getErrorMessage(error, 'Failed to upload image. Please try again.'),
         variant: "destructive",
       });
     } finally {
@@ -292,7 +296,7 @@ const PassportImageCropUpload: React.FC<PassportImageCropUploadProps> = ({
       });
 
       handleSelectedFile(file);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Native camera failed:', error);
       toast({
         title: 'Camera unavailable',
@@ -312,7 +316,7 @@ const PassportImageCropUpload: React.FC<PassportImageCropUploadProps> = ({
     try {
       setCameraOpen(true);
       await startCamera();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start camera:', error);
       toast({
         title: 'Camera unavailable',
@@ -350,7 +354,7 @@ const PassportImageCropUpload: React.FC<PassportImageCropUploadProps> = ({
       stopCamera();
       setCameraOpen(false);
       handleSelectedFile(file);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to capture photo:', error);
       toast({
         title: 'Capture failed',
@@ -492,6 +496,7 @@ const PassportImageCropUpload: React.FC<PassportImageCropUploadProps> = ({
                   crop={crop}
                   onChange={(pixelCrop, percentCrop) => setCrop(percentCrop)}
                   onComplete={(c) => setCompletedCrop(c)}
+                  aspect={PASSPORT_ASPECT_RATIO}
                   minWidth={30}
                   minHeight={30}
                   keepSelection

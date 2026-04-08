@@ -4,6 +4,8 @@ import { AttendanceStatus, AttendanceSummary, normalizeAttendanceSummary } from 
 export interface StudentAttendanceRecord {
   studentId: string;
   studentName: string;
+  studentImageUrl?: string;
+  imageUrl?: string;
   instituteId: string;
   instituteName: string;
   classId?: string;
@@ -11,6 +13,7 @@ export interface StudentAttendanceRecord {
   subjectId?: string;
   subjectName?: string;
   date: string;
+  markedAt?: string;
   status: AttendanceStatus;
   location: string;
   markingMethod: string;

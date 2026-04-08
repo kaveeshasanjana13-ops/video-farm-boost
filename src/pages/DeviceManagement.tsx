@@ -13,6 +13,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useIsMobile } from '@/hooks/use-mobile';
+import InstituteSelect from '@/components/ui/InstituteSelect';
+import EventSelect from '@/components/ui/EventSelect';
 import { systemAdminDeviceApi, instituteDeviceApi } from '@/api/deviceManagement.api';
 import type {
   AttendanceDevice,
@@ -45,6 +48,8 @@ import {
   Power, PowerOff, Link, Unlink, Play, Square, Clock, FileText,
   Activity, ChevronRight, AlertTriangle, Trash2, Building2, ArrowLeftRight,
 } from 'lucide-react';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -94,6 +99,8 @@ const DeviceManagement = () => {
   const [selectedDevice, setSelectedDevice] = useState<DeviceDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTab, setDetailTab] = useState('info');
+  const [mobileSection, setMobileSection] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
   // Dialogs
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -101,6 +108,7 @@ const DeviceManagement = () => {
   const [bindOpen, setBindOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; deviceId: string; deviceName: string; isDeleting: boolean }>({ open: false, deviceId: '', deviceName: '', isDeleting: false });
 
   // Detail sub-data
   const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([]);
@@ -247,14 +255,21 @@ const DeviceManagement = () => {
   };
 
   const handleDelete = async (deviceId: string) => {
-    if (!confirm('Delete this device? This cannot be undone.')) return;
+    const device = devices.find(d => d.id === deviceId);
+    setDeleteDialog({ open: true, deviceId, deviceName: device?.deviceName || deviceId, isDeleting: false });
+  };
+
+  const confirmDeleteDevice = async () => {
+    setDeleteDialog(prev => ({ ...prev, isDeleting: true }));
     try {
-      await systemAdminDeviceApi.delete(deviceId);
+      await systemAdminDeviceApi.delete(deleteDialog.deviceId);
       toast({ title: 'Device deleted' });
+      setDeleteDialog({ open: false, deviceId: '', deviceName: '', isDeleting: false });
       setDetailOpen(false);
       loadDevices();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      setDeleteDialog(prev => ({ ...prev, isDeleting: false }));
     }
   };
 
@@ -379,9 +394,8 @@ const DeviceManagement = () => {
                 <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
             ) : devices.length === 0 ? (
-              <div className="text-center py-12">
-                <Tablet className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
-                <p className="text-sm text-muted-foreground">No devices found</p>
+              <div className="p-4">
+                <EmptyState icon={Tablet} title="No Devices Found" description="No devices are registered yet." />
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -444,14 +458,66 @@ const DeviceManagement = () => {
                   <DialogDescription>UID: {selectedDevice.device.deviceUid}</DialogDescription>
                 </DialogHeader>
 
-                <Tabs value={detailTab} onValueChange={setDetailTab}>
-                  <TabsList className="w-full grid grid-cols-5">
-                    <TabsTrigger value="info">Info</TabsTrigger>
-                    <TabsTrigger value="config">Config</TabsTrigger>
-                    <TabsTrigger value="bindings">Bindings</TabsTrigger>
-                    <TabsTrigger value="sessions">Sessions</TabsTrigger>
-                    <TabsTrigger value="audit">Audit</TabsTrigger>
-                  </TabsList>
+                {isMobile && !mobileSection ? (
+                  <div className="divide-y divide-border/40 border border-border/50 rounded-xl overflow-hidden bg-card/50 mt-4">
+                    {[
+                      { id: 'info', icon: Tablet, label: 'Device Info', description: 'View device status and traits', color: 'text-blue-500' },
+                      { id: 'config', icon: Settings2, label: 'Configuration', description: 'Device parameters and rules', color: 'text-violet-500' },
+                      { id: 'bindings', icon: Link, label: 'Event Bindings', description: 'Current and past bindings', color: 'text-emerald-500' },
+                      { id: 'sessions', icon: Activity, label: 'Active Sessions', description: 'Current device sessions', color: 'text-amber-500' },
+                      { id: 'audit', icon: FileText, label: 'Audit Logs', description: 'Device activity history', color: 'text-slate-500' },
+                    ].map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setMobileSection(item.id)}
+                          className="w-full flex items-center gap-4 px-4 py-4 text-left active:bg-muted/60 transition-colors"
+                        >
+                          <div className={`p-2.5 rounded-xl bg-muted/60 ${item.color}`}>
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                            <p className="text-xs text-muted-foreground truncate">{item.description}</p>
+                          </div>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={isMobile ? "space-y-4 mt-4" : "mt-4"}>
+                    {isMobile && mobileSection && (
+                      <div className="flex items-center mb-4">
+                        <button
+                          onClick={() => setMobileSection(null)}
+                          className="flex items-center gap-2 text-sm font-medium text-primary active:opacity-70 transition-opacity"
+                        >
+                          <ChevronRight className="h-4 w-4 rotate-180" />
+                          Back to Menu
+                        </button>
+                      </div>
+                    )}
+                    {isMobile && mobileSection && (
+                      <h2 className="text-lg font-bold text-foreground mb-4">
+                        {mobileSection === 'info' && 'Device Info'}
+                        {mobileSection === 'config' && 'Configuration'}
+                        {mobileSection === 'bindings' && 'Event Bindings'}
+                        {mobileSection === 'sessions' && 'Active Sessions'}
+                        {mobileSection === 'audit' && 'Audit Logs'}
+                      </h2>
+                    )}
+                    <Tabs value={isMobile ? mobileSection : detailTab} onValueChange={setDetailTab}>
+                      {!isMobile && (
+                        <TabsList className="w-full grid grid-cols-5">
+                          <TabsTrigger value="info">Info</TabsTrigger>
+                          <TabsTrigger value="config">Config</TabsTrigger>
+                          <TabsTrigger value="bindings">Bindings</TabsTrigger>
+                          <TabsTrigger value="sessions">Sessions</TabsTrigger>
+                          <TabsTrigger value="audit">Audit</TabsTrigger>
+                        </TabsList>
+                      )}
 
                   {/* ── INFO TAB ── */}
                   <TabsContent value="info" className="space-y-4">
@@ -610,7 +676,9 @@ const DeviceManagement = () => {
                       ))
                     )}
                   </TabsContent>
-                </Tabs>
+                    </Tabs>
+                  </div>
+                )}
               </>
             )}
           </DialogContent>
@@ -668,6 +736,17 @@ const DeviceManagement = () => {
           onClose={() => setBlockOpen(false)}
           deviceId={selectedDevice?.device.id || ''}
           onBlock={handleBlock}
+        />
+
+        {/* ══════ DELETE DIALOG ══════ */}
+        <DeleteConfirmDialog
+          open={deleteDialog.open}
+          onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+          itemName={deleteDialog.deviceName}
+          itemType="device"
+          bullets={['Device will be permanently removed from the system', 'All device sessions and bindings will be removed', 'This action is irreversible']}
+          onConfirm={confirmDeleteDevice}
+          isDeleting={deleteDialog.isDeleting}
         />
       </div>
   );
@@ -728,12 +807,11 @@ function RegisterDeviceDialog({ open, onClose, onSuccess }: { open: boolean; onC
             </Select>
           </div>
           <div>
-            <Label>Institute ID (optional)</Label>
-            <Input value={form.instituteId || ''} onChange={e => setForm(f => ({ ...f, instituteId: e.target.value || undefined }))} placeholder="109" />
-          </div>
-          <div>
-            <Label>Institute Name</Label>
-            <Input value={form.instituteName || ''} onChange={e => setForm(f => ({ ...f, instituteName: e.target.value || undefined }))} />
+            <InstituteSelect
+              value={form.instituteId ?? ''}
+              onChange={(id, name) => setForm(f => ({ ...f, instituteId: id || undefined, instituteName: name || undefined }))}
+              label="Institute (optional)"
+            />
           </div>
           <div>
             <Label>Description</Label>
@@ -872,14 +950,25 @@ function BindEventDialog({ open, onClose, deviceId, isSystemAdmin, instituteId, 
   open: boolean; onClose: () => void; deviceId: string; isSystemAdmin: boolean; instituteId?: string; onSuccess: () => void;
 }) {
   const { toast } = useToast();
-  const [form, setForm] = useState<BindEventPayload>({ eventId: 0 });
+  const [selectedEventId, setSelectedEventId] = useState('');
+  const [selectedCalendarDayId, setSelectedCalendarDayId] = useState('');
+  const [selectedEventName, setSelectedEventName] = useState('');
+  const [statusOverride, setStatusOverride] = useState('');
+  const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
-    if (!form.eventId) {
-      toast({ title: 'Required', description: 'Event ID is required', variant: 'destructive' });
+    if (!selectedEventId) {
+      toast({ title: 'Required', description: 'Please select an event', variant: 'destructive' });
       return;
     }
+    const form: BindEventPayload = {
+      eventId: Number(selectedEventId),
+      calendarDayId: Number(selectedCalendarDayId) || undefined,
+      eventName: selectedEventName || undefined,
+      statusOverride: statusOverride || undefined,
+      notes: notes || undefined,
+    };
     setSaving(true);
     try {
       if (isSystemAdmin) {
@@ -889,7 +978,11 @@ function BindEventDialog({ open, onClose, deviceId, isSystemAdmin, instituteId, 
       }
       toast({ title: 'Event bound' });
       onSuccess();
-      setForm({ eventId: 0 });
+      setSelectedEventId('');
+      setSelectedCalendarDayId('');
+      setSelectedEventName('');
+      setStatusOverride('');
+      setNotes('');
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
@@ -897,38 +990,43 @@ function BindEventDialog({ open, onClose, deviceId, isSystemAdmin, instituteId, 
     }
   };
 
+  const effectiveInstituteId = instituteId ?? '';
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Bind Event to Device</DialogTitle>
-          <DialogDescription>Lock this device to a specific calendar event. All attendance marks will auto-tag with this event.</DialogDescription>
+          <DialogDescription>Pick a date and event — all attendance marks will auto-tag with this event.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div>
-            <Label>Event ID *</Label>
-            <Input type="number" value={form.eventId || ''} onChange={e => setForm(f => ({ ...f, eventId: Number(e.target.value) }))} />
-          </div>
-          <div>
-            <Label>Event Name</Label>
-            <Input value={form.eventName || ''} onChange={e => setForm(f => ({ ...f, eventName: e.target.value || undefined }))} placeholder="Parents Meeting" />
-          </div>
-          <div>
-            <Label>Calendar Day ID</Label>
-            <Input type="number" value={form.calendarDayId || ''} onChange={e => setForm(f => ({ ...f, calendarDayId: Number(e.target.value) || undefined }))} />
-          </div>
+          {effectiveInstituteId ? (
+            <EventSelect
+              instituteId={effectiveInstituteId}
+              value={selectedEventId}
+              onChange={(evId, dayId, ev) => {
+                setSelectedEventId(evId);
+                setSelectedCalendarDayId(dayId);
+                setSelectedEventName((ev as any)?.title ?? (ev as any)?.eventName ?? '');
+              }}
+              showDatePicker
+              label="Event *"
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Device has no institute assigned — cannot look up events.</p>
+          )}
           <div>
             <Label>Status Override</Label>
-            <Input value={form.statusOverride || ''} onChange={e => setForm(f => ({ ...f, statusOverride: e.target.value || undefined }))} placeholder="present" />
+            <Input value={statusOverride} onChange={e => setStatusOverride(e.target.value)} placeholder="present" />
           </div>
           <div>
             <Label>Notes</Label>
-            <Textarea value={form.notes || ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value || undefined }))} />
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? 'Binding...' : 'Bind Event'}</Button>
+          <Button onClick={handleSave} disabled={saving || !selectedEventId}>{saving ? 'Binding...' : 'Bind Event'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -943,10 +1041,15 @@ function AssignDialog({ open, onClose, device, onSuccess }: {
   const [instName, setInstName] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Reset when dialog opens
+  useEffect(() => {
+    if (open) { setInstId(''); setInstName(''); }
+  }, [open]);
+
   const handleSave = async () => {
     if (!device) return;
     if (!instId) {
-      toast({ title: 'Required', description: 'Institute ID is required', variant: 'destructive' });
+      toast({ title: 'Required', description: 'Please select an institute', variant: 'destructive' });
       return;
     }
     setSaving(true);
@@ -987,14 +1090,12 @@ function AssignDialog({ open, onClose, device, onSuccess }: {
           <DialogDescription>Assign this device to an institute or change its assignment.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div>
-            <Label>Institute ID *</Label>
-            <Input value={instId} onChange={e => setInstId(e.target.value)} placeholder="109" />
-          </div>
-          <div>
-            <Label>Institute Name</Label>
-            <Input value={instName} onChange={e => setInstName(e.target.value)} placeholder="Suraksha Academy" />
-          </div>
+          <InstituteSelect
+            value={instId}
+            onChange={(id, name) => { setInstId(id); setInstName(name); }}
+            label="Institute *"
+            required
+          />
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">
           {device?.instituteId && (
@@ -1004,7 +1105,7 @@ function AssignDialog({ open, onClose, device, onSuccess }: {
           )}
           <div className="flex-1" />
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
+          <Button onClick={handleSave} disabled={saving || !instId}>{saving ? 'Saving...' : 'Save'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

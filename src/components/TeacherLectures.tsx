@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RefreshCw, Filter, Plus, Video, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import CreateLectureForm from '@/components/forms/CreateLectureForm';
@@ -14,6 +15,7 @@ import UpdateLectureForm from '@/components/forms/UpdateLectureForm';
 import { useTableData } from '@/hooks/useTableData';
 import { cachedApiClient } from '@/api/cachedClient';
 import VideoPreviewDialog from '@/components/VideoPreviewDialog';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 interface TeacherLecture {
   id: string;
@@ -42,6 +44,7 @@ interface TeacherLecture {
 
 const TeacherLectures = () => {
   const { user, selectedInstitute, selectedClass, selectedSubject } = useAuth();
+  const { subjectLabel } = useInstituteLabels();
   const effectiveRole = useInstituteRole();
   const { toast } = useToast();
   
@@ -53,6 +56,8 @@ const TeacherLectures = () => {
   const [selectedLecture, setSelectedLecture] = useState<TeacherLecture | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [videoPreviewTitle, setVideoPreviewTitle] = useState<string>('');
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; item: any }>({ open: false, item: null });
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -170,27 +175,22 @@ const TeacherLectures = () => {
     actions.refresh();
   };
 
-  const handleDeleteLecture = async (lectureData: any) => {
-    console.log('Deleting lecture:', lectureData);
-    
+  const handleDeleteLecture = (lectureData: any) => {
+    setDeleteDialog({ open: true, item: lectureData });
+  };
+  const confirmDeleteLecture = async () => {
+    if (!deleteDialog.item) return;
+    setIsDeleting(true);
     try {
-      await cachedApiClient.delete(`/institute-class-subject-lectures/${lectureData.id}`);
-      
-      toast({
-        title: "Lecture Deleted",
-        description: `Lecture ${lectureData.title} has been deleted successfully.`,
-        variant: "destructive"
-      });
-      
+      // Backend DELETE is SUPERADMIN-only; use PATCH to soft-deactivate instead
+      await cachedApiClient.patch(`/institute-class-subject-lectures/${deleteDialog.item.id}`, { isActive: false });
+      toast({ title: "Lecture Deleted", description: `Lecture ${deleteDialog.item.title} has been deleted successfully.` });
+      setDeleteDialog({ open: false, item: null });
       actions.refresh();
-      
-    } catch (error) {
-      console.error('Error deleting lecture:', error);
-      toast({
-        title: "Delete Failed",
-        description: "Failed to delete lecture. Please try again.",
-        variant: "destructive"
-      });
+    } catch (error: any) {
+      toast({ title: "Delete Failed", description: "Failed to delete lecture. Please try again.", variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -250,10 +250,10 @@ const TeacherLectures = () => {
         <div className="text-center py-12">
           <Video className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <h2 className="text-2xl font-bold mb-4">
-            Select Subject
+            Select {subjectLabel}
           </h2>
           <p className="text-muted-foreground">
-            Please select an institute, class, and subject to view lectures.
+            Please select an institute, class, and {subjectLabel.toLowerCase()} to view lectures.
           </p>
         </div>
       </div>
@@ -441,6 +441,14 @@ const TeacherLectures = () => {
         title={videoPreviewTitle}
       />
 
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.item?.title || ''}
+        itemType="lecture"
+        onConfirm={confirmDeleteLecture}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

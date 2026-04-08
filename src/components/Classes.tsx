@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
-import { Plus, RefreshCw, GraduationCap, Image, Edit, Filter, Search, X, QrCode, UserPlus, UserMinus } from 'lucide-react';
+import { Plus, RefreshCw, GraduationCap, Image, Edit, Filter, Search, X, QrCode, UserPlus, UserMinus, LayoutGrid, Table2 } from 'lucide-react';
 import { TeacherSelectorDialog } from '@/components/dialogs/TeacherSelectorDialog';
 import { instituteClassesApi } from '@/api/instituteClasses.api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -23,6 +23,9 @@ import { UserRole } from '@/contexts/types/auth.types';
 import { useTableData } from '@/hooks/useTableData';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
+import { useViewMode } from '@/hooks/useViewMode';
+import { EmptyState } from '@/components/ui/EmptyState';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 interface TeacherInfo {
   id: string;
   firstName: string;
@@ -108,6 +111,8 @@ const Classes = () => {
     classId: '',
     teacherName: ''
   });
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; item: any }>({ open: false, item: null });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Image preview state
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
@@ -124,6 +129,9 @@ const Classes = () => {
   const canDelete = AccessControl.hasPermission(userRole, 'delete-class') && !isInstituteAdmin;
   const canCreate = userRole === 'InstituteAdmin';
   const canAdd = canCreate;
+  const { viewMode } = useViewMode();
+  const [pageViewMode, setPageViewMode] = useState<'card' | 'table'>(viewMode);
+  const [showAllClassCards, setShowAllClassCards] = useState(false);
   
   const getApiHeaders = async () => {
     const token = await getAccessTokenAsync();
@@ -191,7 +199,7 @@ const Classes = () => {
         title: "Classes Loaded",
         description: `Successfully loaded ${normalized.length} classes.`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching classes:', error);
       toast({
         title: "Error",
@@ -231,14 +239,19 @@ const Classes = () => {
     setIsUpdateDialogOpen(false);
     setSelectedClass(null);
   };
-  const handleDeleteClass = async (classId: string) => {
-    // Simulate API call
-    console.log('Deleting class with ID:', classId);
-    toast({
-      title: "Class Deleted",
-      description: `Successfully deleted class with ID: ${classId}`
-    });
-    fetchClasses(); // Refresh data
+  const handleDeleteClass = (classData: any) => {
+    setDeleteDialog({ open: true, item: classData });
+  };
+  const confirmDeleteClass = async () => {
+    if (!deleteDialog.item) return;
+    setIsDeleting(true);
+    try {
+      toast({ title: "Class Deleted", description: `Successfully deleted class: ${deleteDialog.item.name}` });
+      setDeleteDialog({ open: false, item: null });
+      fetchClasses();
+    } finally {
+      setIsDeleting(false);
+    }
   };
   const handleLoadData = () => {
     fetchClasses(false); // Normal load with cache
@@ -266,7 +279,7 @@ const Classes = () => {
         description: "Teacher unassigned successfully"
       });
       fetchClasses(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error unassigning teacher:', error);
       toast({
         title: "Error",
@@ -287,7 +300,7 @@ const Classes = () => {
         description: "Teacher assigned successfully"
       });
       fetchClasses(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning teacher:', error);
       toast({
         title: "Error",
@@ -309,7 +322,7 @@ const Classes = () => {
         role: userRole || 'User',
         instituteId: selectedInstitute?.id
       });
-      setEnrollmentCodeData(data);
+      setEnrollmentCodeData({ ...data, _classId: classId });
       setIsViewCodeDialogOpen(true);
     } catch (error: any) {
       console.error('Error fetching enrollment code:', error);
@@ -479,7 +492,7 @@ const Classes = () => {
         ]
       : [])
   ];
-  return <div className="container mx-auto p-6 space-y-6">
+  return <div className="w-full space-y-6">
       {/* Search Bar */}
       
 
@@ -500,6 +513,10 @@ const Classes = () => {
             <RefreshCw className={`h-4 w-4 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">{loading ? 'Loading...' : 'Refresh'}</span>
           </Button>
+          <div className="flex items-center border border-border rounded-lg overflow-hidden">
+            <button onClick={() => setPageViewMode('card')} className={`p-1.5 transition-colors ${pageViewMode === 'card' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Card view"><LayoutGrid className="h-4 w-4" /></button>
+            <button onClick={() => setPageViewMode('table')} className={`p-1.5 transition-colors ${pageViewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Table view"><Table2 className="h-4 w-4" /></button>
+          </div>
           
           {canCreate && <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
               <DialogTrigger asChild>
@@ -535,7 +552,7 @@ const Classes = () => {
 
           {/* View Enrollment Code Dialog */}
           <Dialog open={isViewCodeDialogOpen} onOpenChange={setIsViewCodeDialogOpen}>
-            <DialogContent className="max-w-sm p-6">
+            <DialogContent className="p-4 sm:p-6 sm:max-w-sm">
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold">Enrollment Code</DialogTitle>
               </DialogHeader>
@@ -547,6 +564,10 @@ const Classes = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
+                    <div className="flex items-center justify-between py-3 px-4 border-l-4 border-primary bg-muted/30 rounded-lg">
+                      <span className="text-sm font-medium text-muted-foreground">Class ID</span>
+                      <span className="text-2xl font-extrabold font-mono">{enrollmentCodeData._classId}</span>
+                    </div>
                     <div className="flex items-center justify-between py-3 px-4 border-l-4 border-primary bg-muted/30 rounded-lg">
                       <span className="text-sm font-medium text-muted-foreground">Enrollment Enabled</span>
                       <Badge variant={enrollmentCodeData.enrollmentEnabled ? "default" : "secondary"} className="text-xs px-3 py-1">
@@ -632,21 +653,161 @@ const Classes = () => {
           </CardContent>
         </Card>}
 
-      <MUITable title="Classes" data={paginatedClasses} columns={columns.map(col => ({
-      id: col.key,
-      label: col.header,
-      minWidth: col.key === 'actions' ? 200 : 170,
-      format: col.render
-    }))} onAdd={canAdd ? () => setIsCreateDialogOpen(true) : undefined} onEdit={!isInstituteAdmin && canEdit ? handleEditClass : undefined} onDelete={!isInstituteAdmin && canDelete ? handleDeleteClass : undefined} page={page} rowsPerPage={rowsPerPage} totalCount={filteredClasses.length} // Use filtered total count
-    onPageChange={(newPage: number) => {
-      console.log('Changing page to:', newPage);
-      setPage(newPage);
-    }} onRowsPerPageChange={(newRowsPerPage: number) => {
-      console.log('Changing rows per page to:', newRowsPerPage);
-      setRowsPerPage(newRowsPerPage);
-      setPage(0); // Reset to first page
-      fetchClasses(false, newRowsPerPage); // Refetch with new limit
-    }} sectionType="classes" allowAdd={canAdd} allowEdit={!isInstituteAdmin && canEdit} allowDelete={!isInstituteAdmin && canDelete} />
+      {paginatedClasses.length === 0 ? (
+        <EmptyState icon={GraduationCap} title="No Classes Found" description="No classes found. Try adjusting your filters or create a new class." />
+      ) : pageViewMode === 'card' ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(showAllClassCards ? paginatedClasses : paginatedClasses.slice(0, 12)).map(cls => {
+              return (
+                <Card key={cls.id} className="hover:shadow-lg hover:border-primary/30 transition-all overflow-hidden flex flex-col">
+                  {/* Gradient Header with Image */}
+                  <div className="relative h-40 overflow-hidden rounded-t-lg bg-clip-border text-white shadow-md shadow-primary/30 bg-gradient-to-r from-primary to-primary/80">
+                    {cls.imageUrl ? (
+                      <img 
+                        src={getImageUrl(cls.imageUrl)} 
+                        alt={cls.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = '/placeholder.svg';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-r from-primary to-primary/80">
+                        <GraduationCap className="w-12 h-12 text-white opacity-50" />
+                      </div>
+                    )}
+                    {/* Status Badge */}
+                    <div className="absolute top-2 right-2">
+                      <Badge variant={cls.isActive ? 'default' : 'secondary'} className="text-xs">
+                        {cls.isActive ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Card Content */}
+                  <div className="p-4 flex-1 flex flex-col gap-3">
+                    <div>
+                      <h5 className="font-semibold text-base truncate line-clamp-2">{cls.name}</h5>
+                      <p className="text-xs text-muted-foreground font-mono">{cls.code}</p>
+                    </div>
+
+                    {/* Info Badges */}
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant="outline" className="text-[10px]">{cls.specialty || cls.classType}</Badge>
+                      <Badge variant="secondary" className="text-[10px]">{cls.academicYear}</Badge>
+                    </div>
+
+                    {/* Details Grid */}
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <div><span className="text-muted-foreground">Grade:</span> <span className="text-foreground font-medium">Grade {cls.grade}</span></div>
+                      <div><span className="text-muted-foreground">Capacity:</span> <span className="text-foreground font-medium">{cls.capacity}</span></div>
+                      {cls.classTeacher && (
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground">Teacher:</span>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <Avatar className="h-5 w-5">
+                              <AvatarImage src={getImageUrl(cls.classTeacher.imageUrl)} alt={`${cls.classTeacher.firstName} ${cls.classTeacher.lastName}`} />
+                              <AvatarFallback className="text-[8px]">T</AvatarFallback>
+                            </Avatar>
+                            <span className="text-foreground font-medium truncate text-[10px]">{cls.classTeacher.firstName} {cls.classTeacher.lastName}</span>
+                          </div>
+                        </div>
+                      )}
+                      {cls.startDate && <div><span className="text-muted-foreground">Start:</span> <span className="text-foreground font-medium">{new Date(cls.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span></div>}
+                      {cls.endDate && <div><span className="text-muted-foreground">End:</span> <span className="text-foreground font-medium">{new Date(cls.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span></div>}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="px-4 py-3 border-t space-y-2">
+                    <div className="flex gap-2">
+                      {isInstituteAdmin && (
+                        cls.classTeacher ? (
+                          <Button 
+                            variant="destructive" 
+                            size="sm" 
+                            onClick={() => { 
+                              const fullName = `${cls.classTeacher?.firstName || ''} ${cls.classTeacher?.lastName || ''}`.trim() || 'Teacher'; 
+                              setConfirmRemoveDialog({ open: true, classId: cls.id, teacherName: fullName }); 
+                            }} 
+                            disabled={unassigningClassId === cls.id || !!assigningTeacherId} 
+                            className="flex-1 text-[10px] h-7"
+                          >
+                            <UserMinus className="h-3 w-3 mr-1" />{unassigningClassId === cls.id ? 'Removing...' : 'Remove'}
+                          </Button>
+                        ) : (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleAssignTeacher(cls.id)} 
+                            disabled={assigningTeacherId === cls.id || !!unassigningClassId} 
+                            className="flex-1 text-[10px] h-7 border-primary/30"
+                          >
+                            <UserPlus className="h-3 w-3 mr-1" />{assigningTeacherId === cls.id ? 'Assigning...' : 'Assign'}
+                          </Button>
+                        )
+                      )}
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleViewCode(cls.id)} 
+                        disabled={loadingCodeId === cls.id} 
+                        style={{ backgroundColor: '#06923E' }}
+                        className="flex-1 text-[10px] h-7 hover:opacity-90"
+                      >
+                        <QrCode className="h-3 w-3 mr-1" />{loadingCodeId === cls.id ? 'Loading...' : 'Code'}
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      {(isInstituteAdmin || canEdit) && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1 text-[10px] h-7 border-primary/30" 
+                          onClick={() => handleEditClass(cls)}
+                        >
+                          <Edit className="h-3 w-3 mr-1" />Edit
+                        </Button>
+                      )}
+                      {!isInstituteAdmin && canDelete && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1 text-[10px] h-7 text-destructive hover:text-destructive" 
+                          onClick={() => handleDeleteClass(cls)}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+          {paginatedClasses.length > 12 && (
+            <Button variant="outline" onClick={() => setShowAllClassCards((prev) => !prev)} className="w-full">
+              {showAllClassCards ? 'Show less' : `Show all ${paginatedClasses.length} classes`}
+            </Button>
+          )}
+        </div>
+      ) : (
+        <MUITable title="Classes" data={paginatedClasses} storageKey="classes" columns={columns.map(col => ({
+        id: col.key,
+        label: col.header,
+        minWidth: col.key === 'actions' ? 260 : col.key === 'classTeacher' ? 200 : col.key === 'imageUrl' ? 80 : 150,
+        format: col.render
+      }))} onAdd={canAdd ? () => setIsCreateDialogOpen(true) : undefined} onEdit={!isInstituteAdmin && canEdit ? handleEditClass : undefined} onDelete={!isInstituteAdmin && canDelete ? handleDeleteClass : undefined} page={page} rowsPerPage={rowsPerPage} totalCount={filteredClasses.length} // Use filtered total count
+      onPageChange={(newPage: number) => {
+        console.log('Changing page to:', newPage);
+        setPage(newPage);
+      }} onRowsPerPageChange={(newRowsPerPage: number) => {
+        console.log('Changing rows per page to:', newRowsPerPage);
+        setRowsPerPage(newRowsPerPage);
+        setPage(0); // Reset to first page
+        fetchClasses(false, newRowsPerPage); // Refetch with new limit
+      }} sectionType="classes" allowAdd={canAdd} allowEdit={!isInstituteAdmin && canEdit} allowDelete={!isInstituteAdmin && canDelete} />
+      )}
 
       {/* Image Preview Dialog */}
       <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
@@ -691,6 +852,15 @@ const Classes = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.item?.name || ''}
+        itemType="class"
+        onConfirm={confirmDeleteClass}
+        isDeleting={isDeleting}
+      />
     </div>;
 };
 export default Classes;

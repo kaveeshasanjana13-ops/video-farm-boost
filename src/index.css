@@ -85,66 +85,86 @@
   }
 
   .dark {
-    --background: 222 47% 4%;
-    --foreground: 210 20% 96%;
+    --background: 222 20% 10%;
+    --foreground: 210 20% 95%;
     
-    --card: 222 47% 7%;
-    --card-foreground: 210 20% 96%;
+    --card: 222 20% 13%;
+    --card-foreground: 210 20% 95%;
     
-    --popover: 222 47% 7%;
-    --popover-foreground: 210 20% 96%;
+    --popover: 222 20% 13%;
+    --popover-foreground: 210 20% 95%;
     
-    --primary: 217 91% 55%;
+    --primary: 217 85% 62%;
     --primary-foreground: 0 0% 100%;
     
-    --secondary: 217 30% 15%;
-    --secondary-foreground: 210 20% 96%;
+    --secondary: 222 20% 18%;
+    --secondary-foreground: 210 20% 90%;
     
-    --muted: 217 25% 14%;
-    --muted-foreground: 217 20% 60%;
+    --muted: 222 20% 18%;
+    --muted-foreground: 217 15% 60%;
     
-    --accent: 217 91% 55%;
+    --accent: 217 85% 62%;
     --accent-foreground: 0 0% 100%;
     
-    --destructive: 0 63% 51%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
     
-    --border: 217 25% 16%;
-    --input: 217 25% 16%;
-    --ring: 217 91% 55%;
+    --border: 222 20% 22%;
+    --input: 222 20% 18%;
+    --ring: 217 85% 62%;
     
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 210 20% 96%;
-    --sidebar-primary: 217 91% 55%;
+    /* Chart Colors - Dark */
+    --chart-1: 217 85% 62%;
+    --chart-2: 217 75% 72%;
+    --chart-3: 217 65% 55%;
+    --chart-4: 217 55% 45%;
+    --chart-5: 217 45% 35%;
+    
+    /* Shadows for dark mode */
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.35);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+    --shadow-glow: 0 0 30px hsl(217 85% 62% / 0.25);
+    
+    --sidebar-background: 222 20% 8%;
+    --sidebar-foreground: 210 20% 95%;
+    --sidebar-primary: 217 85% 62%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 30% 12%;
-    --sidebar-accent-foreground: 217 91% 70%;
-    --sidebar-border: 217 25% 16%;
-    --sidebar-ring: 217 91% 55%;
+    --sidebar-accent: 222 20% 16%;
+    --sidebar-accent-foreground: 217 85% 62%;
+    --sidebar-border: 222 20% 18%;
+    --sidebar-ring: 217 85% 62%;
   }
 
-  /* Modern Scrollbar */
-  .scrollbar-thin {
+  /* Modern Scrollbar — global */
+  * {
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--border)) transparent;
   }
 
-  .scrollbar-thin::-webkit-scrollbar {
+  *::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
 
-  .scrollbar-thin::-webkit-scrollbar-track {
+  *::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .scrollbar-thin::-webkit-scrollbar-thumb {
+  *::-webkit-scrollbar-thumb {
     background-color: hsl(var(--border));
     border-radius: 9999px;
   }
 
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  *::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+
+  /* Thin scrollbar utility */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
   }
 }
 
@@ -153,15 +173,24 @@
     @apply border-border;
   }
   
+  html {
+    height: 100%;
+    overflow: hidden;
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
+    height: 100%;
+    overflow: hidden;
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
-  
-  html {
-    scroll-behavior: smooth;
-    -webkit-tap-highlight-color: transparent;
+
+  #root {
+    height: 100%;
+    overflow: hidden;
   }
   
   /* Premium Focus States */
@@ -278,6 +307,7 @@
     @apply bg-background/50 border-border/50 rounded-xl;
     @apply focus:bg-background focus:border-primary/50;
     @apply transition-all duration-200;
+    @apply dark:bg-muted/30 dark:border-border dark:focus:border-primary/60;
   }
   
   /* Floating Label Effect */
@@ -289,6 +319,52 @@
   .floating-label input:not(:placeholder-shown) ~ label {
     @apply -translate-y-6 scale-90 text-primary;
   }
+}
+
+/* ── Google Translate: hide ALL injected UI & prevent body shift ── */
+.goog-te-banner-frame,
+.goog-te-banner-frame.skiptranslate,
+iframe.goog-te-banner-frame {
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  border: none !important;
+  visibility: hidden !important;
+}
+.skiptranslate:not(#google_translate_element) {
+  display: none !important;
+  height: 0 !important;
+  visibility: hidden !important;
+}
+body {
+  top: 0 !important;
+  position: static !important;
+}
+body > .skiptranslate {
+  display: none !important;
+  height: 0 !important;
+}
+.skiptranslate > font,
+.skiptranslate > font > font {
+  box-shadow: none !important;
+  background-color: transparent !important;
+}
+#goog-gt-tt,
+.goog-te-balloon-frame,
+div#goog-gt-,
+.goog-tooltip,
+.goog-tooltip:hover {
+  display: none !important;
+}
+#google_translate_element {
+  display: none !important;
+}
+/* Keep the language switcher's own text untranslated */
+.notranslate { translate: none; }
+
+/* Language switcher on desktop: bottom-right near clock area */
+@media (min-width: 1024px) {
+  #lang-switcher-portal { bottom: 16px !important; }
 }
 
 @layer utilities {
@@ -441,22 +517,34 @@
   border-color: rgba(255, 255, 255, 0.5) !important;
 }
 /* Mobile Safe Area Support */
-@supports (padding-top: env(safe-area-inset-top)) {
-  .pt-safe-top {
-    padding-top: env(safe-area-inset-top);
-  }
-  
-  .pb-safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-  
-  .pl-safe-left {
-    padding-left: env(safe-area-inset-left);
-  }
-  
-  .pr-safe-right {
-    padding-right: env(safe-area-inset-right);
-  }
+/* Use max() so pt-safe-top never collapses to 0 when env() is not set,
+   which would make the header content sit behind the Android status bar. */
+.pt-safe-top {
+  padding-top: max(env(safe-area-inset-top, 0px), 0.625rem);
+}
+
+.pb-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pl-safe-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.pr-safe-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* ── Keyboard / Input Scroll Fix (global) ────────────────────
+   When the on-screen keyboard opens, the browser should keep the
+   focused input visible. scroll-margin-bottom adds breathing room
+   so the input is never hidden directly behind the keyboard edge.
+   The JS handler in main.tsx handles Capacitor WebView cases where
+   the native scroll-to-focus doesn't fire. */
+input:focus,
+textarea:focus,
+select:focus {
+  scroll-margin-bottom: 120px;
 }
 
 /* Capacitor BarcodeScanner Active State */
@@ -497,6 +585,26 @@ body.scanner-active .barcode-scanner-modal {
   100% {
     top: 0%;
   }
+}
+
+/* ── Global Dark Mode Improvements ───────────────────────── */
+.dark select,
+.dark textarea {
+  background-color: hsl(var(--muted));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+  color-scheme: dark;
+}
+
+.dark select option {
+  background-color: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+
+/* Make white backgrounds inside dark mode cards readable */
+.dark .bg-white {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
 }
 
 .animate-scan-line {

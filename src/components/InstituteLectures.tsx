@@ -4,14 +4,18 @@ import { lectureApi, Lecture } from '@/api/lecture.api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
-import { Video, Calendar, Clock, Users, MapPin, ExternalLink, Plus, Edit, Trash2, Play, RefreshCw, BookOpen, Radio } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
+import { ExternalLink, Plus, Edit, Trash2, Play, RefreshCw, BookOpen, ChevronDown, LayoutGrid, Table2 } from 'lucide-react';
 import { format } from 'date-fns';
 import CreateInstituteLectureForm from '@/components/forms/CreateInstituteLectureForm';
 import UpdateInstituteLectureForm from '@/components/forms/UpdateInstituteLectureForm';
 import DeleteLectureConfirmDialog from '@/components/forms/DeleteLectureConfirmDialog';
+import VideoPreviewDialog from '@/components/VideoPreviewDialog';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useToast } from '@/hooks/use-toast';
+import MUITable from '@/components/ui/mui-table';
+import { useViewMode } from '@/hooks/useViewMode';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const InstituteLectures = () => {
   const { selectedInstitute, user } = useAuth();
@@ -33,7 +37,7 @@ const InstituteLectures = () => {
   const fetchLectures = async (pageNum: number = 1, forceRefresh: boolean = false) => {
     if (!selectedInstitute?.id) {
       toast({
-        title: 'Select Institute',
+        title: 'Institutes',
         description: 'Please select an institute first',
         variant: 'destructive',
       });
@@ -61,7 +65,7 @@ const InstituteLectures = () => {
 
       setLectures(lecturesData);
       setTotalPages(Math.ceil(lecturesData.length / 10));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching institute lectures:', error);
       toast({
         title: 'Failed to load lectures',
@@ -135,8 +139,9 @@ const InstituteLectures = () => {
   };
 
   const isInstituteAdmin = effectiveRole === 'InstituteAdmin';
-
-  // Stats
+  const { viewMode } = useViewMode();
+  const [pageViewMode, setPageViewMode] = useState<'card' | 'table'>(viewMode);
+  const [expandedLectureId, setExpandedLectureId] = useState<string | null>(null);
   const scheduledCount = lectures.filter(l => l.status === 'scheduled').length;
   const ongoingCount = lectures.filter(l => l.status === 'ongoing').length;
   const completedCount = lectures.filter(l => l.status === 'completed').length;
@@ -170,78 +175,72 @@ const InstituteLectures = () => {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-6xl mx-auto">
-      {/* Premium Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/5 via-primary/3 to-transparent border border-border/50 p-6 sm:p-8">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-        <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Video className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Institute Lectures</h1>
-                <p className="text-sm text-muted-foreground">{selectedInstitute.name}</p>
-              </div>
-            </div>
+    <div className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
+      {/* Header */}
+      <div className="flex flex-col gap-2 sm:gap-3">
+        <div>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold">Institute Lectures</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
+            Manage all lectures for {selectedInstitute.name}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <Button
+            onClick={() => fetchLectures(page, true)}
+            disabled={loading}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          <div className="flex items-center border border-border rounded-lg overflow-hidden">
+            <button onClick={() => setPageViewMode('card')} className={`p-1.5 transition-colors ${pageViewMode === 'card' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Card view"><LayoutGrid className="h-4 w-4" /></button>
+            <button onClick={() => setPageViewMode('table')} className={`p-1.5 transition-colors ${pageViewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Table view"><Table2 className="h-4 w-4" /></button>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => fetchLectures(page, true)}
-              disabled={loading}
-              variant="outline"
-              size="sm"
-              className="rounded-xl gap-2 border-border/50 backdrop-blur-sm"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-            {isInstituteAdmin && (
+          {isInstituteAdmin && (
               <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
                 <DialogTrigger asChild>
-                  <Button size="sm" className="rounded-xl gap-2 shadow-sm">
-                    <Plus className="h-4 w-4" />
+                  <Button size="sm" className="h-8 sm:h-9 text-xs sm:text-sm px-2.5 sm:px-3">
+                    <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5" />
                     New Lecture
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <DialogTitle className="sr-only">Create Lecture</DialogTitle>
+                  <DialogDescription className="sr-only">Form to create a new institute lecture</DialogDescription>
                   <CreateInstituteLectureForm onClose={() => setShowCreateDialog(false)} onSuccess={handleCreateSuccess} />
                 </DialogContent>
               </Dialog>
             )}
-          </div>
         </div>
-
-        {/* Stats Row */}
-        {lectures.length > 0 && (
-          <div className="relative grid grid-cols-3 gap-3 mt-6">
-            {[
-              { label: 'Scheduled', value: scheduledCount, icon: Calendar },
-              { label: 'Live Now', value: ongoingCount, icon: Radio },
-              { label: 'Completed', value: completedCount, icon: BookOpen },
-            ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className="flex items-center gap-3 p-3 rounded-xl bg-background/60 backdrop-blur-sm border border-border/30">
-                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <Icon className="h-4 w-4 text-primary" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-lg font-bold leading-none">{value}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* Stats */}
+      {lectures.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          {[
+            { label: 'Scheduled', value: scheduledCount },
+            { label: 'Live Now', value: ongoingCount },
+            { label: 'Completed', value: completedCount },
+          ].map(({ label, value }) => (
+            <Card key={label}>
+              <CardContent className="p-2.5 sm:p-4">
+                <div className="text-lg sm:text-xl font-bold">{value}</div>
+                <p className="text-[10px] sm:text-xs text-muted-foreground">{label}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Content */}
       {loading && lectures.length === 0 ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="rounded-2xl border border-border/50 p-5 animate-pulse">
-              <div className="flex gap-4">
-                <div className="w-12 h-12 rounded-xl bg-muted" />
+            <div key={i} className="rounded-xl border border-border/50 p-4 animate-pulse">
+              <div className="flex gap-3">
                 <div className="flex-1 space-y-2">
                   <div className="h-5 w-48 bg-muted rounded-lg" />
                   <div className="h-4 w-32 bg-muted rounded-lg" />
@@ -251,138 +250,160 @@ const InstituteLectures = () => {
           ))}
         </div>
       ) : lectures.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-20 h-20 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
-            <Video className="h-10 w-10 text-muted-foreground/50" />
-          </div>
-          <h3 className="text-lg font-semibold mb-1">No Lectures Yet</h3>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            No institute lectures available at the moment.
-            {isInstituteAdmin && ' Create your first lecture to get started.'}
-          </p>
-        </div>
+        <EmptyState
+          icon={BookOpen}
+          title="No Lectures Yet"
+          description={`No institute lectures available at the moment.${isInstituteAdmin ? ' Create your first lecture to get started.' : ''}`}
+        />
       ) : (
         <>
-          <div className="space-y-3">
+          {pageViewMode === 'table' ? (
+            <MUITable
+              title=""
+              data={lectures}
+              columns={[
+                { id: 'title', label: 'Title', minWidth: 200, format: (val: string, row: any) => <div><div className="font-medium">{val}</div>{row.description && <div className="text-xs text-muted-foreground line-clamp-1">{row.description}</div>}</div> },
+                { id: 'status', label: 'Status', minWidth: 120, format: (val: string) => { const cfg = getStatusConfig(val); return <Badge variant="outline" className={cfg.className}>{cfg.label}</Badge>; } },
+                { id: 'lectureType', label: 'Type', minWidth: 100, format: (val: string) => <Badge variant="secondary" className="capitalize">{val}</Badge> },
+                { id: 'startTime', label: 'Start Time', minWidth: 170, format: (val: string) => val ? formatDateTime(val) : '—' },
+                { id: 'endTime', label: 'End Time', minWidth: 110, format: (val: string) => val ? format(new Date(val), 'HH:mm') : '—' },
+                { id: 'venue', label: 'Venue', minWidth: 120, format: (val: string) => val || '—' },
+                { id: 'id', label: 'Actions', minWidth: 220, format: (_: any, row: any) => (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {row.meetingLink && (
+                      <Button size="sm" onClick={() => handleJoinLecture(row)} className="h-7 text-xs rounded-lg gap-1">
+                        <ExternalLink className="h-3 w-3" />Join
+                      </Button>
+                    )}
+                    {row.recordingUrl && (
+                      <Button size="sm" variant="outline" onClick={() => handleViewRecording(row)} className="h-7 text-xs rounded-lg gap-1">
+                        <Play className="h-3 w-3" />Recording
+                      </Button>
+                    )}
+                    {isInstituteAdmin && (
+                      <>
+                        <Button size="sm" variant="ghost" onClick={() => handleUpdateClick(row)} className="h-7 text-xs rounded-lg gap-1">
+                          <Edit className="h-3 w-3" />Edit
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDeleteClick(row)} className="h-7 text-xs rounded-lg gap-1 text-destructive hover:text-destructive">
+                          <Trash2 className="h-3 w-3" />Delete
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )},
+              ]}
+              page={0}
+              rowsPerPage={lectures.length || 10}
+              totalCount={lectures.length}
+              onPageChange={() => {}}
+              onRowsPerPageChange={() => {}}
+              allowAdd={false}
+              allowEdit={false}
+              allowDelete={false}
+            />
+          ) : (
+            <div className="space-y-3">
             {lectures.map((lecture) => {
               const statusConfig = getStatusConfig(lecture.status);
+              const isExpanded = expandedLectureId === lecture.id;
               return (
                 <Card
                   key={lecture.id}
-                  className="group relative overflow-hidden rounded-2xl border-border/50 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300"
+                  className="hover:shadow-md transition-shadow"
                 >
-                  <CardContent className="p-4 sm:p-5">
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      {/* Left Icon */}
-                      <div className="shrink-0">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                          lecture.lectureType === 'online'
-                            ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                            : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                        }`}>
-                          {lecture.lectureType === 'online' ? <Video className="h-6 w-6" /> : <MapPin className="h-6 w-6" />}
-                        </div>
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0 space-y-3">
-                        {/* Title Row */}
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                          <div className="min-w-0">
-                            <h3 className="font-semibold text-base sm:text-lg line-clamp-1 group-hover:text-primary transition-colors">
-                              {lecture.title}
-                            </h3>
-                            <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">{lecture.description}</p>
-                            {lecture.subject && (
-                              <span className="text-xs font-medium text-primary/80 mt-1 inline-block">
-                                {lecture.subject}
-                              </span>
-                            )}
-                          </div>
-                          <Badge variant="outline" className={`${statusConfig.className} shrink-0 self-start rounded-lg text-xs font-medium px-2.5 py-0.5`}>
-                            {statusConfig.label}
-                          </Badge>
-                        </div>
-
-                        {/* Meta Info */}
-                        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1.5">
-                            <Calendar className="h-3.5 w-3.5" />
-                            {formatDateTime(lecture.startTime)}
-                          </span>
-                          {lecture.endTime && (
-                            <span className="flex items-center gap-1.5">
-                              <Clock className="h-3.5 w-3.5" />
-                              → {format(new Date(lecture.endTime), 'HH:mm')}
-                            </span>
-                          )}
-                          <span className="flex items-center gap-1.5">
-                            <Users className="h-3.5 w-3.5" />
-                            {lecture.maxParticipants} max
-                          </span>
-                          {lecture.venue && (
-                            <span className="flex items-center gap-1.5">
-                              <MapPin className="h-3.5 w-3.5" />
-                              {lecture.venue}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {lecture.meetingLink && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleJoinLecture(lecture)}
-                              className="rounded-xl gap-1.5 h-8 text-xs shadow-sm"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                              Join Meeting
-                            </Button>
-                          )}
-                          {lecture.recordingUrl && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleViewRecording(lecture)}
-                              className="rounded-xl gap-1.5 h-8 text-xs border-border/50"
-                            >
-                              <Play className="h-3.5 w-3.5" />
-                              Recording
-                            </Button>
-                          )}
-                          {isInstituteAdmin && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleUpdateClick(lecture)}
-                                className="rounded-xl gap-1.5 h-8 text-xs"
-                              >
-                                <Edit className="h-3.5 w-3.5" />
-                                Edit
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDeleteClick(lecture)}
-                                className="rounded-xl gap-1.5 h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Delete
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </div>
+                  {/* Always-visible header */}
+                  <div
+                    className="p-3 sm:p-4 flex items-center gap-2 cursor-pointer select-none"
+                    onClick={() => setExpandedLectureId(isExpanded ? null : lecture.id)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-sm truncate">{lecture.title}</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">{formatDateTime(lecture.startTime)}</p>
                     </div>
-                  </CardContent>
+                    <Badge variant="outline" className={`${statusConfig.className} shrink-0 text-xs font-medium px-2 py-0.5`}>
+                      {statusConfig.label}
+                    </Badge>
+                    {lecture.meetingLink && (
+                      <Button
+                        size="sm"
+                        className="shrink-0 h-7 text-xs px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={(e) => { e.stopPropagation(); handleJoinLecture(lecture); }}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />Join
+                      </Button>
+                    )}
+                    {lecture.recordingUrl && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 h-7 text-xs px-2.5"
+                        onClick={(e) => { e.stopPropagation(); handleViewRecording(lecture); }}
+                      >
+                        <Play className="h-3 w-3 mr-1" />Rec
+                      </Button>
+                    )}
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                  </div>
+                  {/* Expandable body */}
+                  {isExpanded && (
+                    <div className="px-4 sm:px-5 pb-5 border-t pt-4 space-y-4">
+                      {lecture.description && (
+                        <p className="text-sm text-muted-foreground leading-relaxed">{lecture.description}</p>
+                      )}
+                      {/* Schedule & Details */}
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Schedule &amp; Details</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Start</span>
+                            <span className="text-xs font-medium">{formatDateTime(lecture.startTime)}</span>
+                          </div>
+                          {lecture.endTime && (
+                            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">End</span>
+                              <span className="text-xs font-medium">{format(new Date(lecture.endTime), 'HH:mm')}</span>
+                            </div>
+                          )}
+                          {lecture.maxParticipants && (
+                            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Capacity</span>
+                              <span className="text-xs font-medium">{lecture.maxParticipants} participants</span>
+                            </div>
+                          )}
+                          {lecture.venue && (
+                            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Venue</span>
+                              <span className="text-xs font-medium">{lecture.venue}</span>
+                            </div>
+                          )}
+                          {lecture.subject && (
+                            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Subject</span>
+                              <span className="text-xs font-semibold text-primary">{lecture.subject}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {isInstituteAdmin && (
+                        <div className="flex gap-2 pt-1 border-t">
+                          <Button size="sm" variant="outline" className="flex-1 h-8" onClick={() => handleUpdateClick(lecture)}>
+                            <Edit className="h-3 w-3 mr-1.5" />Edit
+                          </Button>
+                          <Button size="sm" variant="destructive" className="flex-1 h-8" onClick={() => handleDeleteClick(lecture)}>
+                            <Trash2 className="h-3 w-3 mr-1.5" />Delete
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </Card>
               );
             })}
           </div>
+          )}
 
-          {totalPages > 1 && (
+          {pageViewMode !== 'table' && totalPages > 1 && (
             <div className="flex justify-center items-center gap-3 pt-2">
               <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1 || loading} className="rounded-xl">
                 Previous
@@ -400,6 +421,8 @@ const InstituteLectures = () => {
       {selectedLecture && (
         <Dialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogTitle className="sr-only">Update Lecture</DialogTitle>
+            <DialogDescription className="sr-only">Form to update an existing institute lecture</DialogDescription>
             <UpdateInstituteLectureForm
               lecture={selectedLecture}
               onClose={() => { setShowUpdateDialog(false); setSelectedLecture(null); }}
@@ -418,29 +441,13 @@ const InstituteLectures = () => {
         isDeleting={isDeleting}
       />
 
-      {/* Recording Dialog */}
-      <Dialog open={showRecordingDialog} onOpenChange={setShowRecordingDialog}>
-        <DialogContent className="max-w-5xl max-h-[90vh] p-0">
-          <div className="relative bg-black rounded-lg overflow-hidden">
-            {recordingLecture && (
-              <>
-                <div className="aspect-video w-full">
-                  <iframe
-                    src={recordingLecture.recordingUrl || ''}
-                    className="w-full h-full"
-                    allow="autoplay; fullscreen; picture-in-picture"
-                    allowFullScreen
-                  />
-                </div>
-                <div className="p-4 bg-background">
-                  <h3 className="font-semibold">{recordingLecture.title}</h3>
-                  <p className="text-sm text-muted-foreground">{recordingLecture.description}</p>
-                </div>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Recording Dialog - draggable & resizable */}
+      <VideoPreviewDialog
+        open={showRecordingDialog}
+        onOpenChange={setShowRecordingDialog}
+        url={recordingLecture?.recordingUrl || ''}
+        title={recordingLecture?.title ?? 'Lecture Recording'}
+      />
     </div>
   );
 };

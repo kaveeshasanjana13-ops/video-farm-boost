@@ -8,8 +8,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Search, User, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getImageUrl } from '@/utils/imageUrlHelper';
+
+const getInitials = (name: string) => name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?';
 
 const CHART_COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))'];
 
@@ -18,6 +22,7 @@ const StudentAttendanceLookup: React.FC = () => {
   const [studentId, setStudentId] = useState('');
   const [records, setRecords] = useState<AdminAttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [studentImageUrl, setStudentImageUrl] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(); d.setMonth(d.getMonth() - 3);
     return d.toISOString().split('T')[0];
@@ -56,6 +61,31 @@ const StudentAttendanceLookup: React.FC = () => {
 
     setHasSearched(true);
     setPage(1);
+    
+    // ✅ NEW: Fetch student profile to get their image
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/students/${studentId.trim()}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const student = data.data || data;
+        if (student.imageUrl) {
+          setStudentImageUrl(student.imageUrl);
+        }
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch student profile:', error);
+    }
+    
     await fetchStudentAttendance(1);
   }, [currentInstituteId, studentId, fetchStudentAttendance]);
 
@@ -153,7 +183,11 @@ const StudentAttendanceLookup: React.FC = () => {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
-                <User className="h-4 w-4" />
+                <Avatar className="h-10 w-10 shrink-0">
+                  {/* ✅ NEW: Use fetched student image, fallback to records[0] image */}
+                  <AvatarImage src={getImageUrl(studentImageUrl || records[0]?.studentImageUrl || '')} alt={studentName} />
+                  <AvatarFallback className="text-sm">{getInitials(studentName)}</AvatarFallback>
+                </Avatar>
                 {studentName}
               </CardTitle>
             </CardHeader>
@@ -225,7 +259,7 @@ const StudentAttendanceLookup: React.FC = () => {
               <CardTitle className="text-sm">Attendance Records</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border overflow-x-auto">
+              <div className="hidden md:block rounded-md border overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -251,7 +285,39 @@ const StudentAttendanceLookup: React.FC = () => {
                   </TableBody>
                 </Table>
               </div>
-              <div className="flex items-center justify-between mt-2">
+              
+              {/* Mobile List View */}
+              <div className="md:hidden flex flex-col gap-3">
+                {records.map((r, i) => (
+                  <div key={i} className="p-3 rounded-lg border bg-card flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">
+                        {new Date(r.date || r.markedAt?.split('T')[0] || '').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      <div className="flex items-center gap-1 text-xs font-medium">
+                        {statusIcon(r.status)}
+                        <span className="capitalize">{r.status}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground mt-1">
+                      <div>
+                        <span className="block text-[10px] uppercase tracking-wider opacity-70">Class</span>
+                        <span className="text-foreground">{r.className || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] uppercase tracking-wider opacity-70">Subject</span>
+                        <span className="text-foreground">{r.subjectName || '—'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="block text-[10px] uppercase tracking-wider opacity-70">Method</span>
+                        <span className="text-foreground">{r.markingMethod || '—'}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between mt-4">
                 <span className="text-xs text-muted-foreground">Page {page} of {totalPages}</span>
                 <div className="flex gap-1">
                   <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Prev</Button>

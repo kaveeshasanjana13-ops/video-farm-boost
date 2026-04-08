@@ -1,4 +1,5 @@
 import { attendanceApiClient } from './attendanceClient';
+import { CACHE_TTL } from '@/config/cacheTTL';
 
 export interface TransportEnrollment {
   id: string;
@@ -93,7 +94,38 @@ export interface TransportAttendanceResponse {
   };
 }
 
+export interface AvailableBookhire {
+  id: number;
+  vehicleNumber?: string;
+  ownerName?: string;
+  routeDescription?: string;
+  capacity?: number;
+  institution?: string;
+  instituteId?: string;
+}
+
+export interface AvailableBookhiresResponse {
+  success?: boolean;
+  data: AvailableBookhire[];
+  total?: number;
+  totalPages?: number;
+  currentPage?: number;
+}
+
 export const transportApi = {
+  getAvailableBookhires: async (params?: {
+    page?: number;
+    limit?: number;
+    instituteId?: string;
+  }): Promise<AvailableBookhiresResponse> => {
+    const queryParams = new URLSearchParams({
+      page: String(params?.page || 1),
+      limit: String(params?.limit || 50),
+    });
+    if (params?.instituteId) queryParams.append('instituteId', params.instituteId);
+    return attendanceApiClient.get(`/api/bookhires/available?${queryParams}`, undefined, { ttl: CACHE_TTL.TRANSPORT });
+  },
+
   getStudentEnrollments: async (
     studentId: string,
     params?: { page?: number; limit?: number }
@@ -103,7 +135,7 @@ export const transportApi = {
       limit: String(params?.limit || 10)
     });
     
-    return attendanceApiClient.get(`/api/student-bookhire-enrollment/student/${studentId}?${queryParams}`);
+    return attendanceApiClient.get(`/api/student-bookhire-enrollment/student/${studentId}?${queryParams}`, undefined, { ttl: CACHE_TTL.TRANSPORT });
   },
 
   enrollTransport: async (
@@ -123,6 +155,6 @@ export const transportApi = {
       bookhireId: bookhireId
     });
     
-    return attendanceApiClient.get(`/api/bookhire-attendance/student/${studentId}?${queryParams}`);
+    return attendanceApiClient.get(`/api/bookhire-attendance/student/${studentId}?${queryParams}`, undefined, { ttl: CACHE_TTL.TRANSPORT_ATTENDANCE });
   }
 };

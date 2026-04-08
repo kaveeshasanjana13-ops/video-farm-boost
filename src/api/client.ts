@@ -1,4 +1,7 @@
 import { getBaseUrl, getBaseUrl2, getApiHeadersAsync, refreshAccessToken, getCredentialsMode, getOrgAccessTokenAsync, isNativePlatform } from '@/contexts/utils/auth.api';
+import { ApiError, parseApiError } from '@/api/apiError';
+
+export type { ApiError };
 
 export interface ApiResponse<T = any> {
   data?: T;
@@ -15,12 +18,6 @@ export interface ApiResponse<T = any> {
   success?: boolean;
   message?: string;
   error?: string;
-}
-
-export interface ApiError {
-  message: string;
-  statusCode: number;
-  error: string;
 }
 
 class ApiClient {
@@ -69,11 +66,11 @@ class ApiClient {
     this.isRefreshing = true;
     this.refreshPromise = (async () => {
       try {
-        console.log('🔄 401 Error - Attempting token refresh...');
+        if (import.meta.env.DEV) console.log('🔄 401 Error - Attempting token refresh...');
         await refreshAccessToken();
-        console.log('✅ Token refreshed successfully');
-      } catch (error) {
-        console.error('❌ Token refresh failed:', error);
+        if (import.meta.env.DEV) console.log('✅ Token refreshed successfully');
+      } catch (error: any) {
+        if (import.meta.env.DEV) console.error('❌ Token refresh failed:', error);
         // Do NOT hard-redirect. auth.api's refreshAccessToken already
         // dispatches auth:refresh-failed which AuthContext listens to.
         throw error;
@@ -97,37 +94,30 @@ class ApiClient {
     retryCount = 0
   ): Promise<T> {
     if (!response.ok) {
-      let errorData: ApiError;
+      const errorText = await response.text().catch(() => '');
+      const apiError = parseApiError(response.status, errorText, response.url);
 
-      try {
-        errorData = await response.json();
-      } catch {
-        // If response is not JSON, create a generic error
-        errorData = {
-          message: this.getErrorMessage(response.status),
-          statusCode: response.status,
-          error: response.statusText || 'Unknown Error'
-        };
+      if (import.meta.env.DEV) {
+        console.error('API Error:', {
+          status: response.status,
+          url: response.url,
+          error: apiError.errorType,
+          message: apiError.message,
+          requestId: apiError.requestId,
+        });
       }
-
-      console.error('API Error:', {
-        status: response.status,
-        url: response.url,
-        error: errorData
-      });
 
       // Handle 401 - Try to refresh token then retry with FRESH headers
       if (response.status === 401 && retryFn) {
         const refreshed = await this.handle401Error();
 
         if (refreshed) {
-          console.log('🔁 Retrying request with new token...');
-          // retryFn re-fetches headers internally, so new token is used
+          if (import.meta.env.DEV) console.log('🔁 Retrying request with new token...');
           const retryResponse = await retryFn();
           return this.handleResponse<T>(retryResponse); // No retry to avoid infinite loop
         }
 
-        throw new Error('Authentication failed. Please login again.');
+        throw apiError;
       }
 
       // Handle network errors with retry (503, 504, network timeout)
@@ -140,9 +130,7 @@ class ApiClient {
         return this.handleResponse<T>(retryResponse, retryFn, retryCount + 1);
       }
 
-      // Prefer errorData.message from API response, fallback to generic message
-      const errorMessage = errorData.message || this.getErrorMessage(response.status);
-      throw new Error(errorMessage);
+      throw apiError;
     }
 
     const contentType = response.headers.get('Content-Type');
@@ -153,26 +141,6 @@ class ApiClient {
     return {} as T;
   }
 
-  /**
-   * Get user-friendly error message based on status code
-   */
-  private getErrorMessage(status: number): string {
-    const messages: Record<number, string> = {
-      400: 'Invalid request. Please check your input.',
-      401: 'Authentication required. Please login.',
-      403: 'You do not have permission to access this resource.',
-      404: 'The requested resource was not found.',
-      409: 'Conflict. The resource already exists.',
-      422: 'Validation failed. Please check your input.',
-      429: 'Too many requests. Please try again later.',
-      500: 'Server error. Please try again later.',
-      502: 'Bad gateway. Please try again later.',
-      503: 'Service unavailable. Please try again later.',
-      504: 'Request timeout. Please try again later.',
-    };
-
-    return messages[status] || `Request failed with status ${status}`;
-  }
 
   /**
    * Check if error is retryable (network errors, server errors)

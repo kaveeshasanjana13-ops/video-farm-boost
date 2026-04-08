@@ -31,23 +31,26 @@ import {
   Calendar,
 } from 'lucide-react';
 import { 
-  userCardApi, 
-  UserIdCardOrder, 
-  OrderStatus, 
+  userCardApi,
+  UserIdCardOrder,
+  OrderStatus,
   CardType as CardTypeEnum,
   PaginatedOrdersResponse 
 } from '@/api/userCard.api';
 import { 
-  orderStatusColors, 
-  orderStatusLabels, 
+  orderStatusColors,
+  orderStatusLabels,
   cardStatusLabels,
   formatDate,
   formatDateTime,
+  formatRelativeDate,
   formatPrice 
 } from '@/utils/cardHelpers';
 import { toast } from '@/hooks/use-toast';
 import SubmitPaymentDialog from './SubmitPaymentDialog';
 import OrderDetailsDialog from './OrderDetailsDialog';
+import { getErrorMessage } from '@/api/apiError';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Column {
   id: 'orderId' | 'card' | 'orderDate' | 'status' | 'price' | 'actions';
@@ -66,6 +69,8 @@ const columns: readonly Column[] = [
 ];
 
 const MyOrders: React.FC = () => {
+  const { selectedChild, isViewingAsParent } = useAuth();
+  const forUserId = isViewingAsParent && selectedChild ? (selectedChild.userId || selectedChild.id) : undefined;
   const [orders, setOrders] = useState<UserIdCardOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -99,13 +104,13 @@ const MyOrders: React.FC = () => {
       const params: any = {};
       if (statusFilter !== 'all') params.orderStatus = statusFilter;
 
-      const response = await userCardApi.getMyOrders(params, forceRefresh);
+      const response = await userCardApi.getMyOrders(params, forceRefresh, forUserId);
       setOrders(response.data || []);
     } catch (error: any) {
       console.error('Error fetching orders:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load orders',
+        description: getErrorMessage(error, 'Failed to load orders'),
         variant: 'destructive',
       });
     } finally {
@@ -116,7 +121,7 @@ const MyOrders: React.FC = () => {
 
   useEffect(() => {
     fetchOrders();
-  }, [statusFilter]);
+  }, [statusFilter, forUserId]);
 
   const loadOrderDetails = async (orderId: number) => {
     try {
@@ -125,7 +130,7 @@ const MyOrders: React.FC = () => {
       console.error('Error fetching order details:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load order details',
+        description: getErrorMessage(error, 'Failed to load order details'),
         variant: 'destructive',
       });
       return null;
@@ -184,8 +189,8 @@ const MyOrders: React.FC = () => {
     if (loading) {
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <Card key={i}>
+          {[1, 2, 3].map((i, index) => (
+            <Card key={i} className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-backwards" style={{ animationDelay: `${index * 100}ms` }}>
               <CardContent className="p-5 space-y-3">
                 <Skeleton className="h-5 w-1/3" />
                 <Skeleton className="h-4 w-2/3" />
@@ -212,76 +217,76 @@ const MyOrders: React.FC = () => {
     }
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {orders.map((order) => (
-          <Card key={order.id} className="overflow-hidden hover:shadow-md transition-shadow">
-            <CardContent className="p-5 space-y-4">
-              {/* Order ID & Status */}
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-sm font-medium text-muted-foreground">#{order.id}</span>
-                <Badge className={`${orderStatusColors[order.orderStatus]} flex items-center gap-1`}>
-                  {getStatusIcon(order.orderStatus)}
-                  {orderStatusLabels[order.orderStatus]}
-                </Badge>
-              </div>
-
-              {/* Card Info */}
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-full bg-muted">
-                  <CreditCard className="h-5 w-5 text-muted-foreground" />
+      <div className="w-full space-y-2">
+        {orders.map((order, index) => {
+          const statusColor = order.orderStatus === 'DELIVERED' 
+            ? 'bg-green-500' 
+            : order.orderStatus === 'PENDING_PAYMENT' 
+            ? 'bg-yellow-500' 
+            : order.orderStatus === 'ON_THE_WAY' || order.orderStatus === 'DELIVERING'
+            ? 'bg-blue-500'
+            : order.orderStatus === 'REJECTED' || order.orderStatus === 'CANCELLED'
+            ? 'bg-red-500'
+            : 'bg-gray-500';
+          
+          return (
+            <Card key={order.id} className="hover:shadow-md transition-all border-border overflow-hidden">
+              <div className={`h-1.5 w-full ${statusColor}`} />
+              <div className="p-4 flex items-center justify-between gap-3">
+                {/* Left: Order ID - Fixed width for visibility */}
+                <div className="w-16 shrink-0">
+                  <p className="text-base font-bold text-foreground tabular-nums">{order.id}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Order</p>
                 </div>
-                <div>
-                  <p className="font-medium text-sm">{order.card?.cardName || 'Unknown Card'}</p>
-                  <Badge variant="outline" className="text-xs mt-0.5">
-                    {order.cardType}
+                
+                {/* Middle: Info with dots */}
+                <div className="flex-1 min-w-0 text-sm text-muted-foreground flex items-center gap-2 px-3 truncate">
+                  <span className="truncate font-medium text-foreground">{order.card?.cardName || 'Unknown'}</span>
+                  <span className="text-border">•</span>
+                  <span className="hidden sm:inline">{order.card ? formatPrice(order.card.price) : '-'}</span>
+                  <span className="hidden sm:inline text-border">•</span>
+                  <span className="hidden sm:inline">{formatDate(order.orderDate)}</span>
+                </div>
+                
+                {/* Right: Status & Actions */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge className={`${orderStatusColors[order.orderStatus]} flex items-center gap-1 text-[10px] px-1.5 py-0`}>
+                    {getStatusIcon(order.orderStatus)}
                   </Badge>
-                </div>
-              </div>
-
-              {/* Date & Price */}
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-1.5 text-muted-foreground">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {formatDate(order.orderDate)}
-                </div>
-                <span className="font-semibold">
-                  {order.card ? formatPrice(order.card.price) : '-'}
-                </span>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2 pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleViewDetails(order)}
-                >
-                  <Eye className="h-4 w-4 mr-1.5" />
-                  Details
-                </Button>
-                {order.orderStatus === OrderStatus.PENDING_PAYMENT && (
                   <Button
-                    variant="default"
+                    variant="outline"
                     size="sm"
-                    className="flex-1"
-                    onClick={() => handleSubmitPayment(order)}
+                    className="h-8 px-2.5 text-xs"
+                    onClick={() => handleViewDetails(order)}
+                    title="View Details"
                   >
-                    <Upload className="h-4 w-4 mr-1.5" />
-                    Pay
+                    <Eye className="h-4 w-4 mr-1" />
+                    Details
                   </Button>
-                )}
+                  {order.orderStatus === OrderStatus.PENDING_PAYMENT && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2.5 text-xs"
+                      onClick={() => handleSubmitPayment(order)}
+                      title="Submit Payment"
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      Pay
+                    </Button>
+                  )}
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
     );
   };
 
   const renderTableView = () => (
-    <Paper sx={{ 
-      width: '100%', 
+    <Paper sx={{
+      width: '100%',
       overflow: 'hidden',
       backgroundColor: 'hsl(var(--card))',
       border: '1px solid hsl(var(--border))',
@@ -307,7 +312,7 @@ const MyOrders: React.FC = () => {
         </div>
       ) : (
         <>
-          <TableContainer sx={{ maxHeight: 440 }}>
+          <TableContainer sx={{ maxHeight: 440, overflow: 'auto' }}>
             <Table stickyHeader aria-label="orders table">
               <TableHead>
                 <TableRow>

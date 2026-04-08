@@ -17,8 +17,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 import ClassImageUpload from '@/components/ClassImageUpload';
+import { getErrorMessage } from '@/api/apiError';
 
 const updateClassSchema = z.object({
   instituteId: z.string().min(1, 'Institute ID is required'),
@@ -82,11 +83,6 @@ const UpdateClassForm: React.FC<UpdateClassFormProps> = ({ classData, onSubmit, 
     console.log('Update Class button clicked - starting submission');
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem('access_token') || localStorage.getItem('token') || localStorage.getItem('authToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
       console.log('Preparing form data for class:', classData.id);
       // First, update class details (JSON)
       const baseUrl = getBaseUrl();
@@ -148,12 +144,10 @@ const UpdateClassForm: React.FC<UpdateClassFormProps> = ({ classData, onSubmit, 
         );
         
         // Step 2: Update class with relativePath
+        const headers = await getApiHeadersAsync();
         const imageRes = await fetch(`${baseUrl}/institute-classes/${classData.id}/image-url`, {
           method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
+          headers,
           body: JSON.stringify({ imageUrl: relativePath })
         });
 
@@ -174,9 +168,9 @@ const UpdateClassForm: React.FC<UpdateClassFormProps> = ({ classData, onSubmit, 
         description: 'Class updated successfully',
       });
       onSubmit(updatedClass);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating class:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update class';
+      const errorMessage = getErrorMessage(error, 'Failed to update class');
       toast({
         title: "Error",
         description: errorMessage,

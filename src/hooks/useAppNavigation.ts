@@ -11,6 +11,7 @@ export const useAppNavigation = () => {
     
     
     // Build context-aware URL
+    // eslint-disable-next-line no-useless-assignment
     let route = '';
     
     // Pages that are always global (no context prefix)

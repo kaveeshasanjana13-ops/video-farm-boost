@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +9,7 @@ import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
 import DataTable from '@/components/ui/data-table';
 import { toast } from 'sonner';
+import { getErrorMessage } from '@/api/apiError';
 
 interface Subject {
   id: string;
@@ -28,6 +30,7 @@ interface ClassSubject {
 
 const AttendanceMarkerSubjectSelector = () => {
   const { selectedInstitute, selectedClass, setSelectedSubject } = useAuth();
+  const { subjectLabel, subjectsLabel } = useInstituteLabels();
   const [subjects, setSubjects] = useState<ClassSubject[]>([]);
   const [loading, setLoading] = useState(false); // Changed from true to false - no auto-loading
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
@@ -55,22 +58,6 @@ const AttendanceMarkerSubjectSelector = () => {
         classId: selectedClass.id 
       });
 
-      // Check if we have a valid base URL
-      const baseUrl = localStorage.getItem('baseUrl');
-      console.log('Current baseUrl from localStorage:', baseUrl);
-      
-      if (!baseUrl) {
-        throw new Error('No base URL configured. Please set up your API endpoint.');
-      }
-
-      // Check if we have authentication token
-      const token = localStorage.getItem('access_token');
-      console.log('Has auth token:', !!token);
-      
-      if (!token) {
-        throw new Error('No authentication token found. Please log in again.');
-      }
-      
       const endpoint = `/institutes/${selectedInstitute.id}/classes/${selectedClass.id}/subjects`;
       console.log('API endpoint:', endpoint);
       
@@ -114,10 +101,9 @@ const AttendanceMarkerSubjectSelector = () => {
         toast.success(`Loaded ${subjectsData.length} subjects`);
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching subjects:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error occurred';
-      toast.error(`Failed to load subjects: ${errorMessage}`);
+      toast.error(`Failed to load subjects: ${getErrorMessage(error, 'Unknown error occurred')}`);
       setSubjects([]);
       setDataLoaded(false);
     } finally {
@@ -216,10 +202,10 @@ const AttendanceMarkerSubjectSelector = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Select Subject
+            Select {subjectLabel}
           </h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Choose a subject from {selectedClass.name} to mark attendance
+            Choose a {subjectLabel.toLowerCase()} from {selectedClass.name} to mark attendance
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -247,8 +233,6 @@ const AttendanceMarkerSubjectSelector = () => {
             size="sm"
             onClick={() => {
               console.log('Debug Info:', {
-                baseUrl: localStorage.getItem('baseUrl'),
-                token: localStorage.getItem('access_token'),
                 selectedInstitute,
                 selectedClass,
                 subjects
@@ -323,7 +307,7 @@ const AttendanceMarkerSubjectSelector = () => {
                     Selected
                   </>
                 ) : (
-                  'Select Subject'
+                  `Select ${subjectLabel}`
                 )}
               </Button>
             </CardContent>
@@ -336,10 +320,10 @@ const AttendanceMarkerSubjectSelector = () => {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <BookOpen className="h-5 w-5" />
-            <span>Available Subjects</span>
+            <span>Available {subjectsLabel}</span>
           </CardTitle>
           <CardDescription>
-            Select a subject to mark attendance for {selectedClass.name}
+            Select a {subjectLabel.toLowerCase()} to mark attendance for {selectedClass.name}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -354,10 +338,10 @@ const AttendanceMarkerSubjectSelector = () => {
             <div className="text-center py-8">
               <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                No Subjects Found
+                No {subjectsLabel} Found
               </h3>
               <p className="text-gray-600 dark:text-gray-400">
-                No subjects are available for the selected class.
+                No {subjectsLabel.toLowerCase()} are available for the selected class.
               </p>
             </div>
           )}

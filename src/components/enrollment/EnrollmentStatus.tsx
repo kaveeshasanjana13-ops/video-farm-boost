@@ -47,7 +47,7 @@ const EnrollmentStatus: React.FC<EnrollmentStatusProps> = ({
         hour: '2-digit',
         minute: '2-digit'
       });
-    } catch (error) {
+    } catch (error: any) {
       return dateString;
     }
   };

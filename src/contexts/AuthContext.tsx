@@ -1,5 +1,6 @@
 
 import React, { createContext, useState, useContext, useMemo, useCallback, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import AppLoadingScreen from '@/components/AppLoadingScreen';
 import { 
   User, 
@@ -45,6 +46,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true); // Start with true to show loading on init
   const [isInitialized, setIsInitialized] = useState(false);
   const [isViewingAsParent, setIsViewingAsParentState] = useState(false); // Parent viewing child's data
+  const [childrenList, setChildrenList] = useState<Child[]>([]); // Cached children list (for parents)
 
   // ✅ Keep session alive (web + mobile) by refreshing access token before expiry.
   useAuthAutoRefresh(isInitialized && !!user);
@@ -66,8 +68,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const handleRefreshSuccess = (event: Event) => {
       const customEvent = event as CustomEvent;
       const { user: refreshedUser } = customEvent.detail;
-      console.log('🔄 Token refreshed, updating AuthContext user data');
-      
+
       const currentUser = userRef.current;
       if (refreshedUser && currentUser) {
         setUser(prev => prev ? {
@@ -78,16 +79,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           imageUrl: refreshedUser.imageUrl || prev.imageUrl,
           userType: refreshedUser.userType || prev.userType,
         } : prev);
-        console.log('✅ AuthContext user updated after token refresh (nameWithInitials)');
       }
     };
-    
+
     const handleRefreshFailed = () => {
-      console.error('❌ Token refresh failed, logging out...');
       if (userRef.current) {
         logoutUser().then(() => {
           apiCache.clearAllCache();
           setUser(null);
+          setIsViewingAsParentState(false);
+          setChildrenList([]);
         });
       }
     };
@@ -117,7 +118,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
       );
       
-      console.log('Raw API institutes response:', apiInstitutesResponse);
+      if (import.meta.env.DEV) console.log('Raw API institutes response:', apiInstitutesResponse);
 
       // The backend sometimes returns a wrapped shape: { data: [...], meta: {...} }
       // Normalize it to a plain array for downstream mapping.
@@ -139,7 +140,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         code: institute.code || '',
         description: `${institute.instituteAddress || institute.address || ''}, ${institute.instituteCity || institute.city || ''}`.trim() || 'No description available',
         isActive: institute.instituteIsActive !== undefined ? institute.instituteIsActive : (institute.isActive !== undefined ? institute.isActive : true),
-        type: institute.instituteType || institute.type,
+        type: (() => { const t = institute.instituteType || institute.type; return t ? String(t).toLowerCase() : undefined; })(),
         instituteUserType: institute.instituteUserType, // Preserve raw API value
         userRole: institute.instituteUserType, // Keep for backward compatibility
         userIdByInstitute: institute.userIdByInstitute,
@@ -148,24 +149,56 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         logo: institute.logoUrl || institute.instituteLogo || ''
       }));
 
-      console.log('Mapped institutes:', institutes);
+      if (import.meta.env.DEV) console.log('Mapped institutes:', institutes);
       return institutes;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching user institutes:', error);
       return [];
+    }
+  };
+
+  // Fetch children from backend for parent users — cached via enhancedCachedClient
+  const fetchChildren = async (forceRefresh = false): Promise<Child[]> => {
+    if (!user?.id) return [];
+    try {
+      const data = await enhancedCachedClient.get(
+        `/parents/${user.id}/children`,
+        {},
+        { ttl: 300, forceRefresh, userId: user.id, role: 'Parent' }
+      );
+      const rawChildren: any[] = data?.children || (Array.isArray(data) ? data : []);
+      const mapped: Child[] = rawChildren.map((c: any) => ({
+        id: c.id || c.studentId || '',
+        userId: c.id || c.studentId || '',    // Backend returns userId as "id"
+        name: c.name || c.nameWithInitials || '',
+        nameWithInitials: c.nameWithInitials || c.name || '',
+        email: c.email || '',
+        imageUrl: c.imageUrl || c.profileImageUrl || '',
+        relationship: c.relationship || '',
+        studentId: c.studentIdNumber || '',
+        emergencyContact: c.emergencyContact || '',
+        bloodGroup: c.bloodGroup || '',
+        user: {
+          id: c.id || c.studentId || '',
+          nameWithInitials: c.nameWithInitials || c.name || '',
+          email: c.email || '',
+          imageUrl: c.imageUrl || c.profileImageUrl || '',
+        }
+      }));
+      setChildrenList(mapped);
+      return mapped;
+    } catch (error) {
+      console.error('Error fetching children:', error);
+      return childrenList; // Return cached data on error
     }
   };
 
   const login = async (credentials: LoginCredentials) => {
     setIsLoading(true);
     try {
-      console.log('Starting login process...');
-      
       const data = await loginUser(credentials);
-      console.log('Login response received:', data);
 
       // Map user data WITHOUT fetching institutes (lazy load later)
-      console.log('✅ User logged in successfully');
       const mappedUser = mapUserData(data.user, []); // Empty institutes initially
       setUser(mappedUser);
       
@@ -175,9 +208,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(updatedUser);
         console.log('🏢 Institutes loaded:', institutes.length);
       }).catch(error => {
-        console.error('Error loading institutes (non-blocking):', error);
+        if (import.meta.env.DEV) console.error('Error loading institutes (non-blocking):', error);
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
       throw error;
     } finally {
@@ -185,22 +218,54 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Manual method to load user institutes - only called when user clicks
-  const loadUserInstitutes = async (): Promise<Institute[]> => {
+  // Load user institutes.
+  // When viewing as parent, loads the child's STUDENT institutes via /parent-institutes endpoint.
+  // Otherwise loads the user's own institutes.
+  const loadUserInstitutes = async (forceRefresh = false): Promise<Institute[]> => {
     if (!user?.id) {
       throw new Error('No user found');
+    }
+
+    // Parent viewing child — load child's student institutes (don't overwrite parent's user.institutes)
+    if (isViewingAsParent && selectedChild) {
+      const childUserId = selectedChild.userId || selectedChild.id;
+      try {
+        const resp = await cachedApiClient.get<any>(
+          `/users/${childUserId}/parent-institutes`,
+          { page: 1, limit: 50 },
+          { forceRefresh, ttl: 60, useStaleWhileRevalidate: false }
+        );
+        const raw = Array.isArray(resp) ? resp : Array.isArray(resp?.data) ? resp.data : [];
+        return raw.filter((i: any) => i).map((institute: any): Institute => ({
+          id: institute.instituteId || institute.id || '',
+          name: institute.instituteName || institute.name || 'Unknown Institute',
+          code: institute.code || '',
+          description: `${institute.instituteAddress || institute.address || ''}`.trim() || '',
+          isActive: institute.isActive ?? institute.instituteIsActive ?? true,
+          type: (() => { const t = institute.instituteType || institute.type; return t ? String(t).toLowerCase() : undefined; })(),
+          instituteUserType: institute.instituteUserType || institute.role || 'STUDENT',
+          userRole: institute.instituteUserType || institute.role || 'STUDENT',
+          userIdByInstitute: institute.userIdByInstitute || institute.instituteUserId,
+          shortName: institute.shortName || institute.name || '',
+          instituteUserImageUrl: institute.studentInstituteImageUrl || institute.instituteUserImageUrl || '',
+          logo: institute.logoUrl || institute.instituteLogo || ''
+        }));
+      } catch (error) {
+        console.error('Error loading child institutes:', error);
+        return [];
+      }
     }
     
     setIsLoading(true);
     try {
-      const institutes = await fetchUserInstitutes(user.id, true);
+      const institutes = await fetchUserInstitutes(user.id, forceRefresh);
       
       // Update user with institutes
       const updatedUser = { ...user, institutes };
       setUser(updatedUser);
       
       return institutes;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading user institutes:', error);
       throw error;
     } finally {
@@ -245,6 +310,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setSelectedTransportState(null);
     setSelectedInstituteType(null);
     setSelectedClassGrade(null);
+    setIsViewingAsParentState(false);
+    setChildrenList([]);
     
     setCurrentInstituteId(null);
     setCurrentClassId(null);
@@ -276,7 +343,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               : typeof institute.instituteIsActive === 'boolean'
               ? institute.instituteIsActive
               : true,
-          type: institute.type || institute.instituteType,
+          type: (() => { const t = institute.type || institute.instituteType; return t ? String(t).toLowerCase() : undefined; })(),
           instituteUserType: institute.instituteUserType,
           userRole: institute.userRole || institute.instituteUserType,
           userIdByInstitute: institute.userIdByInstitute,
@@ -327,7 +394,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setCurrentChildId(child?.id || null);
     setIsViewingAsParentState(viewAsParent);
     
-    // Clear dependent selections when selecting a child for parent viewing
+    // Clear dependent selections and ALL caches when switching child context
     if (viewAsParent && child) {
       setSelectedInstituteState(null);
       setSelectedClassState(null);
@@ -335,6 +402,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setCurrentInstituteId(null);
       setCurrentClassId(null);
       setCurrentSubjectId(null);
+
+      // Clear all caches to prevent stale parent/child data mixing
+      apiCache.clearAllCache();
+      secureCache.clearAllCache();
+    }
+
+    // Also clear caches when deselecting child (going back to parent context)
+    if (!child && !viewAsParent) {
+      apiCache.clearAllCache();
+      secureCache.clearAllCache();
     }
   }, []);
 
@@ -361,7 +438,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(mappedUser);
       
       console.log('User data refreshed successfully from backend');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error refreshing user data:', error);
       throw error;
     } finally {
@@ -380,7 +457,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(mappedUser);
       
       console.log('Token validation successful, user restored from backend');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error validating token:', error);
       console.log('Clearing invalid session');
       await logout();
@@ -398,6 +475,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       try {
         // validateToken will try memory token first, then cookie refresh
         const userData = await validateToken();
+        if (!userData?.id) throw new Error('No user data returned');
         const institutes = await fetchUserInstitutes(userData.id, true);
         const mappedUser = mapUserData(userData, institutes);
         setUser(mappedUser);
@@ -406,6 +484,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } finally {
         setIsLoading(false);
         setIsInitialized(true);
+        // Hide splash screen once auth resolves and React has had time to fully paint
+        // the new content. 600 ms gives React enough time to finish the Login→App
+        // transition so the WebView never flashes a blank white screen.
+        if (Capacitor.isNativePlatform()) {
+          setTimeout(() => {
+            import('@capacitor/splash-screen').then(({ SplashScreen }) => {
+              SplashScreen.hide();
+            }).catch(() => {});
+          }, 600);
+        }
       }
     };
 
@@ -438,6 +526,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     currentOrganizationId,
     currentTransportId,
     isViewingAsParent,
+    children: childrenList,
+    fetchChildren,
     login,
     logout,
     setSelectedInstitute,
@@ -458,7 +548,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     selectedInstituteType, selectedClassGrade,
     currentInstituteId, currentClassId, currentSubjectId,
     currentChildId, currentOrganizationId, currentTransportId,
-    isViewingAsParent, isLoading, isInitialized,
+    isViewingAsParent, isLoading, isInitialized, childrenList,
     setSelectedInstitute, setSelectedClass, setSelectedSubject,
     setSelectedChild, setSelectedOrganization, setSelectedTransport
   ]);
@@ -476,4 +566,4 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 // Re-export types for backward compatibility
-export type { User, UserRole } from './types/auth.types';
+export type { User, UserRole, SubjectVerificationStatus } from './types/auth.types';

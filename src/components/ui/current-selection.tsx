@@ -7,6 +7,7 @@ import { Building, BookOpen, Truck, ChevronLeft, UserCheck, Users } from 'lucide
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useAuth } from '@/contexts/AuthContext';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 interface CurrentSelectionProps {
   institute?: {
     id: string;
@@ -56,9 +57,7 @@ const CurrentSelection: React.FC<CurrentSelectionProps> = ({
   const isChildRoute = location.pathname.startsWith('/child/');
   const childId = (selectedChild as any)?.id as string | undefined;
 
-  // Check if institute type is tuition_institute
-  const isTuitionInstitute = (institute as any)?.type === 'tuition_institute';
-  const subjectLabel = isTuitionInstitute ? 'Sub Class For' : 'Subject';
+  const { subjectLabel } = useInstituteLabels();
 
   // Check if user is InstituteAdmin or Teacher
   const canVerifyStudents = ['InstituteAdmin', 'Teacher'].includes(userRole);

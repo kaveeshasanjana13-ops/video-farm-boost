@@ -260,7 +260,8 @@ export const instituteClassesApi = {
 
   // Teacher assign students with auto-invalidation
   teacherAssignStudents: async (instituteId: string, classId: string, data: BulkAssignStudentsData): Promise<TeacherAssignResponse> => {
-    return enhancedCachedClient.post(`/institutes/${instituteId}/classes/${classId}/students/teacher-assign`, data, {
+    // For class-level bulk assignment (admin only). Teachers with subject context should use enrollmentApi.teacherAssignStudents.
+    return enhancedCachedClient.post(`/institute-classes/${classId}/assign-students-bulk`, data, {
       instituteId,
       classId
     });

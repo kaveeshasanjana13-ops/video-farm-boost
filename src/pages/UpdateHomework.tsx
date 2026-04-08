@@ -9,8 +9,9 @@ import { ArrowLeft, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
-import { getBaseUrl, getApiHeaders } from '@/contexts/utils/auth.api';
+import { getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 import AppLayout from '@/components/layout/AppLayout';
+import HomeworkReferencesSection from '@/components/homework/HomeworkReferencesSection';
 
 const UpdateHomework = () => {
   const { instituteId, classId, subjectId, homeworkId } = useParams<{
@@ -73,11 +74,12 @@ const UpdateHomework = () => {
     try {
       setLoading(true);
       const baseUrl = getBaseUrl();
+      const headers = await getApiHeadersAsync();
       const response = await fetch(
         `${baseUrl}/institute-class-subject-homeworks/${homeworkId}`,
         {
           method: 'GET',
-          headers: getApiHeaders()
+          headers
         }
       );
 
@@ -98,7 +100,7 @@ const UpdateHomework = () => {
       } else {
         throw new Error('Failed to fetch homework');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching homework:', error);
       toast({
         title: "Error",
@@ -126,11 +128,12 @@ const UpdateHomework = () => {
       };
 
       const baseUrl = getBaseUrl();
+      const headers = await getApiHeadersAsync();
       const response = await fetch(
         `${baseUrl}/institute-class-subject-homeworks/${homeworkId}`,
         {
           method: 'PATCH',
-          headers: getApiHeaders(),
+          headers,
           body: JSON.stringify(payload)
         }
       );
@@ -145,7 +148,7 @@ const UpdateHomework = () => {
         const error = await response.json();
         throw new Error(error.message || 'Failed to update homework');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating homework:', error);
       toast({
         title: "Error",
@@ -164,7 +167,7 @@ const UpdateHomework = () => {
   if (loading && !homework) {
     return (
       <AppLayout>
-        <div className="container mx-auto p-6">
+        <div className="container mx-auto p-4 sm:p-6">
           <div className="flex items-center justify-center min-h-96">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
@@ -178,8 +181,8 @@ const UpdateHomework = () => {
 
   return (
     <AppLayout>
-      <div className="container mx-auto p-6 max-w-4xl">
-        <div className="flex items-center gap-4 mb-6">
+      <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
           <Button
             variant="outline"
             size="sm"
@@ -190,7 +193,7 @@ const UpdateHomework = () => {
             Back to Homework
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Update Homework</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Update Homework</h1>
             <p className="text-muted-foreground mt-1">Modify homework assignment details</p>
           </div>
         </div>
@@ -308,6 +311,18 @@ const UpdateHomework = () => {
             </form>
           </CardContent>
         </Card>
+
+        {homeworkId && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Reference Materials</CardTitle>
+              <CardDescription>Add learning materials for this homework</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <HomeworkReferencesSection homeworkId={homeworkId} editable={canUpdate} />
+            </CardContent>
+          </Card>
+        )}
       </div>
     </AppLayout>
   );

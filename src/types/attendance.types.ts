@@ -3,6 +3,17 @@
 
 export type AttendanceStatus = 'present' | 'absent' | 'late' | 'left' | 'left_early' | 'left_lately';
 
+// ============= ADDRESS/COORDINATES TYPES =============
+
+/**
+ * ✅ NEW: Consolidated coordinates in address object
+ * Use this for sending latitude/longitude to backend
+ */
+export interface AddressCoordinates {
+  latitude?: number;
+  longitude?: number;
+}
+
 // Marking method used to record attendance
 export type MarkingMethod = 'qr' | 'barcode' | 'rfid/nfc' | 'manual' | 'system';
 
@@ -150,6 +161,8 @@ export interface AttendanceRecord {
   id?: string;
   studentId: string;
   studentName?: string;
+  studentImageUrl?: string;
+  imageUrl?: string;
   userId?: string;
   userName?: string;
   instituteId: string;
@@ -162,7 +175,11 @@ export interface AttendanceRecord {
   markedAt?: string;
   status: AttendanceStatus;
   location?: string;
-  address?: string;
+  // ✅ NEW: Consolidated coordinates
+  address?: AddressCoordinates;
+  // ⚠️ DEPRECATED: Legacy fields for backward compatibility (extracted from address on response)
+  latitude?: number;
+  longitude?: number;
   markingMethod?: MarkingMethod;
   markedBy?: string;
   eventId?: string;
@@ -185,9 +202,10 @@ export interface MarkAttendancePayload {
   subjectName?: string;
   date: string;
   location?: string;
+  // ✅ NEW: Consolidated coordinates in address object
+  address?: AddressCoordinates;
   status: AttendanceStatus;
   remarks?: string;
-  address?: string;
   markingMethod?: MarkingMethod;
   eventId?: string;
   deviceUid?: string; // Registered device UID — triggers device validation
@@ -204,6 +222,8 @@ export interface BulkAttendancePayload {
   date?: string;
   eventId?: string;
   location?: string;
+  // ✅ NEW: Consolidated coordinates in address object
+  address?: AddressCoordinates;
   markingMethod?: MarkingMethod;
   students: {
     studentId: string;
@@ -221,7 +241,9 @@ export interface MarkByCardPayload {
   className?: string;
   subjectId?: string;
   subjectName?: string;
-  address: string;
+  // ✅ NEW: Consolidated coordinates in address object
+  address?: AddressCoordinates;
+  location?: string;
   markingMethod: MarkingMethod;
   status: AttendanceStatus;
   date?: string;
@@ -234,8 +256,9 @@ export interface BulkCardAttendancePayload {
   classId?: string;
   className?: string;
   subjectId?: string;
-  subjectName?: string;
-  address: string;
+  // ✅ NEW: Consolidated coordinates in address object
+  address?: AddressCoordinates;
+  location?: string;
   markingMethod: MarkingMethod;
   students: {
     studentCardId: string;
@@ -249,14 +272,15 @@ export interface MarkByInstituteCardPayload {
   instituteName: string;
   classId?: string;
   className?: string;
-  subjectId?: string;
-  subjectName?: string;
-  address: string;
+  // ✅ NEW: Consolidated coordinates in address object
+  address?: AddressCoordinates;
+  location?: string;
   markingMethod: MarkingMethod;
   status: AttendanceStatus;
   date?: string;
-  eventId?: string;
-  location?: string;
+  eventId?: string
+  latitude?: number;
+  longitude?: number;
 }
 
 // ============= RESPONSE INTERFACES =============

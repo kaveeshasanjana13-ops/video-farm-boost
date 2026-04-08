@@ -47,6 +47,7 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
   });
   const [documents, setDocuments] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,6 +59,17 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
         description: "Please fill in all required fields",
         variant: "destructive",
       });
+      return;
+    }
+
+        const errors: Record<string, string> = {};
+    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
+    if (!formData.description && formData.description !== 0) errors.description = 'Description is required';
+    if (!formData.venue && formData.venue !== 0) errors.venue = 'Venue is required';
+    if (!formData.timeStart && formData.timeStart !== 0) errors.timeStart = 'Time Start is required';
+    if (!formData.timeEnd && formData.timeEnd !== 0) errors.timeEnd = 'Time End is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -121,7 +133,7 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
 
       onSuccess?.();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating lecture:', error);
       toast({
         title: "Error",
@@ -134,6 +146,8 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
   };
 
   const handleInputChange = (field: keyof LectureUpdateData, value: string | boolean) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -163,7 +177,10 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
               value={formData.title}
               onChange={(e) => handleInputChange('title', e.target.value)}
               required
+              className={`${fieldErrors.title ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
             />
+
+            {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
           </div>
 
           <div className="space-y-2">
@@ -175,7 +192,10 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
               onChange={(e) => handleInputChange('description', e.target.value)}
               rows={3}
               required
+              className={`${fieldErrors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
             />
+
+            {fieldErrors.description && <p className="text-xs text-red-500 mt-1">{fieldErrors.description}</p>}
           </div>
 
           <div className="space-y-2">
@@ -221,7 +241,10 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
                 value={formData.venue}
                 onChange={(e) => handleInputChange('venue', e.target.value)}
                 required
+              className={`${fieldErrors.venue ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
               />
+
+              {fieldErrors.venue && <p className="text-xs text-red-500 mt-1">{fieldErrors.venue}</p>}
             </div>
           </div>
 
@@ -234,7 +257,10 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
                 value={formData.timeStart}
                 onChange={(e) => handleInputChange('timeStart', e.target.value)}
                 required
+              className={`${fieldErrors.timeStart ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
               />
+
+              {fieldErrors.timeStart && <p className="text-xs text-red-500 mt-1">{fieldErrors.timeStart}</p>}
             </div>
 
             <div className="space-y-2">
@@ -245,7 +271,10 @@ const UpdateOrganizationLectureForm = ({ lecture, onClose, onSuccess }: UpdateOr
                 value={formData.timeEnd}
                 onChange={(e) => handleInputChange('timeEnd', e.target.value)}
                 required
+              className={`${fieldErrors.timeEnd ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
               />
+
+              {fieldErrors.timeEnd && <p className="text-xs text-red-500 mt-1">{fieldErrors.timeEnd}</p>}
             </div>
           </div>
 

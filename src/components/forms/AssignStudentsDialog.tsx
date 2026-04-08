@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { UserPlus, Loader2, Plus, X } from 'lucide-react';
+import { UserPlus, Loader2, Plus, X, Clipboard, Trash2, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { instituteClassesApi, BulkAssignStudentsData } from '@/api/instituteClasses.api';
@@ -39,17 +39,38 @@ const AssignStudentsDialog: React.FC<AssignStudentsDialogProps> = ({
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [userIds, setUserIds] = useState<string[]>([]);
   const [assigning, setAssigning] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const addIds = (raw: string) => {
+    const newIds = raw
+      .split(/[\n,;\s]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    setUserIds(prev => {
+      const merged = [...prev];
+      newIds.forEach(id => { if (!merged.includes(id)) merged.push(id); });
+      return merged;
+    });
+  };
 
   const handleAddUserId = () => {
-    const trimmedId = currentUserId.trim();
-    if (trimmedId && !userIds.includes(trimmedId)) {
-      setUserIds([...userIds, trimmedId]);
+    if (!currentUserId.trim()) return;
+    addIds(currentUserId);
+    setCurrentUserId('');
+    inputRef.current?.focus();
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (/[\n,;]/.test(text)) {
+      e.preventDefault();
+      addIds(text);
       setCurrentUserId('');
     }
   };
 
   const handleRemoveUserId = (idToRemove: string) => {
-    setUserIds(userIds.filter(id => id !== idToRemove));
+    setUserIds(prev => prev.filter(id => id !== idToRemove));
   };
 
   const handleAssignStudents = async () => {
@@ -183,87 +204,112 @@ const AssignStudentsDialog: React.FC<AssignStudentsDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] sm:max-h-[80vh] p-0 sm:p-6 gap-0 w-[calc(100%-1rem)] mx-auto sm:w-full rounded-2xl sm:rounded-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5" />
+      <DialogContent className="max-w-lg w-[calc(100%-1rem)] mx-auto rounded-2xl sm:rounded-xl p-0 gap-0 overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <UserPlus className="h-4 w-4 text-primary" />
+            </div>
             Assign Users to Class
           </DialogTitle>
-          <DialogDescription>
-            Enter user IDs to assign to <strong>{selectedClass?.name}</strong>
+          <DialogDescription className="text-xs mt-1">
+            Assigning to <strong className="text-foreground">{selectedClass?.name}</strong>
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="userId">Add User ID</Label>
+        <div className="px-5 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+          {/* Input */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add User ID</Label>
             <div className="flex gap-2">
               <Input
+                ref={inputRef}
                 id="userId"
-                placeholder="Enter user ID"
+                placeholder="Type ID and press Enter, or paste multiple…"
                 value={currentUserId}
-                onChange={(e) => setCurrentUserId(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddUserId();
-                  }
+                onChange={e => setCurrentUserId(e.target.value)}
+                onPaste={handlePaste}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); handleAddUserId(); }
                 }}
-                className="flex-1"
+                className="flex-1 text-sm"
+                autoFocus
               />
-              <Button 
+              <Button
                 type="button"
                 onClick={handleAddUserId}
                 disabled={!currentUserId.trim()}
-                size="icon"
+                size="sm"
+                className="shrink-0 px-3"
               >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
+            <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <Clipboard className="h-3 w-3" />
+              Tip: paste a list of IDs separated by commas, spaces, or new lines — they'll all be added at once.
+            </p>
           </div>
 
-          {userIds.length > 0 && (
+          {/* ID List */}
+          {userIds.length > 0 ? (
             <div className="space-y-2">
-              <Label className="text-sm">Added Users ({userIds.length})</Label>
-              <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/50">
-                {userIds.map((id) => (
-                  <Badge key={id} variant="secondary" className="gap-1 text-xs">
-                    {id}
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" />Users to assign
+                  <Badge className="ml-1 h-5 px-1.5 text-[10px]">{userIds.length}</Badge>
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => setUserIds([])}
+                  className="text-[11px] text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors"
+                >
+                  <Trash2 className="h-3 w-3" />Clear all
+                </button>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border overflow-hidden">
+                {userIds.map((id, i) => (
+                  <div key={id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted/60 transition-colors">
+                    <span className="text-[11px] text-muted-foreground w-5 shrink-0 text-right">{i + 1}.</span>
+                    <span className="flex-1 text-sm font-mono font-medium text-foreground truncate">{id}</span>
                     <button
                       type="button"
                       onClick={() => handleRemoveUserId(id)}
-                      className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
+                      className="shrink-0 h-5 w-5 flex items-center justify-center rounded-full hover:bg-destructive/15 hover:text-destructive text-muted-foreground transition-colors"
                     >
                       <X className="h-3 w-3" />
                     </button>
-                  </Badge>
+                  </div>
                 ))}
               </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-center gap-2 rounded-lg border border-dashed border-border bg-muted/20">
+              <Users className="h-8 w-8 text-muted-foreground/30" />
+              <p className="text-xs text-muted-foreground">No user IDs added yet</p>
+              <p className="text-[11px] text-muted-foreground/60">Type above or paste a list to get started</p>
             </div>
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-border bg-muted/20 flex items-center justify-between gap-3">
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="text-muted-foreground">
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleAssignStudents}
             disabled={userIds.length === 0 || assigning}
+            className="gap-2"
           >
             {assigning ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Assigning...
-              </>
+              <><Loader2 className="h-4 w-4 animate-spin" />Assigning…</>
             ) : (
-              <>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Assign Users
-              </>
+              <><UserPlus className="h-4 w-4" />Assign {userIds.length > 0 ? `${userIds.length} User${userIds.length > 1 ? 's' : ''}` : 'Users'}</>
             )}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

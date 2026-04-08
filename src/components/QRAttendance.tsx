@@ -1,25 +1,41 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Camera, QrCode, UserCheck, CheckCircle, MapPin, X, BarChart3, Smartphone, AlertCircle, Loader2, Wifi } from 'lucide-react';
+import { ArrowLeft, Camera, QrCode, UserCheck, CheckCircle, MapPin, X, AlertCircle, Loader2, Building2, GraduationCap, BookOpen } from 'lucide-react';
 import jsQR from 'jsqr';
+import { getImageUrl } from '@/utils/imageUrlHelper';
 import { childAttendanceApi, MarkAttendanceByCardRequest, MarkAttendanceRequest } from '@/api/childAttendance.api';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { tokenStorageService } from '@/services/tokenStorageService';
 import { buildAttendanceAddress } from '@/utils/attendanceAddress';
 import { attendanceScanLog } from '@/utils/attendanceScanLog';
-import { AttendanceStatus, ALL_ATTENDANCE_STATUSES, ATTENDANCE_STATUS_CONFIG } from '@/types/attendance.types';
+import { AttendanceStatus, ALL_ATTENDANCE_STATUSES, ATTENDANCE_STATUS_CONFIG, AddressCoordinates } from '@/types/attendance.types';
 import { Capacitor } from '@capacitor/core';
 import { useTodayCalendarEvents, DEFAULT_EVENT_ID } from '@/hooks/useTodayCalendarEvents';
 import EventSelector from '@/components/attendance/EventSelector';
 import MobileScannerOverlay from '@/components/MobileScannerOverlay';
+import AttendanceLocationViewer from '@/components/dialogs/AttendanceLocationViewer';
+
+interface LocationViewData {
+  studentName?: string;
+  studentId?: string;
+  address?: AddressCoordinates;
+  location?: string;
+  date?: string;
+  status?: string;
+  className?: string;
+  instituteName?: string;
+  markingTime?: string;
+  markingMethod?: string;
+}
 
 // Dynamic import to avoid crash on web where the plugin isn't available
 let CapacitorBarcodeScanner: any = null;
@@ -55,6 +71,7 @@ const QRAttendance = () => {
   const instituteRole = useInstituteRole();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const routerLocation = useLocation();
   
   const [studentId, setStudentId] = useState('');
   const [markedCount, setMarkedCount] = useState(0);
@@ -65,10 +82,21 @@ const QRAttendance = () => {
   const [status, setStatus] = useState<AttendanceStatus>('present');
   const [selectedEventId, setSelectedEventId] = useState(DEFAULT_EVENT_ID);
   const [attendanceAlerts, setAttendanceAlerts] = useState<AttendanceAlert[]>([]);
-  const [showMethodDialog, setShowMethodDialog] = useState(false);
-  const [selectedMethod, setSelectedMethod] = useState<'qr' | 'barcode' | 'rfid/nfc'>('qr');
+  const [selectedMethod, setSelectedMethod] = useState<'qr' | 'barcode'>('qr');
+  const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
   const [studentImagesMap, setStudentImagesMap] = useState<Map<string, string>>(new Map());
   const [isManualProcessing, setIsManualProcessing] = useState(false);
+  const [lastManualStudent, setLastManualStudent] = useState<{
+    name: string;
+    imageUrl?: string;
+    status: AttendanceStatus;
+    time: string;
+    date: string;
+  } | null>(null);
+
+  // Location viewer dialog state
+  const [locationViewerOpen, setLocationViewerOpen] = useState(false);
+  const [locationViewData, setLocationViewData] = useState<LocationViewData | null>(null);
 
   // Fetch today's calendar events
   const calendarInfo = useTodayCalendarEvents(
@@ -87,14 +115,25 @@ const QRAttendance = () => {
   // Check if user has permission - InstituteAdmin, Teacher, and AttendanceMarker can mark attendance
   const hasPermission = ['InstituteAdmin', 'Teacher', 'AttendanceMarker'].includes(instituteRole);
 
+  // Allow method switching by query param (?method=qr|barcode)
+  useEffect(() => {
+    const params = new URLSearchParams(routerLocation.search);
+    const method = params.get('method');
+    if (method === 'barcode') {
+      setSelectedMethod('barcode');
+    } else {
+      setSelectedMethod('qr');
+    }
+  }, [routerLocation.search]);
+
   // Fetch students to get their images
   useEffect(() => {
     const fetchStudents = async () => {
       if (!currentInstituteId) return;
       
       try {
-        const baseUrl = localStorage.getItem('baseUrl') || '';
-        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
+        const baseUrl = getBaseUrl();
+        const token = await tokenStorageService.getAccessToken();
         
         const response = await fetch(
           `${baseUrl}/institute-users/institute/${currentInstituteId}/users/STUDENT?page=1&limit=500`,
@@ -121,7 +160,7 @@ const QRAttendance = () => {
           setStudentImagesMap(imagesMap);
           console.log('📸 Loaded student images for', imagesMap.size, 'students');
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to fetch student images:', error);
       }
     };
@@ -136,6 +175,14 @@ const QRAttendance = () => {
       stopCamera();
     };
   }, [selectedInstitute]);
+
+  // Auto-dismiss last manual student card after 4 seconds
+  useEffect(() => {
+    if (lastManualStudent) {
+      const timer = setTimeout(() => setLastManualStudent(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastManualStudent]);
 
   // Auto remove alerts after 1.25 seconds
   useEffect(() => {
@@ -202,7 +249,7 @@ const QRAttendance = () => {
         const address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
         setLocation({ latitude, longitude, address });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.log('Location access error:', error);
       setLocation(null);
     } finally {
@@ -219,7 +266,7 @@ const QRAttendance = () => {
         return data.display_name;
       }
       throw new Error('No address found');
-    } catch (error) {
+    } catch (error: any) {
       console.log('Reverse geocoding failed:', error);
       return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
     }
@@ -231,31 +278,8 @@ const QRAttendance = () => {
     return address;
   };
 
-  const startCameraWithMethod = () => {
-    setShowMethodDialog(true);
-  };
-
-  const startCameraForMethod = async (method: 'qr' | 'barcode' | 'rfid/nfc') => {
+  const startCameraForMethod = async (method: 'qr' | 'barcode') => {
     setSelectedMethod(method);
-    setShowMethodDialog(false);
-    
-    // Navigate to RFID page if RFID/NFC is selected
-    if (method === 'rfid/nfc') {
-      // Build context-aware URL for RFID attendance
-      let rfidUrl = '/rfid-attendance';
-      if (currentInstituteId) {
-        rfidUrl = `/institute/${currentInstituteId}`;
-        if (selectedClass?.id) {
-          rfidUrl += `/class/${selectedClass.id}`;
-          if (selectedSubject?.id) {
-            rfidUrl += `/subject/${selectedSubject.id}`;
-          }
-        }
-        rfidUrl += '/rfid-attendance';
-      }
-      navigate(rfidUrl);
-      return;
-    }
     
     setIsScanning(true);
     
@@ -311,6 +335,7 @@ const QRAttendance = () => {
     try {
       console.log('🎥 Starting camera for QR/Barcode scanning...');
       setCameraError(null);
+      setCameraPermissionDenied(false);
       
       if (!videoRef.current || !canvasRef.current) {
         console.log('❌ Video or canvas element not found, retrying...');
@@ -368,7 +393,7 @@ const QRAttendance = () => {
                   break;
                 }
               }
-            } catch (error) {
+            } catch (error: any) {
               console.error('Native scan error:', error);
             } finally {
               setIsNativeScanning(false);
@@ -434,13 +459,14 @@ const QRAttendance = () => {
         message: `📱 Camera active! Point at QR codes or barcodes to scan automatically`
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Camera start error:', error);
       let errorMessage = error instanceof Error ? error.message : 'Unknown camera error';
       
       // Provide user-friendly error messages
-      if (errorMessage.includes('Permission denied') || errorMessage.includes('NotAllowedError')) {
-        errorMessage = '🚫 Camera access denied. Please allow camera permissions and reload the page.';
+      if (errorMessage.includes('Permission denied') || errorMessage.includes('NotAllowedError') || error?.name === 'NotAllowedError') {
+        errorMessage = 'Camera access denied. Please grant camera permission to use the scanner.';
+        setCameraPermissionDenied(true);
       } else if (errorMessage.includes('NotFoundError')) {
         errorMessage = '📷 No camera found on this device.';
       } else if (errorMessage.includes('NotReadableError')) {
@@ -457,6 +483,27 @@ const QRAttendance = () => {
         message: errorMessage
       });
     }
+  };
+
+  const openLocationViewer = (
+    studentName?: string,
+    studentId?: string,
+    markingMethod?: string,
+    markingTime?: string
+  ) => {
+    setLocationViewData({
+      studentName,
+      studentId,
+      address: location ? { latitude: location.latitude, longitude: location.longitude } : undefined,
+      location: location?.address,
+      date: new Date().toISOString().split('T')[0],
+      status,
+      className: selectedClass?.name,
+      instituteName: selectedInstitute?.name,
+      markingTime: markingTime || new Date().toLocaleTimeString(),
+      markingMethod,
+    });
+    setLocationViewerOpen(true);
   };
 
   const stopCamera = async () => {
@@ -498,7 +545,7 @@ const QRAttendance = () => {
         type: 'success',
         message: '📱 Camera stopped'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error stopping camera:', error);
     }
   };
@@ -531,18 +578,29 @@ const QRAttendance = () => {
         location: location?.address,
       });
 
+      // ✅ NEW: Build address coordinates object
+      const addressCoordinates: AddressCoordinates | undefined = location
+        ? {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          }
+        : undefined;
+
       const request: MarkAttendanceByCardRequest = {
         studentCardId: studentCardId.trim(),
         instituteId: currentInstituteId,
         instituteName: selectedInstitute.name,
-        address,
+        // ✅ NEW: Use address object instead of separate latitude/longitude
+        address: addressCoordinates,
+        // Location display name (human-readable address)
+        location: location?.address,
         markingMethod: selectedMethod,
         status: status,
         date: calendarInfo.currentDate,
       };
 
-      // Send eventId — use selected event or omit for default
-      if (selectedEventId !== DEFAULT_EVENT_ID) {
+      // Only send eventId for institute scope (class/subject → eventId is always null)
+      if (!selectedClass && selectedEventId !== DEFAULT_EVENT_ID) {
         request.eventId = selectedEventId;
       }
 
@@ -557,9 +615,6 @@ const QRAttendance = () => {
         request.subjectId = selectedSubject.id;
         request.subjectName = selectedSubject.name;
       }
-
-      console.log('📤 Sending attendance request...');
-      console.log('📋 Request:', JSON.stringify(request, null, 2));
 
       const result = await childAttendanceApi.markAttendanceByCard(request);
 
@@ -619,13 +674,19 @@ const QRAttendance = () => {
         console.log('🚫 Error:', result.message);
         throw new Error(result.message || 'Failed to mark attendance');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ ATTENDANCE MARKING ERROR');
       console.error('💥 Error:', error);
       
       let errorMessage = 'Failed to mark attendance';
       if (error instanceof Error) {
-        errorMessage = error.message;
+        const errorMsg = error.message;
+        // Check for 404 "User not found" error
+        if (errorMsg.includes('404') && errorMsg.includes('User not found')) {
+          errorMessage = 'Invalid user id';
+        } else {
+          errorMessage = errorMsg;
+        }
       }
       
       // Log failure to scan log
@@ -667,26 +728,31 @@ const QRAttendance = () => {
     }
 
     // Location is optional
-
     setIsManualProcessing(true);
     try {
-      const selectionPath = [selectedInstitute.name, selectedClass?.name, selectedSubject?.name]
-        .filter(Boolean)
-        .join(' → ');
-      const address = location ? `${selectionPath} - ${location.address}` : selectionPath;
+      // ✅ NEW: Build address coordinates object
+      const addressCoordinates: AddressCoordinates | undefined = location
+        ? {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          }
+        : undefined;
 
       const request: MarkAttendanceRequest = {
         studentId: studentId.trim(),
         instituteId: currentInstituteId,
         instituteName: selectedInstitute.name,
-        address,
+        // ✅ NEW: Use address object instead of separate latitude/longitude
+        address: addressCoordinates,
+        // Location display name (human-readable address)
+        location: location?.address,
         markingMethod: 'manual',
         status: status,
         date: calendarInfo.currentDate,
       };
 
-      // Send eventId — use selected event or omit for default
-      if (selectedEventId !== DEFAULT_EVENT_ID) {
+      // Only send eventId for institute scope (class/subject → eventId is always null)
+      if (!selectedClass && selectedEventId !== DEFAULT_EVENT_ID) {
         request.eventId = selectedEventId;
       }
 
@@ -735,16 +801,16 @@ const QRAttendance = () => {
         const timeStr = responseData.time || new Date().toLocaleTimeString();
         const attendanceStatus = responseData.status || status;
         
-        toast({
-          title: "✓ Attendance Marked Successfully",
-          description: `${studentName} - Status: ${attendanceStatus.toUpperCase()} - Date: ${dateStr} - Time: ${timeStr}${selectedInstitute?.name ? ` - ${selectedInstitute.name}` : ''}`,
-          isAttendanceAlert: true,
-          imageUrl: imageUrl,
-          status: attendanceStatus,
-        });
         const previousCount = markedCount;
         setMarkedCount(prev => prev + 1);
         setStudentId('');
+        setLastManualStudent({
+          name: studentName,
+          imageUrl,
+          status: attendanceStatus,
+          time: timeStr,
+          date: dateStr,
+        });
         
         console.log('✅ SUCCESS: Manual attendance marked successfully');
         console.log('Student ID:', studentId);
@@ -762,16 +828,25 @@ const QRAttendance = () => {
         console.log('Error message:', result.message);
         throw new Error(result.message || 'Failed to mark attendance');
       }
-    } catch (error) {
+    } catch (error: any) {
       const selectionPath = [selectedInstitute.name, selectedClass?.name, selectedSubject?.name]
         .filter(Boolean)
         .join(' → ');
+
+      // Rebuild address coordinates for error logging
+      const addressCoordinatesForLog: AddressCoordinates | undefined = location
+        ? {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          }
+        : undefined;
 
       const requestForLog: MarkAttendanceRequest = {
         studentId: studentId.trim(),
         instituteId: currentInstituteId,
         instituteName: selectedInstitute.name,
-        address: location ? `${selectionPath} - ${location.address}` : selectionPath,
+        address: addressCoordinatesForLog,
+        location: location?.address,
         markingMethod: 'manual',
         status: status
       };
@@ -793,9 +868,23 @@ const QRAttendance = () => {
       console.error('Error details:', error);
       console.error('Original request:', JSON.stringify(requestForLog, null, 2));
       console.error('============================');
-      addAlert({
-        type: 'error',
-        message: error instanceof Error ? error.message : 'Failed to mark attendance'
+      
+      // Parse error message for user-friendly display
+      let errorMessage = 'Failed to mark attendance';
+      if (error instanceof Error) {
+        const errorMsg = error.message;
+        // Check for 404 "User not found" error
+        if (errorMsg.includes('404') && errorMsg.includes('User not found')) {
+          errorMessage = 'Invalid user id';
+        } else {
+          errorMessage = errorMsg;
+        }
+      }
+      
+      toast({
+        title: 'Failed to Mark Attendance',
+        description: errorMessage,
+        variant: 'destructive',
       });
     } finally {
       setIsManualProcessing(false);
@@ -804,7 +893,17 @@ const QRAttendance = () => {
 
   const handleBack = () => {
     stopCamera();
-    window.history.back();
+    const instituteId = currentInstituteId || selectedInstitute?.id;
+    if (instituteId) {
+      let url = `/institute/${instituteId}`;
+      if (selectedClass?.id) {
+        url += `/class/${selectedClass.id}`;
+        if (selectedSubject?.id) url += `/subject/${selectedSubject.id}`;
+      }
+      navigate(`${url}/select-attendance-mark-type`);
+      return;
+    }
+    navigate('/dashboard');
   };
 
   if (!hasPermission) {
@@ -898,7 +997,7 @@ const QRAttendance = () => {
         ))}
       </div>
 
-      <div className="container mx-auto p-4 space-y-4 max-w-6xl">
+      <div className="container mx-auto p-4 space-y-4 max-w-4xl">
         {/* Header */}
         <div className="flex items-center gap-4">
           <Button variant="outline" onClick={handleBack} className="flex items-center gap-2">
@@ -914,407 +1013,310 @@ const QRAttendance = () => {
         </div>
 
         {/* Current Selection Card */}
-        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100 text-lg">
-              <QrCode className="h-5 w-5" />
+        <Card className="border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
               Current Selection
             </CardTitle>
           </CardHeader>
-           <CardContent className="space-y-3">
-             <div>
-               <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Institute</p>
-               <p className="text-blue-900 dark:text-blue-100">{selectedInstitute?.name}</p>
-             </div>
-             
-             {location && (
-               <div className="flex items-start gap-2 p-3 bg-white dark:bg-gray-800 rounded-lg">
-                 <MapPin className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                 <div className="flex-1 min-w-0">
-                   <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Location</p>
-                   <p className="text-xs text-blue-700 dark:text-blue-300 break-words">
-                     {selectedInstitute?.name ? `${selectedInstitute.name} - ` : ''}{location.address}
-                   </p>
-                 </div>
-               </div>
-             )}
-           </CardContent>
+          <div className="px-6 pb-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className={`font-semibold text-sm ${selectedInstitute ? 'text-foreground' : 'text-muted-foreground italic'}`}>
+                {selectedInstitute?.name || 'No institute selected'}
+              </span>
+            </div>
+            {selectedClass && (
+              <div className="flex items-center gap-2 pl-4 border-l-2 border-primary/30 ml-2">
+                <GraduationCap className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-sm font-medium text-foreground">{selectedClass.name}</span>
+              </div>
+            )}
+            {selectedSubject && (
+              <div className="flex items-center gap-2 pl-4 border-l-2 border-primary/20 ml-6">
+                <BookOpen className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                <span className="text-sm font-medium text-foreground">{selectedSubject.name}</span>
+              </div>
+            )}
+            {location && (
+              <div className="flex items-start gap-2 pt-1">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                <p className="text-xs text-muted-foreground break-words">{location.address}</p>
+              </div>
+            )}
+          </div>
         </Card>
 
         {/* Stats Card */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Today's Stats
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold text-green-600">{markedCount}</p>
-                <p className="text-sm text-muted-foreground">Marked</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-blue-600">{status}</p>
-                <p className="text-sm text-muted-foreground">Current Status</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-purple-600">{selectedMethod.toUpperCase()}</p>
-                <p className="text-sm text-muted-foreground">Method</p>
-              </div>
+        {/* Shared Controls */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Status</p>
+            <Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>
+              <SelectTrigger className="w-full h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-gray-800 z-50">
+                {ALL_ATTENDANCE_STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>{ATTENDANCE_STATUS_CONFIG[s].label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {/* Event Selector — only for institute scope */}
+          {!selectedClass && (
+            <div>
+              <EventSelector
+                events={calendarInfo.events}
+                selectedEventId={selectedEventId}
+                onEventChange={setSelectedEventId}
+                loading={calendarInfo.loading}
+                dayType={calendarInfo.dayType}
+                isAttendanceExpected={calendarInfo.isAttendanceExpected}
+                compact
+              />
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
 
-        {/* QR Scanner Section - Made Much Bigger */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-2xl">
-              <Camera className="h-7 w-7" />
-              Scan QR
-            </CardTitle>
-            <CardDescription className="text-lg">
-              Position code within the frame
-            </CardDescription>
-          </CardHeader>
-           <CardContent className="space-y-6">
-             {!isScanning ? (
-               <div className="space-y-6">
-                 <div className="space-y-4">
-                   <div>
-                     <p className="text-sm font-medium mb-2">Status</p>
-                     <Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>
-                       <SelectTrigger className="w-full">
-                         <SelectValue />
-                       </SelectTrigger>
-                       <SelectContent className="bg-white dark:bg-gray-800 z-50">
-                          {ALL_ATTENDANCE_STATUSES.map((statusOption) => (
-                            <SelectItem key={statusOption} value={statusOption}>
-                              {ATTENDANCE_STATUS_CONFIG[statusOption].label}
-                            </SelectItem>
-                          ))}
-                       </SelectContent>
-                     </Select>
+        {/* Two-column grid: Manual Entry + Compact QR Scanner */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Manual Entry - top/left */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserCheck className="h-4 w-4" />
+                Manual Entry
+              </CardTitle>
+              <CardDescription className="text-xs">Enter student ID to mark attendance</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Student result after mark */}
+              {lastManualStudent && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-2xl overflow-hidden">
+                  {/* Header strip */}
+                  <div className="flex items-center justify-between px-4 py-2 bg-green-100 dark:bg-green-900/40 border-b border-green-200 dark:border-green-700">
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      <span className="text-sm font-semibold text-green-700 dark:text-green-300">Attendance Marked</span>
                     </div>
-                    <EventSelector
-                      events={calendarInfo.events}
-                      selectedEventId={selectedEventId}
-                      onEventChange={setSelectedEventId}
-                      loading={calendarInfo.loading}
-                      dayType={calendarInfo.dayType}
-                      isAttendanceExpected={calendarInfo.isAttendanceExpected}
-                      compact
-                    />
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-7 w-7 p-0 text-green-600 hover:text-green-800 hover:bg-green-200 dark:hover:bg-green-800"
+                      onClick={() => setLastManualStudent(null)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
-                  
-                 <div className="text-center py-16">
-                   <Camera className="h-20 w-20 mx-auto mb-6 text-muted-foreground" />
-                   <p className="text-xl font-medium mb-3">Ready to Scan</p>
-                   <p className="text-muted-foreground mb-8 text-lg">Start camera to begin scanning QR codes</p>
-                   <Button 
-                     onClick={startCameraWithMethod} 
-                     className="w-full max-w-sm text-lg py-6"
-                     size="lg"
-                   >
-                     <Camera className="h-6 w-6 mr-3" />
-                     Start Camera
-                   </Button>
-                 </div>
-               </div>
-             ) : (
-               <div className="space-y-4 sm:space-y-6">
-                 {/* Header with Back Button and Status */}
-                 <div className="flex items-center gap-4">
-                   <Button 
-                     onClick={stopCamera} 
-                     variant="outline" 
-                     size="sm"
-                     className="flex items-center gap-2"
-                   >
-                     <ArrowLeft className="h-4 w-4" />
-                     Back
-                   </Button>
-                   
-                   <div className="flex-1">
-                     <Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>
-                       <SelectTrigger className="w-full">
-                         <SelectValue />
-                       </SelectTrigger>
-                       <SelectContent className="bg-white dark:bg-gray-800 z-50">
-                          {ALL_ATTENDANCE_STATUSES.map((statusOption) => (
-                            <SelectItem key={statusOption} value={statusOption}>
-                              {ATTENDANCE_STATUS_CONFIG[statusOption].label}
-                            </SelectItem>
-                          ))}
-                       </SelectContent>
-                     </Select>
-                   </div>
-                 </div>
-                 
-                 {/* Compact Camera View - Not Full Screen */}
-                 <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-lg border">
-                   <div className="relative w-full max-w-md mx-auto aspect-square bg-gray-900 rounded-xl overflow-hidden shadow-xl">
-                     <video
-                       ref={videoRef}
-                       className="w-full h-full object-cover"
-                       playsInline
-                       muted
-                     />
-                     <canvas
-                       ref={canvasRef}
-                       className="hidden"
-                     />
-                     {cameraError && (
-                       <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-                         <div className="text-center text-white p-4">
-                           <AlertCircle className="h-12 w-12 mx-auto mb-3" />
-                           <p className="text-sm">{cameraError}</p>
-                         </div>
-                       </div>
-                     )}
-                      
-                      {/* Scanning Overlay - Compact Version */}
-                      <div className="absolute inset-0 pointer-events-none">
-                        {/* Success Animation Overlay */}
-                        {showSuccessAnimation && lastMarkedStudent && (
-                          <div className="absolute inset-0 bg-green-500/30 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300">
-                            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-2xl max-w-xs mx-4 animate-in zoom-in duration-300">
-                              <div className="text-center space-y-3">
-                                <div className="mx-auto w-16 h-16 bg-green-500 rounded-full flex items-center justify-center animate-in zoom-in duration-500">
-                                  <CheckCircle className="h-10 w-10 text-white" />
-                                </div>
-                                <div>
-                                  <h3 className="text-lg font-bold text-green-600 dark:text-green-400 mb-1">
-                                    Attendance Marked!
-                                  </h3>
-                                  <p className="text-base font-medium text-gray-900 dark:text-gray-100">
-                                    {lastMarkedStudent.name}
-                                  </p>
-                                  <Badge className="mt-2" variant={lastMarkedStudent.status === 'present' ? 'default' : 'secondary'}>
-                                    {ATTENDANCE_STATUS_CONFIG[lastMarkedStudent.status].label}
-                                  </Badge>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Scanning Frame */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="relative w-48 h-48 sm:w-56 sm:h-56">
-                            {/* Outer glow */}
-                            <div className="absolute inset-0 border-3 border-blue-500/20 rounded-2xl animate-pulse"></div>
-                            
-                            {/* Main frame */}
-                            <div className="absolute inset-1 border-3 border-white/80 rounded-xl shadow-lg">
-                              {/* Corner indicators */}
-                              <div className="absolute -top-1 -left-1 w-8 h-8">
-                                <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 to-transparent"></div>
-                                <div className="absolute top-0 left-0 w-0.5 h-full bg-gradient-to-b from-blue-500 to-transparent"></div>
-                              </div>
-                              <div className="absolute -top-1 -right-1 w-8 h-8">
-                                <div className="absolute top-0 right-0 w-full h-0.5 bg-gradient-to-l from-blue-500 to-transparent"></div>
-                                <div className="absolute top-0 right-0 w-0.5 h-full bg-gradient-to-b from-blue-500 to-transparent"></div>
-                              </div>
-                              <div className="absolute -bottom-1 -left-1 w-8 h-8">
-                                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 to-transparent"></div>
-                                <div className="absolute bottom-0 left-0 w-0.5 h-full bg-gradient-to-t from-blue-500 to-transparent"></div>
-                              </div>
-                              <div className="absolute -bottom-1 -right-1 w-8 h-8">
-                                <div className="absolute bottom-0 right-0 w-full h-0.5 bg-gradient-to-l from-blue-500 to-transparent"></div>
-                                <div className="absolute bottom-0 right-0 w-0.5 h-full bg-gradient-to-t from-blue-500 to-transparent"></div>
-                              </div>
-                              
-                              {/* Center target */}
-                              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                                <div className="relative w-6 h-6">
-                                  <div className="absolute inset-0 border border-white/50 rounded-full"></div>
-                                  <div className="absolute top-1/2 left-0 right-0 h-px bg-white/50 transform -translate-y-1/2"></div>
-                                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/50 transform -translate-x-1/2"></div>
-                                </div>
-                              </div>
-                              
-                              {/* Scanning line */}
-                              <div className="absolute inset-0 overflow-hidden rounded-xl">
-                                <div className="absolute left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-400 to-transparent animate-scan-line"></div>
-                              </div>
-                            </div>
-                          </div>
+                  {/* Body */}
+                  <div className="flex items-center gap-4 p-4">
+                    {/* Photo */}
+                    <div className="w-20 h-20 rounded-2xl overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-800 border-2 border-green-300 dark:border-green-600 shadow-sm">
+                      {lastManualStudent.imageUrl ? (
+                        <img
+                          src={getImageUrl(lastManualStudent.imageUrl)}
+                          alt={lastManualStudent.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-green-100 dark:bg-green-900/30">
+                          <UserCheck className="h-10 w-10 text-green-500" />
                         </div>
-                        
-                        {/* Status indicators */}
-                        <div className="absolute top-2 left-2 right-2 flex items-center justify-between">
-                          <div className="bg-black/60 text-white px-3 py-1.5 rounded-md backdrop-blur-sm flex items-center gap-2 text-xs">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                            <span className="font-medium">Scanning...</span>
-                          </div>
-                          <div className="bg-black/60 text-white px-3 py-1.5 rounded-md backdrop-blur-sm text-xs">
-                            <span className="font-bold">{markedCount}</span>
-                            <span className="ml-1">marked</span>
-                          </div>
+                      )}
+                    </div>
+                    {/* Details */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <p className="font-bold text-lg text-gray-900 dark:text-white leading-tight truncate">
+                        {lastManualStudent.name}
+                      </p>
+                      <Badge
+                        className={`text-sm px-3 py-0.5 font-semibold ${
+                          lastManualStudent.status === 'present' ? 'bg-green-500 hover:bg-green-500 text-white' :
+                          lastManualStudent.status === 'absent'  ? 'bg-red-500 hover:bg-red-500 text-white' :
+                          lastManualStudent.status === 'late'    ? 'bg-yellow-500 hover:bg-yellow-500 text-white' :
+                                                                   'bg-blue-500 hover:bg-blue-500 text-white'
+                        }`}
+                      >
+                        {ATTENDANCE_STATUS_CONFIG[lastManualStudent.status]?.label || lastManualStudent.status}
+                      </Badge>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>{lastManualStudent.date}</span>
+                        <span>•</span>
+                        <span>{lastManualStudent.time}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Event Selector — only for institute scope */}
+              {!selectedClass && (
+                <EventSelector
+                  events={calendarInfo.events}
+                  selectedEventId={selectedEventId}
+                  onEventChange={setSelectedEventId}
+                  loading={calendarInfo.loading}
+                  dayType={calendarInfo.dayType}
+                  isAttendanceExpected={calendarInfo.isAttendanceExpected}
+                  compact
+                />
+              )}
+
+              <Input
+                ref={inputRef}
+                placeholder="Enter Student ID"
+                value={studentId}
+                onChange={(e) => { setStudentId(e.target.value); if (lastManualStudent) setLastManualStudent(null); }}
+                onKeyPress={(e) => { if (e.key === 'Enter') handleManualMarkAttendance(); }}
+                className="h-10"
+              />
+
+              <Button
+                onClick={handleManualMarkAttendance}
+                className="w-full"
+                disabled={!studentId.trim() || isManualProcessing}
+              >
+                {isManualProcessing ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processing...</>
+                ) : (
+                  <><UserCheck className="h-4 w-4 mr-2" />Mark Attendance</>
+                )}
+              </Button>
+
+              <div className="flex items-center justify-between pt-2 border-t">
+                <span className="text-xs text-muted-foreground">Marked today</span>
+                <span className="text-sm font-bold text-green-600">{markedCount}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* QR Scanner - Compact */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <QrCode className="h-4 w-4" />
+                Scan QR
+              </CardTitle>
+              <CardDescription className="text-xs">Position code within the frame</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {!isScanning ? (
+                <div className="text-center py-8 space-y-3">
+                  {cameraPermissionDenied ? (
+                    <>
+                      <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center mx-auto">
+                        <AlertCircle className="h-8 w-8 text-red-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-red-600 dark:text-red-400">Camera Access Denied</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {Capacitor.isNativePlatform()
+                            ? 'Open your device Settings → Apps → and allow Camera permission for this app.'
+                            : 'Click the camera icon in your browser address bar and allow camera access, then try again.'}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          setCameraPermissionDenied(false);
+                          setCameraError(null);
+                          startCameraForMethod(selectedMethod);
+                        }}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        <Camera className="h-4 w-4 mr-2" />
+                        Try Again
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto">
+                        <Camera className="h-8 w-8 text-blue-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Ready to Scan</p>
+                        <p className="text-xs text-muted-foreground">Start camera to scan QR / Barcode</p>
+                      </div>
+                      <Button
+                        onClick={() => startCameraForMethod(selectedMethod)}
+                        className="w-full"
+                      >
+                        <Camera className="h-4 w-4 mr-2" />
+                        Start Camera
+                      </Button>
+                      {cameraError && (
+                        <Alert className="border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 text-left">
+                          <AlertDescription className="text-red-700 dark:text-red-300 text-xs">{cameraError}</AlertDescription>
+                        </Alert>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Button onClick={stopCamera} variant="outline" size="sm" className="flex items-center gap-1.5">
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                      Stop
+                    </Button>
+                    <div className="flex items-center gap-1.5 text-xs text-green-600 font-medium">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      Scanning...
+                    </div>
+                    <span className="ml-auto text-xs font-medium">{markedCount} marked</span>
+                  </div>
+                  <div className="relative w-full aspect-square bg-gray-900 rounded-xl overflow-hidden max-w-[220px] mx-auto">
+                    <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+                    <canvas ref={canvasRef} className="hidden" />
+                    {cameraError && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+                        <div className="text-center text-white p-4">
+                          <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+                          <p className="text-xs">{cameraError}</p>
                         </div>
-                        
-                        {/* Instruction */}
-                        <div className="absolute bottom-2 left-2 right-2 text-center">
-                          <div className="bg-gradient-to-r from-blue-600/80 to-purple-600/80 text-white px-4 py-2 rounded-lg mx-auto max-w-fit shadow-lg backdrop-blur-sm border border-white/10">
-                            <div className="flex items-center gap-2 text-xs">
-                              {selectedMethod === 'qr' ? (
-                                <QrCode className="h-3 w-3" />
-                              ) : (
-                                <BarChart3 className="h-3 w-3" />
-                              )}
-                              <span className="font-medium">Align code within frame</span>
-                            </div>
+                      </div>
+                    )}
+                    {showSuccessAnimation && lastMarkedStudent && (
+                      <div className="absolute inset-0 bg-green-500/30 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-300">
+                        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-2xl text-center space-y-2 mx-3 animate-in zoom-in duration-300">
+                          <div className="mx-auto w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                            <CheckCircle className="h-6 w-6 text-white" />
                           </div>
+                          <p className="text-xs font-bold text-green-600">{lastMarkedStudent.name}</p>
+                          <Badge variant={lastMarkedStudent.status === 'present' ? 'default' : 'secondary'} className="text-xs">
+                            {ATTENDANCE_STATUS_CONFIG[lastMarkedStudent.status].label}
+                          </Badge>
+                          <Button
+                            size="sm"
+                            onClick={() => openLocationViewer(lastMarkedStudent.name, '', selectedMethod)}
+                            className="mt-2 w-full"
+                            variant="outline"
+                          >
+                            <MapPin className="h-3 w-3 mr-1" />
+                            View Location
+                          </Button>
                         </div>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                      <div className="relative w-28 h-28">
+                        <div className="absolute -top-px -left-px w-6 h-6 border-t-[3px] border-l-[3px] border-blue-400 rounded-tl-lg" />
+                        <div className="absolute -top-px -right-px w-6 h-6 border-t-[3px] border-r-[3px] border-blue-400 rounded-tr-lg" />
+                        <div className="absolute -bottom-px -left-px w-6 h-6 border-b-[3px] border-l-[3px] border-blue-400 rounded-bl-lg" />
+                        <div className="absolute -bottom-px -right-px w-6 h-6 border-b-[3px] border-r-[3px] border-blue-400 rounded-br-lg" />
+                        <div className="absolute left-2 right-2 h-px bg-blue-400/70 rounded-full animate-scan-line" />
                       </div>
                     </div>
                   </div>
                 </div>
               )}
             </CardContent>
-        </Card>
-
-        {/* Manual Entry - Separate section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Smartphone className="h-5 w-5" />
-              Manual Entry
-            </CardTitle>
-            <CardDescription>
-              Enter student ID manually
-            </CardDescription>
-          </CardHeader>
-           <CardContent className="space-y-4">
-             <div className="space-y-4">
-               <div>
-                 <p className="text-sm font-medium mb-2">Status</p>
-                 <Select value={status} onValueChange={(value) => setStatus(value as AttendanceStatus)}>
-                   <SelectTrigger className="w-full">
-                     <SelectValue />
-                   </SelectTrigger>
-                   <SelectContent className="bg-white dark:bg-gray-800 z-50">
-                      {ALL_ATTENDANCE_STATUSES.map((statusOption) => (
-                        <SelectItem key={statusOption} value={statusOption}>
-                          {ATTENDANCE_STATUS_CONFIG[statusOption].label}
-                        </SelectItem>
-                      ))}
-                   </SelectContent>
-                 </Select>
-               </div>
-
-               <EventSelector
-                 events={calendarInfo.events}
-                 selectedEventId={selectedEventId}
-                 onEventChange={setSelectedEventId}
-                 loading={calendarInfo.loading}
-                 dayType={calendarInfo.dayType}
-                 isAttendanceExpected={calendarInfo.isAttendanceExpected}
-                 compact
-               />
-               
-               <div className="space-y-2">
-                 <Input
-                   ref={inputRef}
-                   placeholder="Enter Student ID"
-                   value={studentId}
-                   onChange={(e) => setStudentId(e.target.value)}
-                   onKeyPress={(e) => {
-                     if (e.key === 'Enter') {
-                       handleManualMarkAttendance();
-                     }
-                   }}
-                 />
-               </div>
-             </div>
-             
-              <Button 
-                onClick={handleManualMarkAttendance}
-                className="w-full"
-                disabled={!studentId.trim() || isManualProcessing}
-                size="lg"
-              >
-                {isManualProcessing ? (
-                  <>
-                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <UserCheck className="h-5 w-5 mr-2" />
-                    Mark Attendance
-                  </>
-                )}
-              </Button>
-           </CardContent>
-        </Card>
+          </Card>
+        </div>
       </div>
-
-      {/* Method Selection Dialog */}
-      <Dialog open={showMethodDialog} onOpenChange={setShowMethodDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-sky-500">Select Scanning Method</DialogTitle>
-            <DialogDescription className="text-sky-400">
-              Choose the type of code you want to scan
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-3">
-            <Button 
-              onClick={() => startCameraForMethod('qr')}
-              variant="outline"
-              className="justify-start h-auto p-4"
-            >
-              <QrCode className="h-8 w-8 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">QR Code</div>
-                <div className="text-sm text-muted-foreground">Scan QR codes</div>
-              </div>
-            </Button>
-            <Button 
-              onClick={() => startCameraForMethod('barcode')}
-              variant="outline"
-              className="justify-start h-auto p-4"
-            >
-              <BarChart3 className="h-8 w-8 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">Barcode</div>
-                <div className="text-sm text-muted-foreground">Scan barcodes</div>
-              </div>
-            </Button>
-            <Button 
-              onClick={() => startCameraForMethod('rfid/nfc')}
-              variant="outline"
-              className="justify-start h-auto p-4"
-            >
-              <Smartphone className="h-8 w-8 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">RFID/NFC</div>
-                <div className="text-sm text-muted-foreground">Scan RFID or NFC tags</div>
-              </div>
-            </Button>
-            <Button 
-              onClick={() => {
-                setShowMethodDialog(false);
-                const instituteId = currentInstituteId || selectedInstitute?.id;
-                if (instituteId) {
-                  navigate(`/institute/${instituteId}/institute-mark-attendance`);
-                }
-              }}
-              variant="outline"
-              className="justify-start h-auto p-4"
-            >
-              <Wifi className="h-8 w-8 mr-3" />
-              <div className="text-left">
-                <div className="font-medium">Institute Card (RFID/NFC)</div>
-                <div className="text-sm text-muted-foreground">Mark attendance using institute RFID cards</div>
-              </div>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Scanner Overlay - renders on top when scanning */}
       <MobileScannerOverlay
@@ -1327,6 +1329,22 @@ const QRAttendance = () => {
         videoRef={videoRef as React.RefObject<HTMLVideoElement>}
         canvasRef={canvasRef as React.RefObject<HTMLCanvasElement>}
         cameraError={cameraError}
+      />
+
+      {/* Location Viewer Dialog */}
+      <AttendanceLocationViewer
+        open={locationViewerOpen}
+        onOpenChange={setLocationViewerOpen}
+        studentName={locationViewData?.studentName}
+        studentId={locationViewData?.studentId}
+        address={locationViewData?.address}
+        location={locationViewData?.location}
+        date={locationViewData?.date}
+        status={locationViewData?.status}
+        className={locationViewData?.className}
+        instituteName={locationViewData?.instituteName}
+        markingTime={locationViewData?.markingTime}
+        markingMethod={locationViewData?.markingMethod}
       />
     </div>
   );

@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileText, CheckCircle, AlertCircle, Calendar, DollarSign, RefreshCw, X } from 'lucide-react';
+import { FileText, CheckCircle, AlertCircle, Calendar, DollarSign, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { institutePaymentsApi, PaymentSubmissionsResponse, PaymentSubmission, InstitutePayment } from '@/api/institutePayments.api';
 import { useToast } from '@/hooks/use-toast';
@@ -34,7 +33,7 @@ const ViewSubmissionsDialog = ({ open, onOpenChange, payment, instituteId }: Vie
         { page: 1, limit: 50, sortBy: 'submissionDate', sortOrder: 'DESC' }
       );
       setSubmissionsData(response);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load submissions:', error);
       toast({
         title: "Error",
@@ -81,197 +80,160 @@ const ViewSubmissionsDialog = ({ open, onOpenChange, payment, instituteId }: Vie
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center space-x-2">
-              <FileText className="h-5 w-5" />
-              <span>Payment Submissions</span>
-            </DialogTitle>
-            <div className="flex items-center space-x-2">
-              <Button 
-                onClick={loadSubmissions} 
-                disabled={loading}
-                variant="outline"
-                size="sm"
-              >
-                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                {loading ? 'Loading...' : 'Refresh'}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpenChange(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+      <DialogContent className="max-w-3xl max-h-[90vh]">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-primary/10">
+              <FileText className="h-4 w-4 text-primary" />
             </div>
-          </div>
-          {payment && (
-            <div className="text-sm text-muted-foreground">
-              <p><strong>Payment:</strong> {payment.paymentType}</p>
-              <p><strong>Amount:</strong> Rs {payment.amount.toLocaleString()}</p>
-              <p><strong>Due Date:</strong> {new Date(payment.dueDate).toLocaleDateString()}</p>
+            <div>
+              <p className="font-bold text-base leading-tight">Payment Submissions</p>
+              {payment && (
+                <p className="text-xs text-muted-foreground font-normal">{payment.paymentType}</p>
+              )}
             </div>
-          )}
+            <Button
+              onClick={loadSubmissions}
+              disabled={loading}
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+              {loading ? 'Loading...' : 'Refresh'}
+            </Button>
+          </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[70vh] pr-4">
+        {payment && (
+          <div className="grid grid-cols-3 gap-2 mb-1">
+            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Amount</span>
+              <span className="text-xs font-bold text-primary">Rs {payment.amount.toLocaleString()}</span>
+            </div>
+            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Due Date</span>
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-300">{new Date(payment.dueDate).toLocaleDateString()}</span>
+            </div>
+            <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Type</span>
+              <span className="text-xs font-medium">{payment.paymentType}</span>
+            </div>
+          </div>
+        )}
+
+        <ScrollArea className="max-h-[65vh] pr-4">
           <div className="space-y-4">
             {/* Summary Stats */}
             {submissionsData && (
-              <div className="grid grid-cols-3 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Total Submissions
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {submissionsData.data.pagination.totalItems}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Verified
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Summary</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Total</span>
+                    <span className="text-lg font-bold">{submissionsData.data.pagination.totalItems}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Verified</span>
+                    <span className="text-lg font-bold text-green-700 dark:text-green-300">
                       {submissionsData.data.submissions.filter(s => s.status === 'VERIFIED').length}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Pending
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Pending</span>
+                    <span className="text-lg font-bold text-amber-700 dark:text-amber-300">
                       {submissionsData.data.submissions.filter(s => s.status === 'PENDING').length}
-                    </p>
-                  </CardContent>
-                </Card>
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
 
             {/* Submissions List */}
             {!submissionsData ? (
               <div className="text-center py-12">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground text-lg mb-2">
+                <FileText className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">
                   {loading ? 'Loading payment submissions...' : 'Click refresh to load submissions'}
                 </p>
               </div>
             ) : submissionsData.data.submissions.length === 0 ? (
               <div className="text-center py-12">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground text-lg mb-2">
-                  No submissions found
-                </p>
-                <p className="text-muted-foreground">
-                  No payment submissions have been made for this payment yet.
-                </p>
+                <FileText className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">No submissions found for this payment yet.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {submissionsData.data.submissions.map((submission) => (
-                  <Card key={submission.id} className="hover:bg-muted/50 transition-colors">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center space-x-3">
-                          <Badge className={`px-3 py-1 ${getStatusColor(submission.status)}`}>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Submissions</p>
+                <div className="space-y-3">
+                  {submissionsData.data.submissions.map((submission) => (
+                    <div key={submission.id} className="rounded-xl border bg-muted/20 p-3 space-y-3">
+                      {/* Header row */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge className={`px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1 ${getStatusColor(submission.status)}`}>
                             {getStatusIcon(submission.status)}
-                            <span className="ml-2">{submission.status}</span>
+                            {submission.status}
                           </Badge>
-                          <div>
-                            <h3 className="font-semibold">
-                              Submission #{submission.id}
-                            </h3>
-                            <p className="text-sm text-muted-foreground">
-                              by {submission.username}
-                            </p>
-                          </div>
+                          <span className="text-xs text-muted-foreground">by <span className="font-medium text-foreground">{submission.username}</span></span>
                         </div>
-                        <div className="text-right">
-                          <p className="text-xl font-bold">
-                            Rs {submission.submittedAmount.toLocaleString()}
-                          </p>
+                        <div className="flex flex-col gap-0.5 p-2 rounded-lg bg-primary/5 border border-primary/15 text-right">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Amount</span>
+                          <span className="text-sm font-bold text-primary">Rs {submission.submittedAmount.toLocaleString()}</span>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center space-x-2">
-                            <DollarSign className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">Transaction ID:</span>
-                            <span className="text-sm font-mono">{submission.transactionId}</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">User Type:</span>
-                            <span className="text-sm">{submission.userType}</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">Payment Date:</span>
-                            <span className="text-sm">
-                              {new Date(submission.paymentDate).toLocaleDateString()}
-                            </span>
-                          </div>
+                      {/* Details grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                        <div className="flex flex-col gap-0.5 p-2 rounded-lg bg-muted/60 border border-border/50">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><DollarSign className="h-2.5 w-2.5" />Transaction</span>
+                          <span className="text-xs font-mono font-medium">{submission.transactionId}</span>
                         </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center space-x-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">Uploaded:</span>
-                            <span className="text-sm">
-                              {new Date(submission.uploadedAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                          {submission.verifiedAt && (
-                            <div className="flex items-center space-x-2">
-                              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm font-medium">Verified:</span>
-                              <span className="text-sm">
-                                {new Date(submission.verifiedAt).toLocaleDateString()}
-                              </span>
-                            </div>
-                          )}
+                        <div className="flex flex-col gap-0.5 p-2 rounded-lg bg-muted/60 border border-border/50">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><FileText className="h-2.5 w-2.5" />User Type</span>
+                          <span className="text-xs font-medium">{submission.userType}</span>
                         </div>
+                        <div className="flex flex-col gap-0.5 p-2 rounded-lg bg-muted/60 border border-border/50">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />Payment Date</span>
+                          <span className="text-xs font-medium">{new Date(submission.paymentDate).toLocaleDateString()}</span>
+                        </div>
+                        <div className="flex flex-col gap-0.5 p-2 rounded-lg bg-muted/60 border border-border/50">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />Uploaded</span>
+                          <span className="text-xs font-medium">{new Date(submission.uploadedAt).toLocaleDateString()}</span>
+                        </div>
+                        {submission.verifiedAt && (
+                          <div className="flex flex-col gap-0.5 p-2 rounded-lg bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400 flex items-center gap-1"><CheckCircle className="h-2.5 w-2.5" />Verified</span>
+                            <span className="text-xs font-medium text-green-700 dark:text-green-300">{new Date(submission.verifiedAt).toLocaleDateString()}</span>
+                          </div>
+                        )}
                       </div>
 
                       {submission.notes && (
-                        <div className="mt-4 p-3 bg-muted rounded-lg">
-                          <p className="text-sm font-medium mb-1">Notes:</p>
-                          <p className="text-sm">{submission.notes}</p>
+                        <div className="p-2.5 rounded-lg bg-muted/60 border border-border/50">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Notes</p>
+                          <p className="text-xs">{submission.notes}</p>
                         </div>
                       )}
-                      
+
                       {submission.rejectionReason && (
-                        <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                          <p className="text-sm font-medium mb-1 text-red-700 dark:text-red-300">Rejection Reason:</p>
-                          <p className="text-sm text-red-700 dark:text-red-300">{submission.rejectionReason}</p>
+                        <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 mb-1">Rejection Reason</p>
+                          <p className="text-xs text-red-700 dark:text-red-300">{submission.rejectionReason}</p>
                         </div>
                       )}
 
                       {submission.receiptUrl && (
-                        <div className="mt-4">
-                          <button
-                            onClick={() => window.open(getImageUrl(submission.receiptUrl), '_blank')}
-                            className="text-blue-600 hover:text-blue-800 text-sm underline"
-                          >
-                            View Receipt
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => window.open(getImageUrl(submission.receiptUrl), '_blank')}
+                          className="text-xs text-primary hover:underline font-medium"
+                        >
+                          View Receipt →
+                        </button>
                       )}
-                    </CardContent>
-                  </Card>
-                ))}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

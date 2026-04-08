@@ -94,7 +94,7 @@ const UpdateLecture = () => {
         maxParticipants: lectureData.maxParticipants || 50,
         isActive: lectureData.isActive ?? true
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching lecture:', error);
       toast({
         title: "Error",
@@ -140,7 +140,7 @@ const UpdateLecture = () => {
       });
       
       navigate('/lectures');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating lecture:', error);
       toast({
         title: "Error",
@@ -158,7 +158,7 @@ const UpdateLecture = () => {
 
   if (fetchingLecture) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto p-4 sm:p-6">
         <div className="text-center py-12">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
             Loading Lecture...
@@ -169,7 +169,7 @@ const UpdateLecture = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
+    <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
       <div className="mb-6">
         <Button
           variant="ghost"

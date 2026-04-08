@@ -9,6 +9,7 @@ import { Save, Video, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { lectureApi } from '@/api/lecture.api';
+import { getErrorMessage } from '@/api/apiError';
 
 interface UpdateLectureFormProps {
   lecture: any;
@@ -20,6 +21,7 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
   const userRole = useInstituteRole();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Check if user has permission to update lectures
   const canUpdate = userRole === 'InstituteAdmin' || userRole === 'Teacher';
@@ -70,6 +72,16 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+        const errors: Record<string, string> = {};
+    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
+    if (!formData.description && formData.description !== 0) errors.description = 'Description is required';
+    if (!formData.startTime && formData.startTime !== 0) errors.startTime = 'Start Time is required';
+    if (!formData.endTime && formData.endTime !== 0) errors.endTime = 'End Time is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -103,11 +115,11 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
       });
       onSuccess();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating lecture:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update lecture",
+        description: getErrorMessage(error, 'Failed to update lecture'),
         variant: "destructive"
       });
     } finally {
@@ -142,7 +154,9 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
                 value={formData.title}
                 onChange={(e) => handleInputChange('title', e.target.value)}
                 placeholder="Enter lecture title"
-                required />
+                required
+              className={`${fieldErrors.title ? 'border-red-500 focus-visible:ring-red-500' : ''}`} />
+ {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
 
               </div>
                   <div>
@@ -169,7 +183,9 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Enter lecture description"
-              required />
+              required
+              className={`${fieldErrors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}`} />
+ {fieldErrors.description && <p className="text-xs text-red-500 mt-1">{fieldErrors.description}</p>}
 
             </div>
 
@@ -181,7 +197,9 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
                 type="datetime-local"
                 value={formData.startTime}
                 onChange={(e) => handleInputChange('startTime', e.target.value)}
-                required />
+                required
+              className={`${fieldErrors.startTime ? 'border-red-500 focus-visible:ring-red-500' : ''}`} />
+ {fieldErrors.startTime && <p className="text-xs text-red-500 mt-1">{fieldErrors.startTime}</p>}
 
               </div>
               <div>
@@ -191,7 +209,9 @@ const UpdateLectureForm = ({ lecture, onClose, onSuccess }: UpdateLectureFormPro
                 type="datetime-local"
                 value={formData.endTime}
                 onChange={(e) => handleInputChange('endTime', e.target.value)}
-                required />
+                required
+              className={`${fieldErrors.endTime ? 'border-red-500 focus-visible:ring-red-500' : ''}`} />
+ {fieldErrors.endTime && <p className="text-xs text-red-500 mt-1">{fieldErrors.endTime}</p>}
 
               </div>
             </div>

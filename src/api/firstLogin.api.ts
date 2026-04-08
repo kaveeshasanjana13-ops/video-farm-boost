@@ -11,6 +11,7 @@
 
 import { getBaseUrl } from '@/contexts/utils/auth.api';
 import { tokenStorageService, isNativePlatform } from '@/services/tokenStorageService';
+import { parseApiError } from '@/api/apiError';
 
 // ============= TYPES =============
 
@@ -26,13 +27,17 @@ export interface AnnotatedField {
 export interface InitiateResponse {
   success: boolean;
   message: string;
-  otpSentVia: 'phone' | 'email';
-  maskedDestination: string;
+  otpSentVia: 'phone' | 'email' | null;
+  maskedDestination: string | null;
   expiresInMinutes: number;
   verificationsRequired: { phone: boolean; email: boolean };
   userHasPhone: boolean;
   userHasEmail: boolean;
   userId: string;
+  accessToken?: string;
+  requiresContactInfo?: boolean;
+  parentOtpUsed?: boolean;
+  parentRelationship?: string;
 }
 
 export interface VerifyOtpResponse {
@@ -95,7 +100,7 @@ async function apiFetch<T>(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.message || 'Request failed');
+  if (!res.ok) throw parseApiError(res.status, JSON.stringify(data), url);
   return data as T;
 }
 

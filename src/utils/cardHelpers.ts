@@ -94,6 +94,31 @@ export const formatDateTime = (isoString: string): string => {
   });
 };
 
+/**
+ * Returns a human-friendly relative date string for recent dates.
+ * - "just now" (< 1 min)
+ * - "X minutes ago" (< 1 hour)
+ * - "X hours ago" (< 24 hours)
+ * - "X days ago" (< 14 days)
+ * - Falls back to formatted date for older entries
+ */
+export const formatRelativeDate = (isoString: string): string => {
+  if (!isoString) return '-';
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins} min${diffMins !== 1 ? 's' : ''} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+  if (diffDays < 14) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+  return formatDate(isoString);
+};
+
+
 export const isExpiringSoon = (expiryDate: string): boolean => {
   const expiry = new Date(expiryDate);
   const now = new Date();

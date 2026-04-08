@@ -1,4 +1,6 @@
 import { apiClient } from './client';
+import { enhancedCachedClient } from './enhancedCachedClient';
+import { CACHE_TTL } from '@/config/cacheTTL';
 import type {
   OperatingConfig,
   OperatingConfigPayload,
@@ -25,9 +27,10 @@ const calendarApi = {
   getOperatingConfig(instituteId: string, academicYear?: string) {
     const params: Record<string, string> = {};
     if (academicYear) params.academicYear = academicYear;
-    return apiClient.get<CalendarApiResponse<OperatingConfig[]>>(
+    return enhancedCachedClient.get<CalendarApiResponse<OperatingConfig[]>>(
       `/institutes/${instituteId}/calendar/operating-config`,
-      Object.keys(params).length ? params : undefined
+      Object.keys(params).length ? params : undefined,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
@@ -72,31 +75,46 @@ const calendarApi = {
 
   /** 9.1 — List calendar days (paginated, filterable) */
   getDays(instituteId: string, params?: Record<string, any>) {
-    return apiClient.get<CalendarApiResponse<CalendarDay[]>>(
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarDay[]>>(
       `/institutes/${instituteId}/calendar/days`,
-      params
+      params,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
   /** 9.2 — Get today's calendar day (cached) */
   getToday(instituteId: string) {
-    return apiClient.get<CalendarApiResponse<CalendarDay>>(
-      `/institutes/${instituteId}/calendar/today`
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarDay>>(
+      `/institutes/${instituteId}/calendar/today`,
+      undefined,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
   /** 9.2b — Get calendar day + events for a specific date */
   getByDate(instituteId: string, date: string) {
-    return apiClient.get<CalendarApiResponse<CalendarDay>>(
-      `/institutes/${instituteId}/calendar/date/${date}`
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarDay>>(
+      `/institutes/${instituteId}/calendar/date/${date}`,
+      undefined,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
   /** 9.2c — Get role-aware calendar month view (teacher/student supported) */
   getCalendarView(instituteId: string, params?: Record<string, any>) {
-    return apiClient.get<CalendarApiResponse<CalendarDay[] | CalendarViewData>>(
-      `/institute/${instituteId}/calendar-view`,
-      params
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarDay[] | CalendarViewData>>(
+      `/institutes/${instituteId}/calendar/days`,
+      params,
+      { ttl: CACHE_TTL.SETTINGS }
+    );
+  },
+
+  /** Get calendar month data with all days and events */
+  getMonth(instituteId: string, year: number, month: number) {
+    return enhancedCachedClient.get<CalendarApiResponse<{ year: number; month: number; totalDays: number; days: CalendarDay[] }>>(
+      `/institutes/${instituteId}/calendar/month`,
+      { year, month },
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
@@ -144,23 +162,28 @@ const calendarApi = {
 
   /** 10.4 — List all events (paginated) */
   getEvents(instituteId: string, params?: Record<string, any>) {
-    return apiClient.get<CalendarApiResponse<CalendarEvent[]>>(
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarEvent[]>>(
       `/institutes/${instituteId}/calendar/events`,
-      params
+      params,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
   /** 10.5 — Get events for a specific calendar day */
   getDayEvents(instituteId: string, dayId: string) {
-    return apiClient.get<CalendarApiResponse<CalendarEvent[]>>(
-      `/institutes/${instituteId}/calendar/days/${dayId}/events`
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarEvent[]>>(
+      `/institutes/${instituteId}/calendar/days/${dayId}/events`,
+      undefined,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
   /** 10.6 — Get default event for a day */
   getDefaultEvent(instituteId: string, dayId: string) {
-    return apiClient.get<CalendarApiResponse<CalendarEvent>>(
-      `/institutes/${instituteId}/calendar/days/${dayId}/default-event`
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarEvent>>(
+      `/institutes/${instituteId}/calendar/days/${dayId}/default-event`,
+      undefined,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
@@ -170,8 +193,10 @@ const calendarApi = {
 
   /** Get cache stats (admin only) */
   getCacheStats(instituteId: string) {
-    return apiClient.get<CalendarApiResponse<CacheStats>>(
-      `/institutes/${instituteId}/calendar/cache/stats`
+    return enhancedCachedClient.get<CalendarApiResponse<CacheStats>>(
+      `/institutes/${instituteId}/calendar/cache/stats`,
+      undefined,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
@@ -188,8 +213,10 @@ const calendarApi = {
 
   /** 12.1 — Get today (class-scoped, with overrides) */
   getClassToday(instituteId: string, classId: string) {
-    return apiClient.get<CalendarApiResponse<CalendarDay>>(
-      `/institutes/${instituteId}/class/${classId}/calendar/today`
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarDay>>(
+      `/institutes/${instituteId}/class/${classId}/calendar/today`,
+      undefined,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
@@ -203,17 +230,19 @@ const calendarApi = {
 
   /** 12.3 — Get events (class-scoped) */
   getClassEvents(instituteId: string, classId: string, params?: Record<string, any>) {
-    return apiClient.get<CalendarApiResponse<CalendarEvent[]>>(
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarEvent[]>>(
       `/institutes/${instituteId}/class/${classId}/calendar/events`,
-      params
+      params,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 
   /** 12.4 — Get days (class-scoped, with overrides merged) */
   getClassDays(instituteId: string, classId: string, params?: Record<string, any>) {
-    return apiClient.get<CalendarApiResponse<CalendarDay[]>>(
+    return enhancedCachedClient.get<CalendarApiResponse<CalendarDay[]>>(
       `/institutes/${instituteId}/class/${classId}/calendar/days`,
-      params
+      params,
+      { ttl: CACHE_TTL.SETTINGS }
     );
   },
 };

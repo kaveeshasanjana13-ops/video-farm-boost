@@ -134,9 +134,15 @@ export type {
 export { structuredLecturesApi } from './structuredLectures.api';
 export type {
   StructuredLecture,
+  LectureDocument,
+  LessonGroup,
   CreateStructuredLectureDto,
   UpdateStructuredLectureDto,
+  SingleLectureResponse,
   StructuredLecturesResponse,
+  LecturesBySubjectGradeResponse,
+  LecturesByClassSubjectResponse,
+  LectureStatisticsResponse,
   StructuredLectureFilterParams
 } from './structuredLectures.api';
 export { userCardApi } from './userCard.api';

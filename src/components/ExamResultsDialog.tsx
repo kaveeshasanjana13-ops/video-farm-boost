@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { RefreshCw, Users, Award, Calendar, FileText, Search } from 'lucide-react';
 import { examResultsApi, type ExamResult, type ExamResultsResponse } from '@/api/examResults.api';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface ExamResultsDialogProps {
   isOpen: boolean;
@@ -69,7 +69,7 @@ export const ExamResultsDialog = ({ isOpen, onClose, exam }: ExamResultsDialogPr
         description: `Successfully loaded ${response.data.length} exam results`
       });
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading exam results:', error);
       toast({
         title: "Error",
@@ -120,151 +120,154 @@ export const ExamResultsDialog = ({ isOpen, onClose, exam }: ExamResultsDialogPr
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Award className="h-5 w-5" />
-            Exam Results: {exam?.title}
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-primary/10">
+              <Award className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="font-bold text-base leading-tight">Exam Results</p>
+              <p className="text-xs text-muted-foreground font-normal">{exam?.title}</p>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
-        {/* Context Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <FileText className="h-5 w-5" />
-              Current Selection
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">Institute: {selectedInstitute?.name}</Badge>
-                  <Badge variant="outline">Class: {selectedClass?.name}</Badge>
-                  <Badge variant="outline">Subject: {selectedSubject?.name}</Badge>
-                </div>
+        {/* Context */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Context</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {selectedInstitute?.name && (
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Institute</span>
+                <span className="text-xs font-medium">{selectedInstitute.name}</span>
               </div>
-              {exam && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">Type: {exam.examType}</Badge>
-                    <Badge variant="outline">Total: {exam.totalMarks} marks</Badge>
-                    <Badge variant="outline">Passing: {exam.passingMarks} marks</Badge>
-                  </div>
+            )}
+            {selectedClass?.name && (
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Class</span>
+                <span className="text-xs font-medium">{selectedClass.name}</span>
+              </div>
+            )}
+            {selectedSubject?.name && (
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Subject</span>
+                <span className="text-xs font-medium">{selectedSubject.name}</span>
+              </div>
+            )}
+            {exam && (
+              <>
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Exam Type</span>
+                  <span className="text-xs font-medium">{exam.examType}</span>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Total Marks</span>
+                  <span className="text-xs font-bold text-primary">{exam.totalMarks}</span>
+                </div>
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Passing Marks</span>
+                  <span className="text-xs font-bold text-green-700 dark:text-green-300">{exam.passingMarks}</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
 
         {/* Load Results Button */}
         {!hasLoaded && (
-          <div className="text-center py-8">
-            <p className="text-muted-foreground mb-4">
-              Click the button below to load exam results for this exam
-            </p>
-            <Button 
+          <EmptyState
+            icon={Award}
+            title="Exam Results"
+            description="Click the button below to load exam results for this exam"
+          >
+            <Button
               onClick={loadExamResults}
               disabled={isLoading}
               className="flex items-center gap-2"
             >
               {isLoading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  Loading Results...
-                </>
+                <><RefreshCw className="h-4 w-4 animate-spin" />Loading Results...</>
               ) : (
-                <>
-                  <Users className="h-4 w-4" />
-                  Load Exam Results
-                </>
+                <><Users className="h-4 w-4" />Load Exam Results</>
               )}
             </Button>
-          </div>
+          </EmptyState>
         )}
 
         {/* Results Table */}
         {hasLoaded && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Student Results ({results.length} students)
-                {meta && (
-                  <Badge variant="outline" className="ml-2">
-                    Page {meta.page} of {meta.totalPages} (Total: {meta.total})
-                  </Badge>
-                )}
-              </CardTitle>
-              
-              {/* Search Bar */}
-              <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Results — {results.length} students
+                {meta && ` · Page ${meta.page}/${meta.totalPages}`}
+              </p>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground h-3.5 w-3.5" />
                 <Input
-                  placeholder="Search students, grade, remarks..."
+                  placeholder="Search students, grade..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-8 h-8 text-xs w-52"
                 />
               </div>
-            </CardHeader>
-            <CardContent>
-              {filteredResults.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">
-                    {searchTerm ? 'No results match your search criteria' : 'No results found for this exam'}
-                  </p>
-                </div>
-              ) : (
+            </div>
+            {filteredResults.length === 0 ? (
+              <EmptyState
+                icon={FileText}
+                title={searchTerm ? 'No results match your search' : 'No Results Found'}
+                description={searchTerm ? 'Try a different search term' : 'No results found for this exam'}
+              />
+            ) : (
+              <div className="rounded-xl border overflow-hidden">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Student</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Score</TableHead>
-                        <TableHead>Grade</TableHead>
-                        <TableHead>Pass/Fail</TableHead>
-                        <TableHead>Remarks</TableHead>
+                      <TableRow className="bg-muted/40">
+                        <TableHead className="text-[10px] uppercase tracking-wide">Student</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wide">Email</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wide">Score</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wide">Grade</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wide">Pass/Fail</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-wide">Remarks</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredResults.map((result) => (
-                        <TableRow key={result.id}>
-                          <TableCell className="font-medium">
+                        <TableRow key={result.id} className="hover:bg-muted/30">
+                          <TableCell className="font-medium text-sm">
                             {result.student.firstName} {result.student.lastName}
                           </TableCell>
-                          <TableCell>{result.student.email}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{result.student.email}</TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold">{result.score}</span>
-                              <span className="text-muted-foreground">/ {exam?.totalMarks}</span>
-                            </div>
+                            <span className="font-bold text-sm">{result.score}</span>
+                            <span className="text-muted-foreground text-xs"> / {exam?.totalMarks}</span>
                           </TableCell>
                           <TableCell>
-                            <Badge className={getGradeColor(result.grade)}>
+                            <Badge className={`text-xs ${getGradeColor(result.grade)}`}>
                               {result.grade}
                             </Badge>
                           </TableCell>
                           <TableCell>
                             {exam && (
-                              <Badge 
-                                variant={getPassStatus(result.score, exam.passingMarks) ? "default" : "destructive"}
+                              <Badge
+                                variant={getPassStatus(result.score, exam.passingMarks) ? 'default' : 'destructive'}
+                                className="text-xs"
                               >
-                                {getPassStatus(result.score, exam.passingMarks) ? "Pass" : "Fail"}
+                                {getPassStatus(result.score, exam.passingMarks) ? 'Pass' : 'Fail'}
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell>{result.remarks || "No remarks"}</TableCell>
+                          <TableCell className="text-xs">{result.remarks || '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Action Buttons */}

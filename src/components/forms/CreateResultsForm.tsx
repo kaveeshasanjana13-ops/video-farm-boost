@@ -71,7 +71,7 @@ const CreateResultsForm = ({ onClose, onSuccess }: CreateResultsFormProps) => {
       
       const examData = Array.isArray(response) ? response : response?.data || [];
       setExams(examData);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading exams:', error);
       toast({
         title: "Error",
@@ -99,7 +99,7 @@ const CreateResultsForm = ({ onClose, onSuccess }: CreateResultsFormProps) => {
       
       // Don't automatically initialize results - let users add manually
       setResults([]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading students:', error);
       toast({
         title: "Error", 
@@ -242,7 +242,7 @@ const CreateResultsForm = ({ onClose, onSuccess }: CreateResultsFormProps) => {
       });
       
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating results:', error);
       toast({
         title: "Error",

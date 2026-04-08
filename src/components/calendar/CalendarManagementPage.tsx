@@ -4,10 +4,6 @@ import calendarApi from '@/api/calendar.api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import CalendarDashboard from './CalendarDashboard';
 import OperatingSchedule from './OperatingSchedule';
@@ -17,25 +13,25 @@ import EventManagement from './EventManagement';
 import BulkDayUpdate from './BulkDayUpdate';
 import CacheManagement from './CacheManagement';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Trash2, AlertTriangle, LayoutDashboard, Settings2, Wand2, 
-  CalendarDays, PartyPopper, Layers, Database, ChevronRight 
-} from 'lucide-react';
+import { Trash2, AlertTriangle, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getErrorMessage } from '@/api/apiError';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 const tabs = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Overview & stats' },
-  { id: 'config', label: 'Config', icon: Settings2, description: 'Operating schedule' },
-  { id: 'generate', label: 'Generate', icon: Wand2, description: 'Create calendar' },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays, description: 'Day management' },
-  { id: 'events', label: 'Events', icon: PartyPopper, description: 'Event management' },
-  { id: 'bulk', label: 'Bulk Update', icon: Layers, description: 'Mass changes' },
-  { id: 'cache', label: 'Cache', icon: Database, description: 'Diagnostics' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'config', label: 'Config' },
+  { id: 'generate', label: 'Generate' },
+  { id: 'calendar', label: 'Calendar' },
+  { id: 'events', label: 'Events' },
+  { id: 'bulk', label: 'Bulk Update' },
+  { id: 'cache', label: 'Cache' },
 ];
 
 const CalendarManagementPage: React.FC = () => {
   const { currentInstituteId, selectedInstitute } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set<string>(['dashboard']));
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteYear, setDeleteYear] = useState(new Date().getFullYear().toString());
   const [deleting, setDeleting] = useState(false);
@@ -48,7 +44,7 @@ const CalendarManagementPage: React.FC = () => {
       toast.success(res?.message || 'Calendar deleted');
       setShowDeleteConfirm(false);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to delete calendar');
+      toast.error(getErrorMessage(error, 'Failed to delete calendar'));
     } finally {
       setDeleting(false);
     }
@@ -76,16 +72,9 @@ const CalendarManagementPage: React.FC = () => {
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-              <CalendarDays className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">Calendar Management</h1>
-              <p className="text-xs text-muted-foreground">{selectedInstitute?.name || 'Institute'}</p>
-            </div>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-foreground tracking-tight">Calendar Management</h1>
+          <p className="text-xs text-muted-foreground">{selectedInstitute?.name || 'Institute'}</p>
         </div>
       </div>
 
@@ -93,11 +82,18 @@ const CalendarManagementPage: React.FC = () => {
       <div className="flex items-center rounded-2xl border border-border bg-muted/40 p-1 gap-0.5 w-full overflow-x-auto scrollbar-none">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
-          const Icon = tab.icon;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setVisitedTabs(prev => {
+                  if (prev.has(tab.id)) return prev;
+                  const next = new Set(prev);
+                  next.add(tab.id);
+                  return next;
+                });
+              }}
               title={tab.label}
               className={cn(
                 "flex-shrink-0 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs sm:text-sm font-medium transition-all duration-200",
@@ -107,74 +103,93 @@ const CalendarManagementPage: React.FC = () => {
                 "sm:flex-1 sm:min-w-0"
               )}
             >
-              <Icon className="h-3.5 w-3.5 flex-shrink-0 sm:hidden" />
-              <span className="hidden sm:inline">{tab.label}</span>
-              <span className="sm:hidden">
-                {isActive ? tab.label : tab.label.slice(0, 2)}
-              </span>
+              <span>{tab.label}</span>
             </button>
           );
         })}
       </div>
 
       {/* Tab Content */}
-      <div className="animate-slide-up">
-        {activeTab === 'dashboard' && <CalendarDashboard onNavigate={setActiveTab} />}
-
-        {activeTab === 'config' && <OperatingSchedule />}
-
-        {activeTab === 'generate' && (
-          <div className="space-y-4">
-            <GenerateCalendarWizard />
-            <Card className="border-destructive/20">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-destructive flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-destructive/10 flex items-center justify-center">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </div>
-                  Delete Calendar
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">Delete an existing calendar to regenerate it with different settings.</p>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs">Year:</Label>
-                  <Input value={deleteYear} onChange={e => setDeleteYear(e.target.value)} className="w-24 text-xs h-9" />
-                  <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} className="h-9">
-                    <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+      <div className="min-h-[400px]">
+        {visitedTabs.has('dashboard') && (
+          <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
+            <CalendarDashboard onNavigate={(tab) => {
+              setActiveTab(tab);
+              setVisitedTabs(prev => { const next = new Set(prev); next.add(tab); return next; });
+            }} />
           </div>
         )}
 
-        {activeTab === 'calendar' && <CalendarDayManagement />}
-        {activeTab === 'events' && <EventManagement />}
-        {activeTab === 'bulk' && <BulkDayUpdate />}
-        {activeTab === 'cache' && <CacheManagement />}
+        {visitedTabs.has('config') && (
+          <div style={{ display: activeTab === 'config' ? 'block' : 'none' }}>
+            <OperatingSchedule />
+          </div>
+        )}
+
+        {visitedTabs.has('generate') && (
+          <div style={{ display: activeTab === 'generate' ? 'block' : 'none' }}>
+            <div className="space-y-4">
+              <GenerateCalendarWizard />
+              <Card className="border-destructive/20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-destructive flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-destructive/10 flex items-center justify-center">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </div>
+                    Delete Calendar
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">Delete an existing calendar to regenerate it with different settings.</p>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Year:</Label>
+                    <Input value={deleteYear} onChange={e => setDeleteYear(e.target.value)} className="w-24 text-xs h-9" />
+                    <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)} className="h-9">
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {visitedTabs.has('calendar') && (
+          <div style={{ display: activeTab === 'calendar' ? 'block' : 'none' }}>
+            <CalendarDayManagement />
+          </div>
+        )}
+        {visitedTabs.has('events') && (
+          <div style={{ display: activeTab === 'events' ? 'block' : 'none' }}>
+            <EventManagement />
+          </div>
+        )}
+        {visitedTabs.has('bulk') && (
+          <div style={{ display: activeTab === 'bulk' ? 'block' : 'none' }}>
+            <BulkDayUpdate />
+          </div>
+        )}
+        {visitedTabs.has('cache') && (
+          <div style={{ display: activeTab === 'cache' ? 'block' : 'none' }}>
+            <CacheManagement />
+          </div>
+        )}
       </div>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Delete Calendar for {deleteYear}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete all calendar days and events for {deleteYear}. All attendance linkages will be orphaned. This action cannot be undone!
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteCalendar} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              {deleting ? 'Deleting...' : 'Delete Calendar'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        itemName={`Calendar ${deleteYear}`}
+        itemType="calendar"
+        bullets={[
+          `All calendar days and events for ${deleteYear} will be permanently deleted`,
+          'All attendance linkages will be orphaned',
+          'This action cannot be undone!',
+        ]}
+        onConfirm={handleDeleteCalendar}
+        isDeleting={deleting}
+      />
     </div>
   );
 };

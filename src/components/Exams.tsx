@@ -8,9 +8,10 @@ import { CustomToggle } from '@/components/ui/custom-toggle';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Filter, Plus, Calendar, Clock, FileText, CheckCircle, ExternalLink, BarChart3, Eye, ChevronDown, LayoutList, LayoutGrid } from 'lucide-react';
+import { RefreshCw, Filter, Plus, Calendar, Clock, FileText, CheckCircle, ExternalLink, BarChart3, Eye, ChevronDown, LayoutList, LayoutGrid, Table2, Award } from 'lucide-react';
 import { useAuth, type UserRole } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { buildSidebarUrl } from '@/utils/pageNavigation';
 import { AccessControl } from '@/utils/permissions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +19,11 @@ import CreateExamForm from '@/components/forms/CreateExamForm';
 import { UpdateExamForm } from '@/components/forms/UpdateExamForm';
 import CreateResultsForm from '@/components/forms/CreateResultsForm';
 import { DataCardView } from '@/components/ui/data-card-view';
+import { useViewMode } from '@/hooks/useViewMode';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useTableData } from '@/hooks/useTableData';
 import { cachedApiClient } from '@/api/cachedClient';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 interface ExamsProps {
   apiLevel?: 'institute' | 'class' | 'subject';
 }
@@ -50,10 +54,11 @@ const Exams = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [viewMode] = useState<'card' | 'table'>(() => {
-    return (localStorage.getItem('viewMode') as 'card' | 'table') || 'card';
-  });
+  const { viewMode } = useViewMode();
+  const [pageViewMode, setPageViewMode] = useState<'card' | 'table'>(viewMode);
   const [expandedExam, setExpandedExam] = useState<string | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; item: any }>({ open: false, item: null });
+  const [isDeleting, setIsDeleting] = useState(false);
   const userRole = useInstituteRole();
 
   // Memoize default params to prevent unnecessary re-renders
@@ -183,27 +188,21 @@ const Exams = ({
     console.log('Navigating to:', url);
     navigate(url);
   };
-  const handleDeleteExam = async (examData: any) => {
-    console.log('Deleting exam:', examData);
+  const handleDeleteExam = (examData: any) => {
+    setDeleteDialog({ open: true, item: examData });
+  };
+  const confirmDeleteExam = async () => {
+    if (!deleteDialog.item) return;
+    setIsDeleting(true);
     try {
-      // Use cached client for delete (will clear related cache)
-      await cachedApiClient.delete(`/institute-class-subject-exams/${examData.id}`);
-      console.log('Exam deleted successfully');
-      toast({
-        title: "Exam Deleted",
-        description: `Exam ${examData.title} has been deleted successfully.`,
-        variant: "destructive"
-      });
-
-      // Force refresh after deletion
+      await cachedApiClient.delete(`/institute-class-subject-exams/${deleteDialog.item.id}`);
+      toast({ title: "Exam Deleted", description: `Exam ${deleteDialog.item.title} has been deleted successfully.` });
+      setDeleteDialog({ open: false, item: null });
       refresh();
-    } catch (error) {
-      console.error('Error deleting exam:', error);
-      toast({
-        title: "Delete Failed",
-        description: "Failed to delete exam. Please try again.",
-        variant: "destructive"
-      });
+    } catch (error: any) {
+      toast({ title: "Delete Failed", description: "Failed to delete exam. Please try again.", variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
     }
   };
   const handleCreateResults = () => {
@@ -350,7 +349,39 @@ const Exams = ({
     }
     return 'Click the button below to load exams data';
   };
-  return <div className="container mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
+
+  // Payment gate: If student hasn't paid, block access to exams
+  if (userRole === 'Student' && selectedSubject?.verificationStatus && 
+      !['verified', 'enrolled_free_card'].includes(selectedSubject.verificationStatus)) {
+    const statusLabels: Record<string, { label: string; color: string; desc: string }> = {
+      pending_payment: { label: 'Payment Required', color: 'text-orange-600', desc: 'You need to submit payment to access exams. Please go to Fees & Payments to submit your payment.' },
+      pending: { label: 'Payment Under Review', color: 'text-amber-600', desc: 'Your payment has been submitted and is awaiting admin approval. You can access Free Lectures in the meantime.' },
+      payment_rejected: { label: 'Payment Rejected', color: 'text-red-600', desc: 'Your payment was rejected. Please resubmit a valid payment to access exams.' },
+      rejected: { label: 'Enrollment Rejected', color: 'text-red-600', desc: 'Your enrollment was rejected. Please contact your institute admin.' },
+      not_enrolled: { label: 'Not Enrolled', color: 'text-muted-foreground', desc: 'You are not enrolled in this subject. Please enroll first.' },
+    };
+    const info = statusLabels[selectedSubject.verificationStatus] || statusLabels['not_enrolled'];
+    return (
+      <div className="container mx-auto px-3 py-8 sm:p-6">
+        <div className="max-w-md mx-auto text-center space-y-4">
+          <div className="h-16 w-16 mx-auto rounded-full bg-muted flex items-center justify-center">
+            <Award className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-lg font-semibold text-foreground">Exams Locked</h2>
+          <p className={`text-sm font-medium ${info.color}`}>{info.label}</p>
+          <p className="text-sm text-muted-foreground">{info.desc}</p>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
+            <Button variant="outline" size="sm" onClick={() => navigate(-1)}>← Go Back</Button>
+            <Button size="sm" onClick={() => navigate(buildSidebarUrl('free-lectures', { instituteId: currentInstituteId, classId: currentClassId, subjectId: currentSubjectId }))}>
+              View Free Lectures
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <div className="w-full px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
       {!hasAttemptedLoad ? <div className="text-center py-8 sm:py-12">
           <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-3 sm:mb-4">
             {getTitle()}
@@ -399,6 +430,10 @@ const Exams = ({
                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
                 {isLoading ? 'Loading...' : 'Refresh'}
               </Button>
+              <div className="flex items-center border border-border rounded-lg overflow-hidden">
+                <button onClick={() => setPageViewMode('card')} className={`p-1.5 transition-colors ${pageViewMode === 'card' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Card view"><LayoutGrid className="h-4 w-4" /></button>
+                <button onClick={() => setPageViewMode('table')} className={`p-1.5 transition-colors ${pageViewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Table view"><Table2 className="h-4 w-4" /></button>
+              </div>
             </div>
           </div>
 
@@ -465,18 +500,17 @@ const Exams = ({
               </div>}
 
            {/* View Content */}
-          {viewMode === 'card' ? (
+          {filteredExams.length === 0 ? (
+            <EmptyState icon={FileText} title="No Exams Found" description="No exams match your current filters." />
+          ) : pageViewMode === 'card' ? (
             <div className="space-y-2">
-              {filteredExams.length === 0 ? (
-                <Card className="p-8 text-center"><p className="text-sm text-muted-foreground">No exams found</p></Card>
-              ) : (
-                filteredExams.map((item: any) => {
+              {filteredExams.map((item: any) => {
                   const isOpen = expandedExam === (item.id || item._id);
                   return (
                     <Collapsible key={item.id || item._id} open={isOpen} onOpenChange={() => setExpandedExam(isOpen ? null : (item.id || item._id))}>
                       <CollapsibleTrigger asChild>
                         <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                          <CardContent className="p-4 flex items-center justify-between">
+                          <CardContent className="p-4 flex items-center justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-sm truncate">{item.title}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">
@@ -487,51 +521,93 @@ const Exams = ({
                                 <Badge variant={item.status === 'scheduled' ? 'default' : item.status === 'completed' ? 'outline' : 'destructive'} className="text-[10px] px-1.5 py-0">{item.status}</Badge>
                               </p>
                             </div>
-                            <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {item.examLink && (
+                                <Button size="sm" variant="destructive" className="h-7 text-xs px-2.5" onClick={(e) => { e.stopPropagation(); window.open(item.examLink, '_blank'); }}>
+                                  <ExternalLink className="h-3 w-3 mr-1" />Exam
+                                </Button>
+                              )}
+                              <Button size="sm" variant="outline" className="h-7 text-xs px-2.5" onClick={(e) => { e.stopPropagation(); handleViewResults(item); }}>
+                                <Eye className="h-3 w-3 mr-1" />Results
+                              </Button>
+                              {(userRole === 'InstituteAdmin' || userRole === 'Teacher') && canAdd && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs px-2.5 text-blue-600 border-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-700"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!currentInstituteId || !currentClassId || !currentSubjectId) {
+                                      toast({ title: 'Missing Context', description: 'Please select institute, class, and subject first', variant: 'destructive' });
+                                      return;
+                                    }
+                                    navigate(`/institute/${currentInstituteId}/class/${currentClassId}/subject/${currentSubjectId}/exam/${item.id}/create-results`);
+                                  }}
+                                >
+                                  <BarChart3 className="h-3 w-3 mr-1" />Create Results
+                                </Button>
+                              )}
+                            </div>
+                            <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                           </CardContent>
                         </Card>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="px-4 pb-4 pt-1 space-y-2 border-x border-b rounded-b-2xl bg-muted/30">
-                          {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
-                          <p className="text-xs"><span className="font-medium">Total Marks:</span> {item.totalMarks || 'N/A'}</p>
-                          <p className="text-xs"><span className="font-medium">Passing Marks:</span> {item.passingMarks || 'N/A'}</p>
-                          <p className="text-xs"><span className="font-medium">Duration:</span> {item.durationMinutes ? `${item.durationMinutes} min` : 'N/A'}</p>
-                          {item.venue && <p className="text-xs"><span className="font-medium">Venue:</span> {item.venue}</p>}
-                          <p className="text-xs"><span className="font-medium">Start:</span> {item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</p>
-                          <div className="flex flex-wrap gap-2 pt-2">
-                            {item.examLink && (
-                              <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => window.open(item.examLink, '_blank')}>
-                                <ExternalLink className="h-3 w-3 mr-1" />Exam Link
-                              </Button>
+                        <div className="mx-0.5 mb-1 rounded-b-2xl border-x border-b overflow-hidden">
+                          <div className="p-4 space-y-3 bg-muted/20">
+                            {item.description && (
+                              <p className="text-xs text-muted-foreground leading-relaxed">{item.description}</p>
                             )}
-                            <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => handleViewResults(item)}>
-                              <Eye className="h-3 w-3 mr-1" />Results
-                            </Button>
-                            {(userRole === 'InstituteAdmin' || userRole === 'Teacher') && canAdd && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => {
-                                if (!currentInstituteId || !currentClassId || !currentSubjectId) {
-                                  toast({ title: "Missing Context", description: "Please select institute, class, and subject first", variant: "destructive" });
-                                  return;
-                                }
-                                navigate(`/institute/${currentInstituteId}/class/${currentClassId}/subject/${currentSubjectId}/exam/${item.id}/create-results`);
-                              }}>
-                                <BarChart3 className="h-3 w-3 mr-1" />Create Results
-                              </Button>
-                            )}
-                            {canEdit && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleEditExam(item)}>Edit</Button>
-                            )}
-                            {canDelete && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/30" onClick={() => handleDeleteExam(item)}>Delete</Button>
+                            {/* Scoring */}
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Scoring</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-background border text-center">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Total</span>
+                                  <span className="text-sm font-bold">{item.totalMarks ?? '—'}</span>
+                                </div>
+                                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800 text-center">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Pass</span>
+                                  <span className="text-sm font-bold text-green-700 dark:text-green-300">{item.passingMarks ?? '—'}</span>
+                                </div>
+                                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-background border text-center">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Duration</span>
+                                  <span className="text-sm font-bold">{item.durationMinutes ? `${item.durationMinutes}m` : '—'}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {/* Schedule */}
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Schedule</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-background border">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Clock className="h-2.5 w-2.5" />Start Time</span>
+                                  <span className="text-xs font-medium">{item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</span>
+                                </div>
+                                {item.venue && (
+                                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-background border">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Venue</span>
+                                    <span className="text-xs font-medium">{item.venue}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {(canEdit || canDelete) && (
+                              <div className="flex gap-2 pt-1 border-t">
+                                {canEdit && (
+                                  <Button size="sm" variant="outline" className="h-8" onClick={() => handleEditExam(item)}>Edit</Button>
+                                )}
+                                {canDelete && (
+                                  <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive/30 hover:bg-destructive/5" onClick={() => handleDeleteExam(item)}>Delete</Button>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
                       </CollapsibleContent>
                     </Collapsible>
                   );
-                })
-              )}
+                })}
             </div>
           ) : (
           <MUITable title="" data={examsData} columns={examsColumns.map(col => ({
@@ -579,6 +655,14 @@ const Exams = ({
         </DialogContent>
       </Dialog>
 
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.item?.title || ''}
+        itemType="exam"
+        onConfirm={confirmDeleteExam}
+        isDeleting={isDeleting}
+      />
     </div>;
 };
 export default Exams;

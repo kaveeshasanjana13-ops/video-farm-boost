@@ -9,6 +9,7 @@ import DataTable from '@/components/ui/data-table';
 import { useAuth } from '@/contexts/AuthContext';
 import { AccessControl } from '@/utils/permissions';
 import { Plus, Edit, Trash2, Eye, Users, BookOpen, Settings } from 'lucide-react';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 // Mock organizations data
 const mockOrganizations = [{
@@ -89,6 +90,7 @@ const Grades = () => {
   const [organizations, setOrganizations] = useState<Organization[]>(mockOrganizations);
   const [classes, setClasses] = useState<Class[]>(mockClasses);
   const [currentView, setCurrentView] = useState('list');
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; orgId: string; orgName: string }>({ open: false, orgId: '', orgName: '' });
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -213,9 +215,13 @@ const Grades = () => {
   };
 
   const handleDeleteOrganization = (orgId: string) => {
-    if (window.confirm('Are you sure you want to delete this organization?')) {
-      setOrganizations(organizations.filter(g => g.id !== orgId));
-    }
+    const org = organizations.find(o => o.id === orgId);
+    setDeleteDialog({ open: true, orgId, orgName: org?.name || orgId });
+  };
+
+  const confirmDeleteOrganization = () => {
+    setOrganizations(organizations.filter(g => g.id !== deleteDialog.orgId));
+    setDeleteDialog({ open: false, orgId: '', orgName: '' });
   };
 
   const handleSubmitForm = () => {
@@ -725,6 +731,14 @@ const Grades = () => {
           />
         </CardContent>
       </Card>
+
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.orgName}
+        itemType="organization"
+        onConfirm={confirmDeleteOrganization}
+      />
     </div>
   );
 };

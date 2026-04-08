@@ -1,12 +1,14 @@
-import { attendanceApiClient } from './attendanceClient';
-import { getAttendanceUrl, getApiHeaders, getBaseUrl } from '@/contexts/utils/auth.api';
+      import { attendanceApiClient } from './attendanceClient';
+import { enhancedCachedClient } from '@/api/enhancedCachedClient';
+import { getAttendanceUrl, getApiHeadersAsync, getBaseUrl } from '@/contexts/utils/auth.api';
 import { attendanceDuplicateChecker } from '@/utils/attendanceDuplicateCheck';
-import { AttendanceStatus, AttendanceSummary, normalizeAttendanceSummary } from '@/types/attendance.types';
+import { AttendanceStatus, AttendanceSummary, normalizeAttendanceSummary, AddressCoordinates, MarkingMethod } from '@/types/attendance.types';
 
 export interface ChildAttendanceRecord {
   attendanceId?: string;
   studentId: string;
   studentName: string;
+  studentImageUrl?: string;
   instituteId?: string;
   instituteName: string;
   classId?: string;
@@ -15,9 +17,13 @@ export interface ChildAttendanceRecord {
   subjectName?: string;
   date: string;
   status: AttendanceStatus;
-  location: string;
+  location?: string;
+  // ✅ NEW: Consolidated coordinates
+  address?: AddressCoordinates;
+  // ⚠️ DEPRECATED: Legacy fields for backward compatibility
+  latitude?: number;
+  longitude?: number;
   markingMethod: string;
-  address?: string;
   markedBy?: string;
   markedAt?: string;
 }
@@ -55,7 +61,9 @@ export interface MarkAttendanceByCardRequest {
   className?: string;
   subjectId?: string;
   subjectName?: string;
-  address: string;
+  // ✅ NEW: Consolidated coordinates
+  address?: AddressCoordinates;
+  location?: string;
   markingMethod: 'qr' | 'barcode' | 'rfid/nfc';
   status: AttendanceStatus;
   date?: string;
@@ -81,8 +89,10 @@ export interface MarkAttendanceRequest {
   className?: string;
   subjectId?: string;
   subjectName?: string;
-  address: string;
-  markingMethod: 'manual';
+  // ✅ NEW: Consolidated coordinates in address object
+  address?: AddressCoordinates;
+  location?: string;
+  markingMethod: MarkingMethod;
   status: AttendanceStatus;
   date?: string;
   eventId?: string;
@@ -121,6 +131,29 @@ class ChildAttendanceApi {
         useStaleWhileRevalidate: true
       }
     );
+  }
+
+  /**
+   * Build a scoped attendance URL based on the presence of classId/subjectId.
+   * - No classId → institute scope:  /api/attendance/institute/:id/<suffix>
+   * - classId only → class scope:    /api/attendance/institute/:id/class/:classId/<suffix>
+   * - classId + subjectId → subject: /api/attendance/institute/:id/class/:classId/subject/:subjectId/<suffix>
+   */
+  _buildScopedUrl(
+    baseUrl: string,
+    instituteId: string,
+    suffix: string,
+    classId?: string,
+    subjectId?: string,
+  ): string {
+    let path = `${baseUrl}/api/attendance/institute/${instituteId}`;
+    if (classId) {
+      path += `/class/${classId}`;
+      if (subjectId) {
+        path += `/subject/${subjectId}`;
+      }
+    }
+    return `${path}/${suffix}`;
   }
 
   async markAttendanceByCard(request: MarkAttendanceByCardRequest): Promise<MarkAttendanceByCardResponse> {
@@ -184,8 +217,18 @@ class ChildAttendanceApi {
       requestBody.subjectName = request.subjectName;
     }
 
+    // Include location name if provided
+    if (request.location) {
+      requestBody.location = request.location;
+    }
+
+    // ✅ NEW: Include coordinates in address object
+    if (request.address) {
+      requestBody.address = request.address;
+    }
+
     const baseUrl = attendanceBaseUrl.endsWith('/') ? attendanceBaseUrl.slice(0, -1) : attendanceBaseUrl;
-    const fullApiUrl = `${baseUrl}/api/attendance/mark-by-card`;
+    const fullApiUrl = this._buildScopedUrl(baseUrl, request.instituteId, 'mark-by-card', request.classId, request.subjectId);
     
     console.log('=== ATTENDANCE BY CARD API CALL ===');
     console.log('Attendance URL from config:', getAttendanceUrl());
@@ -194,12 +237,13 @@ class ChildAttendanceApi {
     console.log('Full API Endpoint:', fullApiUrl);
     console.log('Request Method: POST');
     console.log('Request Body:', JSON.stringify(requestBody, null, 2));
-    console.log('Request Headers:', getApiHeaders());
+    const authHeaders = await getApiHeadersAsync();
+    console.log('Request Headers:', authHeaders);
     console.log('===============================');
 
     const response = await fetch(fullApiUrl, {
       method: 'POST',
-      headers: getApiHeaders(),
+      headers: authHeaders,
       body: JSON.stringify(requestBody),
       credentials: 'include' // CRITICAL: Send httpOnly refresh token cookie for JWT auth
     });
@@ -234,6 +278,9 @@ class ChildAttendanceApi {
       method: request.markingMethod
     });
     
+    // ✅ REFRESH CACHE FOR DAILY EVENTS & RECENT ATTENDANCE
+    enhancedCachedClient.enableGlobalForceRefresh(10000); // Refresh for 10 seconds
+    
     return result;
   }
 
@@ -245,11 +292,13 @@ class ChildAttendanceApi {
     className?: string;
     subjectId?: string;
     subjectName?: string;
-    address: string;
+    // ✅ NEW: Consolidated coordinates in address object
+    address?: AddressCoordinates;
+    location?: string;
     markingMethod: string;
     status: AttendanceStatus;
     date: string;
-    location?: string;
+    eventId?: string;
   }): Promise<any> {
     // Get current user ID from localStorage
     const userId = localStorage.getItem('userId') || 'unknown';
@@ -279,18 +328,56 @@ class ChildAttendanceApi {
       }
     }
 
+    // Build dynamic request body based on what's selected
+    const requestBody: any = {
+      instituteCardId: request.instituteCardId,
+      instituteId: request.instituteId,
+      instituteName: request.instituteName,
+      markingMethod: request.markingMethod,
+      status: request.status,
+      date: request.date
+    };
+
+    // ✅ NEW: Include location name if provided
+    if (request.location) {
+      requestBody.location = request.location;
+    }
+
+    // ✅ NEW: Include coordinates in address object
+    if (request.address) {
+      requestBody.address = request.address;
+    }
+
+    // Include eventId if provided
+    if (request.eventId) {
+      requestBody.eventId = request.eventId;
+    }
+
+    // Only include class data if provided
+    if (request.classId && request.className) {
+      requestBody.classId = request.classId;
+      requestBody.className = request.className;
+    }
+
+    // Only include subject data if provided
+    if (request.subjectId && request.subjectName) {
+      requestBody.subjectId = request.subjectId;
+      requestBody.subjectName = request.subjectName;
+    }
+
     const baseUrl = attendanceBaseUrl.endsWith('/') ? attendanceBaseUrl.slice(0, -1) : attendanceBaseUrl;
-    const fullApiUrl = `${baseUrl}/api/attendance/mark-by-institute-card`;
+    const fullApiUrl = this._buildScopedUrl(baseUrl, request.instituteId, 'mark-by-institute-card', request.classId, request.subjectId);
 
     console.log('=== INSTITUTE CARD ATTENDANCE API CALL ===');
     console.log('Full API Endpoint:', fullApiUrl);
-    console.log('Request Body:', JSON.stringify(request, null, 2));
+    console.log('Request Body:', JSON.stringify(requestBody, null, 2));
     console.log('========================================');
 
+    const instCardHeaders = await getApiHeadersAsync();
     const response = await fetch(fullApiUrl, {
       method: 'POST',
-      headers: getApiHeaders(),
-      body: JSON.stringify(request),
+      headers: instCardHeaders,
+      body: JSON.stringify(requestBody),
       credentials: 'include' // CRITICAL: Send httpOnly refresh token cookie for JWT auth
     });
 
@@ -318,6 +405,9 @@ class ChildAttendanceApi {
       status: request.status,
       method: (request.markingMethod as any) || 'rfid/nfc'
     });
+    
+    // ✅ REFRESH CACHE FOR DAILY EVENTS & RECENT ATTENDANCE
+    enhancedCachedClient.enableGlobalForceRefresh(10000); // Refresh for 10 seconds
 
     return result;
   }
@@ -334,7 +424,7 @@ class ChildAttendanceApi {
       classId: request.classId,
       subjectId: request.subjectId,
       status: request.status,
-      method: request.markingMethod
+      method: request.markingMethod as 'manual' | 'qr' | 'barcode' | 'rfid/nfc'
     });
 
     if (isDuplicate) {
@@ -357,11 +447,20 @@ class ChildAttendanceApi {
       studentName: request.studentName || `Student ${request.studentId}`,
       instituteId: request.instituteId,
       instituteName: request.instituteName,
-      address: request.address,
       markingMethod: request.markingMethod,
       status: request.status,
       date: request.date || new Date().toISOString().split('T')[0] // Use provided date or fallback to today
     };
+
+    // ✅ NEW: Include location name if provided
+    if (request.location) {
+      requestBody.location = request.location;
+    }
+
+    // ✅ NEW: Include coordinates in address object
+    if (request.address) {
+      requestBody.address = request.address;
+    }
 
     // Include eventId if provided
     if (request.eventId) {
@@ -390,7 +489,8 @@ class ChildAttendanceApi {
     console.log('Full API Endpoint:', fullApiUrl);
     console.log('Request Method: POST');
     console.log('Request Body:', JSON.stringify(requestBody, null, 2));
-    console.log('Request Headers:', getApiHeaders());
+    const manualHeaders = await getApiHeadersAsync();
+    console.log('Request Headers:', manualHeaders);
     console.log('Request Details:');
     console.log('- Student ID:', requestBody.studentId);
     console.log('- Institute ID:', requestBody.instituteId);
@@ -406,7 +506,7 @@ class ChildAttendanceApi {
 
     const response = await fetch(fullApiUrl, {
       method: 'POST',
-      headers: getApiHeaders(),
+      headers: manualHeaders,
       body: JSON.stringify(requestBody)
     });
 
@@ -437,8 +537,11 @@ class ChildAttendanceApi {
       classId: request.classId,
       subjectId: request.subjectId,
       status: request.status,
-      method: request.markingMethod
+      method: request.markingMethod as 'manual' | 'qr' | 'barcode' | 'rfid/nfc'
     });
+    
+    // ✅ REFRESH CACHE FOR DAILY EVENTS & RECENT ATTENDANCE
+    enhancedCachedClient.enableGlobalForceRefresh(10000); // Refresh for 10 seconds
     
     return result;
   }

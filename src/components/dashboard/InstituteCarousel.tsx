@@ -1,74 +1,77 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Building2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Building2, Check, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import type { Institute } from '@/contexts/types/auth.types';
 
 interface InstituteCarouselProps {
   onSelectInstitute: (institute: Institute) => void;
+  compact?: boolean;
 }
 
-const InstituteCarousel: React.FC<InstituteCarouselProps> = ({ onSelectInstitute }) => {
-  const { user, selectedInstitute, loadUserInstitutes } = useAuth();
+const InstituteCarousel: React.FC<InstituteCarouselProps> = ({ onSelectInstitute, compact = false }) => {
+  const { user, selectedInstitute, loadUserInstitutes, isViewingAsParent, selectedChild } = useAuth();
   const [institutes, setInstitutes] = useState<Institute[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const autoPlayRef = useRef<NodeJS.Timeout>();
-  const isPaused = useRef(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    if (hasLoadedRef.current || !user?.id) return;
+    hasLoadedRef.current = true;
+
     const load = async () => {
       try {
+        // loadUserInstitutes now handles parent-child mode internally
+        if (!isViewingAsParent && user?.institutes?.length) {
+          setInstitutes(user.institutes);
+          setLoading(false);
+        }
         const data = await loadUserInstitutes();
         setInstitutes(data);
       } catch (e) {
         console.error('Failed to load institutes:', e);
-        if (user?.institutes?.length) {
-          setInstitutes(user.institutes);
-        }
+        if (!isViewingAsParent && user?.institutes?.length) setInstitutes(user.institutes);
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, [user?.id]);
+  }, [user?.id, isViewingAsParent, selectedChild?.userId]);
 
-  // Auto-scroll one by one
+  // Scroll selected institute into view
   useEffect(() => {
-    if (institutes.length <= 1) return;
+    if (selectedInstitute && scrollRef.current) {
+      const selected = scrollRef.current.querySelector(`[data-institute-id="${selectedInstitute.id}"]`);
+      selected?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+  }, [selectedInstitute?.id]);
 
-    const startAutoPlay = () => {
-      autoPlayRef.current = setInterval(() => {
-        if (!isPaused.current) {
-          setActiveIndex(prev => (prev + 1) % institutes.length);
-        }
-      }, 3000);
-    };
-
-    startAutoPlay();
-    return () => {
-      if (autoPlayRef.current) clearInterval(autoPlayRef.current);
-    };
-  }, [institutes]);
-
-  const goTo = (index: number) => {
-    setActiveIndex(index);
-    // Reset auto-play timer on manual navigation
-    if (autoPlayRef.current) clearInterval(autoPlayRef.current);
-    autoPlayRef.current = setInterval(() => {
-      if (!isPaused.current) {
-        setActiveIndex(prev => (prev + 1) % institutes.length);
-      }
-    }, 3000);
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const scrollAmount = 200;
+      scrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+    }
   };
 
-  const goPrev = () => goTo((activeIndex - 1 + institutes.length) % institutes.length);
-  const goNext = () => goTo((activeIndex + 1) % institutes.length);
+  const filteredInstitutes = useMemo(() => {
+    if (!searchQuery.trim()) return institutes;
+    const query = searchQuery.toLowerCase();
+    return institutes.filter(inst => {
+      const name = inst.name || '';
+      const shortName = inst.shortName || '';
+      return name.toLowerCase().includes(query) || shortName.toLowerCase().includes(query);
+    });
+  }, [institutes, searchQuery]);
 
   if (loading) {
     return (
       <div className="flex gap-3 overflow-hidden">
         {[1, 2, 3].map(i => (
-          <div key={i} className="h-20 w-full rounded-xl bg-muted animate-pulse" />
+          <div key={i} className="h-14 w-44 rounded-xl bg-muted animate-pulse shrink-0" />
         ))}
       </div>
     );
@@ -76,98 +79,107 @@ const InstituteCarousel: React.FC<InstituteCarouselProps> = ({ onSelectInstitute
 
   if (institutes.length === 0) return null;
 
-  const inst = institutes[activeIndex];
-  const isSelected = selectedInstitute?.id === inst.id;
-
   return (
-    <div
-      onMouseEnter={() => { isPaused.current = true; }}
-      onMouseLeave={() => { isPaused.current = false; }}
-      onTouchStart={() => { isPaused.current = true; }}
-      onTouchEnd={() => { setTimeout(() => { isPaused.current = false; }, 2000); }}
-    >
-      {/* Arrow + Card row */}
-      <div className="flex items-center gap-2">
-        {/* Left Arrow */}
-        {institutes.length > 1 && (
-          <button
-            onClick={goPrev}
-            className="shrink-0 w-8 h-8 rounded-full bg-muted/80 backdrop-blur border border-border shadow-sm flex items-center justify-center hover:bg-accent transition-colors"
-          >
-            <ChevronLeft className="h-4 w-4 text-foreground" />
-          </button>
-        )}
+    <div className="space-y-3">
+      {institutes.length > 4 && (
+        <div className="relative w-full sm:w-64">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input 
+            type="text" 
+            placeholder="Search institutes..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 bg-card border border-border/60 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all"
+          />
+        </div>
+      )}
 
-        {/* Main Card */}
-        <button
-          onClick={() => onSelectInstitute(inst)}
-          className={`
-            flex-1 min-w-0 rounded-2xl p-5 text-left
-            transition-all duration-500 ease-in-out
-            border overflow-hidden
-            ${isSelected
-              ? 'bg-primary/10 border-primary/30 shadow-lg shadow-primary/10'
-              : 'bg-card border-border hover:border-primary/20 hover:shadow-md'
-            }
-          `}
-        >
-          <div className="flex items-center gap-4">
-            {inst.logo ? (
-              <img
-                src={inst.logo}
-                alt={inst.shortName || inst.name}
-                className="w-14 h-14 rounded-xl object-cover shrink-0 ring-2 ring-background shadow-sm"
-              />
-            ) : (
-              <div className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${
-                isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-              }`}>
-                <Building2 className="h-6 w-6" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className={`text-base font-semibold truncate ${
-                isSelected ? 'text-primary' : 'text-foreground'
-              }`}>
-                {inst.shortName || inst.name}
-              </p>
-              <p className="text-xs text-muted-foreground truncate mt-1">
-                {inst.instituteUserType
-                  ? inst.instituteUserType.replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())
-                  : inst.type || 'Institute'}
-              </p>
-            </div>
-            {isSelected && (
-              <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0 animate-pulse" />
-            )}
+      {filteredInstitutes.length === 0 ? (
+        <div className="text-center py-4 text-muted-foreground bg-card rounded-xl border border-border/50">
+          <p className="text-sm">No institutes found matching "{searchQuery}"</p>
+        </div>
+      ) : (
+        <div className="relative group">
+          {/* Scroll buttons - visible on hover for desktop */}
+          {filteredInstitutes.length > 2 && (
+            <>
+              <button
+                onClick={() => scroll('left')}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-background/90 border border-border shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent"
+              >
+                <ChevronLeft className="h-4 w-4 text-foreground" />
+              </button>
+              <button
+                onClick={() => scroll('right')}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-background/90 border border-border shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent"
+              >
+                <ChevronRight className="h-4 w-4 text-foreground" />
+              </button>
+            </>
+          )}
+
+          {/* Scrollable container */}
+          <div
+            ref={scrollRef}
+            className="flex gap-2.5 overflow-x-auto no-scrollbar scroll-smooth px-0.5 py-1"
+          >
+            {filteredInstitutes.map((inst) => {
+              const isSelected = selectedInstitute?.id === inst.id;
+              return (
+                <button
+                  key={inst.id}
+                  data-institute-id={inst.id}
+                  onClick={() => onSelectInstitute(inst)}
+                  title={inst.name}
+                  className={`
+                    relative flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl shrink-0
+                    border active:scale-[0.97] transition-all
+                    min-w-[140px] max-w-[220px]
+                    ${isSelected
+                      ? 'bg-primary/10 border-primary/30 shadow-sm shadow-primary/10 ring-1 ring-primary/20'
+                      : 'bg-card border-border hover:border-primary/20 hover:bg-accent/50'
+                    }
+                  `}
+                >
+                  {/* Logo / Icon */}
+                  {inst.logo ? (
+                    <img
+                      src={inst.logo}
+                      alt={inst.shortName || inst.name}
+                      className="w-9 h-9 rounded-lg object-cover shrink-0 ring-1 ring-border"
+                    />
+                  ) : (
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                      isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                    }`}>
+                      <Building2 className="h-4 w-4" />
+                    </div>
+                  )}
+
+                  {/* Text */}
+                  <div className="min-w-0 text-left flex-1">
+                    <p className={`text-sm font-semibold truncate leading-tight ${
+                      isSelected ? 'text-primary' : 'text-foreground'
+                    }`}>
+                      {inst.shortName || inst.name}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
+                      {inst.instituteUserType
+                        ? inst.instituteUserType.replace(/_/g, ' ').toLowerCase().replace(/^\w/, c => c.toUpperCase())
+                        : inst.type || 'Institute'}
+                    </p>
+                  </div>
+
+                  {/* Selected check */}
+                  {isSelected && (
+                    <div className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-primary flex items-center justify-center shadow-sm">
+                      <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        </button>
-
-        {/* Right Arrow */}
-        {institutes.length > 1 && (
-          <button
-            onClick={goNext}
-            className="shrink-0 w-8 h-8 rounded-full bg-muted/80 backdrop-blur border border-border shadow-sm flex items-center justify-center hover:bg-accent transition-colors"
-          >
-            <ChevronRight className="h-4 w-4 text-foreground" />
-          </button>
-        )}
-      </div>
-
-      {/* Dot Indicators */}
-      {institutes.length > 1 && (
-        <div className="flex justify-center gap-1.5 mt-2">
-          {institutes.map((_, idx) => (
-            <button
-              key={idx}
-              onClick={() => goTo(idx)}
-              className={`rounded-full transition-all duration-300 ${
-                idx === activeIndex
-                  ? 'w-5 h-1.5 bg-primary'
-                  : 'w-1.5 h-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
-              }`}
-            />
-          ))}
         </div>
       )}
     </div>

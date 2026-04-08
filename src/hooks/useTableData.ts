@@ -56,7 +56,6 @@ export const useTableData = <T = any>(config: TableDataConfig): UseTableDataRetu
   // Stabilize dependencies to prevent infinite effect re-fires
   const depsKey = useMemo(
     () => JSON.stringify(config.dependencies || []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     config.dependencies || []
   );
 
@@ -143,7 +142,7 @@ export const useTableData = <T = any>(config: TableDataConfig): UseTableDataRetu
         lastRefresh: new Date()
       }));
       
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Failed to load data from ${config.endpoint}:`, error);
       setState(prev => ({
         ...prev,
@@ -174,7 +173,6 @@ useEffect(() => {
   if (config.autoLoad === false) return;
   if (!config.endpoint) return;
   loadData(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
 }, config.autoLoad !== false ? [config.endpoint, pagination.pagination.page, pagination.pagination.limit, depsKey] : []);
 
   return {

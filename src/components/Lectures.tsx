@@ -7,10 +7,11 @@ import { CustomToggle } from '@/components/ui/custom-toggle';
 import { Card, CardContent } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, Filter, Plus, Calendar, Clock, MapPin, Video, Users, ExternalLink, CheckCircle, ChevronDown, LayoutList, LayoutGrid } from 'lucide-react';
+import { RefreshCw, Filter, Plus, Calendar, Clock, MapPin, Video, Users, ExternalLink, CheckCircle, ChevronDown, LayoutList, LayoutGrid, Table2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, type UserRole } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { buildSidebarUrl } from '@/utils/pageNavigation';
 import { AccessControl } from '@/utils/permissions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +19,11 @@ import CreateLectureForm from '@/components/forms/CreateLectureForm';
 import UpdateLectureForm from '@/components/forms/UpdateLectureForm';
 import { DataCardView } from '@/components/ui/data-card-view';
 import { useTableData } from '@/hooks/useTableData';
+import { useViewMode } from '@/hooks/useViewMode';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { cachedApiClient } from '@/api/cachedClient';
 import VideoPreviewDialog from '@/components/VideoPreviewDialog';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 interface LecturesProps {
   apiLevel?: 'institute' | 'class' | 'subject';
@@ -41,10 +45,11 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [viewMode] = useState<'card' | 'table'>(() => {
-    return (localStorage.getItem('viewMode') as 'card' | 'table') || 'card';
-  });
+  const { viewMode } = useViewMode();
+  const [pageViewMode, setPageViewMode] = useState<'card' | 'table'>(viewMode);
   const [expandedLecture, setExpandedLecture] = useState<string | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; item: any }>({ open: false, item: null });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const userRole = useInstituteRole();
   
@@ -166,31 +171,22 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
   };
 
 
-  const handleDeleteLecture = async (lectureData: any) => {
-    console.log('Deleting lecture:', lectureData);
-    
+  const handleDeleteLecture = (lectureData: any) => {
+    setDeleteDialog({ open: true, item: lectureData });
+  };
+  const confirmDeleteLecture = async () => {
+    if (!deleteDialog.item) return;
+    setIsDeleting(true);
     try {
-      // Use cached client for delete (will clear related cache)
-      await cachedApiClient.delete(`/lectures/${lectureData.id}`);
-
-      console.log('Lecture deleted successfully');
-      
-      toast({
-        title: "Lecture Deleted",
-        description: `Lecture ${lectureData.title} has been deleted successfully.`,
-        variant: "destructive"
-      });
-      
-      // Force refresh after deletion
+      // Use PATCH soft-deactivate on the same endpoint as data source (DELETE may be SUPERADMIN-only)
+      await cachedApiClient.patch(`${endpoint}/${deleteDialog.item.id}`, { isActive: false });
+      toast({ title: "Lecture Deleted", description: `Lecture ${deleteDialog.item.title} has been deleted successfully.` });
+      setDeleteDialog({ open: false, item: null });
       actions.refresh();
-      
-    } catch (error) {
-      console.error('Error deleting lecture:', error);
-      toast({
-        title: "Delete Failed",
-        description: "Failed to delete lecture. Please try again.",
-        variant: "destructive"
-      });
+    } catch (error: any) {
+      toast({ title: "Delete Failed", description: "Failed to delete lecture. Please try again.", variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -327,8 +323,39 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
     return matchesSearch && matchesStatus && matchesType;
   });
 
+  // Payment gate: If student hasn't paid (pending_payment, payment_rejected, pending), block access to paid lectures
+  if (userRole === 'Student' && selectedSubject?.verificationStatus && 
+      !['verified', 'enrolled_free_card'].includes(selectedSubject.verificationStatus)) {
+    const statusLabels: Record<string, { label: string; color: string; desc: string }> = {
+      pending_payment: { label: 'Payment Required', color: 'text-orange-600', desc: 'You need to submit payment to access lectures. Please go to Fees & Payments to submit your payment.' },
+      pending: { label: 'Payment Under Review', color: 'text-amber-600', desc: 'Your payment has been submitted and is awaiting admin approval. You can access Free Lectures in the meantime.' },
+      payment_rejected: { label: 'Payment Rejected', color: 'text-red-600', desc: 'Your payment was rejected. Please resubmit a valid payment to access lectures.' },
+      rejected: { label: 'Enrollment Rejected', color: 'text-red-600', desc: 'Your enrollment was rejected. Please contact your institute admin.' },
+      not_enrolled: { label: 'Not Enrolled', color: 'text-muted-foreground', desc: 'You are not enrolled in this subject. Please enroll first.' },
+    };
+    const info = statusLabels[selectedSubject.verificationStatus] || statusLabels['not_enrolled'];
+    return (
+      <div className="container mx-auto px-3 py-8 sm:p-6">
+        <div className="max-w-md mx-auto text-center space-y-4">
+          <div className="h-16 w-16 mx-auto rounded-full bg-muted flex items-center justify-center">
+            <Video className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-lg font-semibold text-foreground">Lectures Locked</h2>
+          <p className={`text-sm font-medium ${info.color}`}>{info.label}</p>
+          <p className="text-sm text-muted-foreground">{info.desc}</p>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
+            <Button variant="outline" size="sm" onClick={() => navigate(-1)}>← Go Back</Button>
+            <Button size="sm" onClick={() => navigate(buildSidebarUrl('free-lectures', { instituteId: currentInstituteId, classId: currentClassId, subjectId: currentSubjectId }))}>
+              View Free Lectures
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="container mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
+    <div className="w-full px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
       {!hasAttemptedLoad ? (
         <div className="text-center py-8 sm:py-12">
           <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-3 sm:mb-4">
@@ -400,6 +427,10 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
                 <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
                 {isLoading ? 'Loading...' : 'Refresh'}
               </Button>
+              <div className="flex items-center border border-border rounded-lg overflow-hidden">
+                <button onClick={() => setPageViewMode('card')} className={`p-1.5 transition-colors ${pageViewMode === 'card' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Card view"><LayoutGrid className="h-4 w-4" /></button>
+                <button onClick={() => setPageViewMode('table')} className={`p-1.5 transition-colors ${pageViewMode === 'table' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`} title="Table view"><Table2 className="h-4 w-4" /></button>
+              </div>
             </div>
           </div>
 
@@ -483,12 +514,11 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
           )}
 
            {/* View Content */}
-          {viewMode === 'card' ? (
+          {filteredLectures.length === 0 ? (
+            <EmptyState icon={Video} title="No Lectures Found" description="No lectures match your current filters." />
+          ) : pageViewMode === 'card' ? (
             <div className="space-y-2">
-              {filteredLectures.length === 0 ? (
-                <Card className="p-8 text-center"><p className="text-sm text-muted-foreground">No lectures found</p></Card>
-              ) : (
-                filteredLectures.map((item: any) => {
+              {filteredLectures.map((item: any) => {
                   const isOpen = expandedLecture === (item.id || item._id);
                   const recUrl = item.recordingUrl || item.recording_url;
                   const isYouTubeOrDrive = (url: string) => url.includes('youtube.com') || url.includes('youtu.be') || url.includes('drive.google.com');
@@ -507,21 +537,21 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
                                 <Badge variant={item.status === 'scheduled' ? 'default' : item.status === 'completed' ? 'secondary' : 'destructive'} className="text-[10px] px-1.5 py-0">{item.status}</Badge>
                               </p>
                             </div>
-                            {/* Quick action buttons visible on card header for Students */}
-                            {userRole === 'Student' && (
+                            {/* Quick action buttons visible on card header for all roles */}
+                            {(item.meetingLink || recUrl) && (
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {item.meetingLink && (
-                                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-7 text-xs px-2" onClick={(e) => { e.stopPropagation(); window.open(item.meetingLink, '_blank'); }}>
+                                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8 text-xs px-2.5" onClick={(e) => { e.stopPropagation(); window.open(item.meetingLink, '_blank'); }}>
                                     <ExternalLink className="h-3 w-3 mr-1" />Join
                                   </Button>
                                 )}
                                 {recUrl && (
-                                  <Button size="sm" variant="default" className="h-7 text-xs px-2" onClick={(e) => {
+                                  <Button size="sm" variant="default" className="h-8 text-xs px-2.5" onClick={(e) => {
                                     e.stopPropagation();
                                     if (isYouTubeOrDrive(recUrl)) { setVideoPreviewUrl(recUrl); setVideoPreviewTitle(item.title || 'Recording'); }
                                     else { window.open(recUrl, '_blank'); }
                                   }}>
-                                    <Video className="h-3 w-3 mr-1" />Rec
+                                    <Video className="h-3 w-3 mr-1" />Recording
                                   </Button>
                                 )}
                               </div>
@@ -531,38 +561,47 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
                         </Card>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="px-4 pb-4 pt-1 space-y-2 border-x border-b rounded-b-2xl bg-muted/30">
-                          {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
-                          {item.venue && <p className="text-xs"><span className="font-medium">Venue:</span> {item.venue}</p>}
-                          <p className="text-xs"><span className="font-medium">Start:</span> {item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</p>
-                          <p className="text-xs"><span className="font-medium">End:</span> {item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}</p>
-                          <div className="flex flex-wrap gap-2 pt-2">
-                            {item.meetingLink && (
-                              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-7 text-xs" onClick={() => window.open(item.meetingLink, '_blank')}>
-                                <ExternalLink className="h-3 w-3 mr-1" />Join
-                              </Button>
+                        <div className="mx-0.5 mb-1 rounded-b-2xl border-x border-b overflow-hidden">
+                          <div className="p-4 space-y-3 bg-muted/20">
+                            {item.description && (
+                              <p className="text-xs text-muted-foreground leading-relaxed">{item.description}</p>
                             )}
-                            {recUrl && (
-                              <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => {
-                                if (isYouTubeOrDrive(recUrl)) { setVideoPreviewUrl(recUrl); setVideoPreviewTitle(item.title || 'Recording'); }
-                                else { window.open(recUrl, '_blank'); }
-                              }}>
-                                <Video className="h-3 w-3 mr-1" />Recording
-                              </Button>
-                            )}
-                            {canEdit && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleEditLecture(item)}>Edit</Button>
-                            )}
-                            {canDelete && (
-                              <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/30" onClick={() => handleDeleteLecture(item)}>Delete</Button>
+                            {/* Schedule */}
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Schedule</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-background border">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Clock className="h-2.5 w-2.5" />Start</span>
+                                  <span className="text-xs font-medium">{item.startTime ? new Date(item.startTime).toLocaleString() : 'N/A'}</span>
+                                </div>
+                                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-background border">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Clock className="h-2.5 w-2.5" />End</span>
+                                  <span className="text-xs font-medium">{item.endTime ? new Date(item.endTime).toLocaleString() : 'N/A'}</span>
+                                </div>
+                                {item.venue && (
+                                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-background border">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><MapPin className="h-2.5 w-2.5" />Venue</span>
+                                    <span className="text-xs font-medium">{item.venue}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {(canEdit || canDelete) && (
+                              <div className="flex gap-2 pt-1 border-t">
+                                {canEdit && (
+                                  <Button size="sm" variant="outline" className="h-8" onClick={() => handleEditLecture(item)}>Edit</Button>
+                                )}
+                                {canDelete && (
+                                  <Button size="sm" variant="outline" className="h-8 text-destructive border-destructive/30 hover:bg-destructive/5" onClick={() => handleDeleteLecture(item)}>Delete</Button>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
                       </CollapsibleContent>
                     </Collapsible>
                   );
-                })
-              )}
+                })}
             </div>
           ) : (
            <MUITable
@@ -627,6 +666,14 @@ const Lectures = ({ apiLevel = 'institute' }: LecturesProps) => {
         title={videoPreviewTitle}
       />
 
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.item?.title || ''}
+        itemType="lecture"
+        onConfirm={confirmDeleteLecture}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

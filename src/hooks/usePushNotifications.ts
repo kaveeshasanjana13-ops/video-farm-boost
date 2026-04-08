@@ -1,11 +1,45 @@
-// src/hooks/usePushNotifications.ts
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { pushNotificationService, NotificationPayload } from '../services/pushNotificationService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotificationStore } from '@/stores/useNotificationStore';
 
+/** Own origins that should stay inside the app (must match useNotificationNavigation) */
+const OWN_ORIGINS = [
+  'https://lms.suraksha.lk',
+  'http://lms.suraksha.lk',
+  window.location.origin,
+];
+
+/**
+ * Navigate to an actionUrl from push notification data.
+ * - Internal/own-origin URLs → React Router (stays in-app, SPA navigation)
+ * - External URLs → open in browser/custom tab
+ */
+function safeNavigate(actionUrl: string, navigate: ReturnType<typeof useNavigate>): void {
+  if (!actionUrl) return;
+  try {
+    if (!actionUrl.startsWith('http')) {
+      // Relative path — always internal
+      navigate(actionUrl, { replace: false });
+      return;
+    }
+    const { origin, pathname, search, hash } = new URL(actionUrl);
+    if (OWN_ORIGINS.includes(origin)) {
+      // Same app — in-app navigation
+      navigate(pathname + search + hash, { replace: false });
+    } else {
+      // External site — open in system browser
+      window.open(actionUrl, '_blank', 'noopener,noreferrer');
+    }
+  } catch {
+    // malformed URL — ignore
+  }
+}
+
 export const usePushNotifications = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { incrementUnread } = useNotificationStore();
   const [latestNotification, setLatestNotification] = useState<NotificationPayload | null>(null);
   const [showToast, setShowToast] = useState(false);
@@ -34,10 +68,9 @@ export const usePushNotifications = () => {
         if (result) {
           setIsRegistered(true);
           setPermissionStatus('granted');
-          console.log(`✅ Push notifications registered successfully (${pushNotificationService.getPlatform()})`);
         }
-      } catch (error) {
-        console.error('Failed to register push notifications:', error);
+      } catch (error: any) {
+        if (import.meta.env.DEV) console.error('Failed to register push notifications:', error);
       }
     };
 
@@ -52,7 +85,6 @@ export const usePushNotifications = () => {
     if (!user?.id) return;
 
     const unsubscribe = pushNotificationService.onForegroundMessage((payload) => {
-      console.log('📬 New notification received:', payload);
       setLatestNotification(payload);
       setShowToast(true);
       incrementUnread(); // Update global badge count
@@ -71,9 +103,8 @@ export const usePushNotifications = () => {
     if (!user?.id || !pushNotificationService.isNative()) return;
 
     const unsubscribe = pushNotificationService.onNotificationClick((payload) => {
-      console.log('📱 Notification clicked:', payload);
       if (payload.data?.actionUrl) {
-        window.location.href = payload.data.actionUrl;
+        safeNavigate(payload.data.actionUrl, navigate);
       }
     });
 
@@ -88,10 +119,10 @@ export const usePushNotifications = () => {
 
   const handleNotificationClick = useCallback(() => {
     if (latestNotification?.data?.actionUrl) {
-      window.location.href = latestNotification.data.actionUrl;
+      safeNavigate(latestNotification.data.actionUrl, navigate);
     }
     dismissToast();
-  }, [latestNotification, dismissToast]);
+  }, [latestNotification, dismissToast, navigate]);
 
   const requestPermission = useCallback(async () => {
     const granted = await pushNotificationService.requestPermission();

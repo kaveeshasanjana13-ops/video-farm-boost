@@ -1,0 +1,12 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^Select-String -Path \"src/\\*\\*/\\*\\.tsx\" -Pattern \"viewMode\\.\\*card\\|recordsViewMode\\.\\*card\\|isCardView\" -SimpleMatch -List \\| ForEach-Object \\{ \\$_\\.Filename \\}$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^Get-ChildItem -Recurse -Path src -Filter \"\\*\\.tsx\" \\| Select-String -Pattern \"viewMode === 'card'\" \\| Select-Object -Unique Path \\| ForEach-Object \\{ \\$_\\.Path \\}$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

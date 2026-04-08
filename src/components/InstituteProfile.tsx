@@ -1,10 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactCrop, { type Crop, type PixelCrop, centerCrop, makeAspectCrop, convertToPixelCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { profileImageApi, type InstituteImageHistoryEntry, type InstituteImageHistoryResponse } from '@/api/profileImage.api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useToast } from '@/hooks/use-toast';
@@ -14,17 +18,32 @@ import { CACHE_TTL } from '@/config/cacheTTL';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { 
   Building2, Mail, Phone, MapPin, Globe, ExternalLink,
-  Shield, Calendar, IdCard, CheckCircle, User,
-  RefreshCw, Eye, Facebook, Youtube, ChevronRight
+  Shield, Calendar, IdCard, CheckCircle, XCircle, User,
+  RefreshCw, Eye, Facebook, Youtube,
+  Camera, Upload, Loader2, Clock, Trash2, History, Images, ChevronRight,
 } from 'lucide-react';
 
 // Institute profile data from GET /institutes/:id/profile
+// 35mm Ã— 45mm = 7:9 aspect ratio
+const PROFILE_ASPECT_RATIO = 7 / 9;
+
+function centerAspectCrop(mediaWidth: number, mediaHeight: number, aspect: number): Crop {
+  return centerCrop(
+    makeAspectCrop({ unit: '%', width: 80 }, aspect, mediaWidth, mediaHeight),
+    mediaWidth,
+    mediaHeight,
+  );
+}
+
 interface InstituteProfileData {
   id: string;
   name: string;
   shortName?: string;
   code: string;
   logoUrl?: string;
+  loadingGifUrl?: string;
+  imageUrl?: string;
+  imageUrls?: string[];
   primaryColorCode?: string;
   secondaryColorCode?: string;
   phone?: string;
@@ -42,6 +61,7 @@ interface InstituteProfileData {
 interface InstituteUserProfile {
   userId: string;
   instituteId: string;
+  nameWithInitials?: string | null;
   firstName: string;
   lastName: string;
   email: string;
@@ -66,9 +86,114 @@ const InstituteProfile = () => {
   const [instituteProfile, setInstituteProfile] = useState<InstituteProfileData | null>(null);
   const [userProfile, setUserProfile] = useState<InstituteUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mobileSection, setMobileSection] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'institute' | 'my-profile'>('institute');
 
-  const loadData = useCallback(async () => {
+  // â”€â”€ Institute image upload state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const imgRef = useRef<HTMLImageElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showImageUpload, setShowImageUpload] = useState(false);
+  const [cropImgSrc, setCropImgSrc] = useState('');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imageCrop, setImageCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [uploading, setUploading] = useState(false);
+  const [deletingPending, setDeletingPending] = useState(false);
+  const [instituteImageHistory, setInstituteImageHistory] = useState<InstituteImageHistoryResponse | null>(null);
+  const [showHistory, setShowHistory] = useState(true);
+  const historyRef = useRef<HTMLDivElement>(null);
+
+  const handleImageFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      toast({ title: 'Invalid file', description: 'Only JPEG, PNG, or WebP images are allowed.', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'File too large', description: 'Maximum file size is 5 MB.', variant: 'destructive' });
+      return;
+    }
+    setSelectedImage(file);
+    setImageCrop(undefined);
+    setCompletedCrop(undefined);
+    const reader = new FileReader();
+    reader.onload = () => setCropImgSrc(reader.result as string);
+    reader.readAsDataURL(file);
+    setShowImageUpload(true);
+  };
+
+  const handleInstituteImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    const crop = centerAspectCrop(width, height, PROFILE_ASPECT_RATIO);
+    setImageCrop(crop);
+    setCompletedCrop(convertToPixelCrop(crop, width, height));
+  };
+
+  const handleInstituteImageUpload = async () => {
+    if (!completedCrop || !imgRef.current || !selectedImage || !currentInstituteId || !userProfile) return;
+    setUploading(true);
+    try {
+      const canvas = document.createElement('canvas');
+      const scaleX = imgRef.current.naturalWidth / imgRef.current.width;
+      const scaleY = imgRef.current.naturalHeight / imgRef.current.height;
+      canvas.width = completedCrop.width;
+      canvas.height = completedCrop.height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(
+        imgRef.current,
+        completedCrop.x * scaleX, completedCrop.y * scaleY,
+        completedCrop.width * scaleX, completedCrop.height * scaleY,
+        0, 0, completedCrop.width, completedCrop.height
+      );
+      const blob = await new Promise<Blob>(res => canvas.toBlob(b => res(b!), 'image/jpeg', 0.92));
+      const croppedFile = new File([blob], selectedImage.name, { type: 'image/jpeg' });
+
+      await profileImageApi.uploadInstituteProfileImage(
+        userProfile.userId,
+        currentInstituteId,
+        croppedFile
+      );
+      toast({ title: 'Image submitted', description: 'Your institute image is pending admin review.' });
+      setShowImageUpload(false);
+      setSelectedImage(null);
+      setCropImgSrc('');
+      setInstituteImageHistory(null); // clear cache so it reloads
+      loadData();
+    } catch (err: any) {
+      toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const loadInstituteImageHistory = useCallback(async () => {
+    if (!currentInstituteId || !userProfile) return;
+    try {
+      const response = await profileImageApi.getInstituteImageHistory(userProfile.userId, currentInstituteId);
+      setInstituteImageHistory(response);
+    } catch (err) {
+      console.error('Failed to load institute image history:', err);
+    }
+  }, [currentInstituteId, userProfile]);
+
+  const handleDeletePendingImage = async () => {
+    if (!currentInstituteId || !userProfile) return;
+    setDeletingPending(true);
+    try {
+      await profileImageApi.deleteInstituteImage(userProfile.userId, currentInstituteId);
+      toast({ title: 'Image removed', description: 'Pending image has been deleted.' });
+      setInstituteImageHistory(null);
+      loadData();
+    } catch (err: any) {
+      toast({ title: 'Delete failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setDeletingPending(false);
+    }
+  };
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  const loadData = useCallback(async (forceRefresh = false) => {
     if (!currentInstituteId) return;
     setLoading(true);
     try {
@@ -76,17 +201,18 @@ const InstituteProfile = () => {
         enhancedCachedClient.get<InstituteProfileData>(
           `/institutes/${currentInstituteId}/profile`,
           {},
-          { ttl: CACHE_TTL.INSTITUTE_PROFILE, instituteId: currentInstituteId }
+          { ttl: CACHE_TTL.INSTITUTE_PROFILE, instituteId: currentInstituteId, forceRefresh }
         ),
         enhancedCachedClient.get<InstituteUserProfile>(
           `/institute-users/institute/${currentInstituteId}/me`,
           {},
-          { ttl: CACHE_TTL.INSTITUTE_PROFILE, userId: currentInstituteId }
+          { ttl: CACHE_TTL.INSTITUTE_PROFILE, userId: currentInstituteId, forceRefresh }
         )
       ]);
 
       if (instProfile.status === 'fulfilled') setInstituteProfile(instProfile.value);
       if (userProf.status === 'fulfilled') setUserProfile(userProf.value);
+      if (forceRefresh) setInstituteImageHistory(null);
     } catch (error: any) {
       console.error('Error fetching institute profile:', error);
       if (!error?.message?.includes('Rate limited')) {
@@ -97,17 +223,29 @@ const InstituteProfile = () => {
     }
   }, [currentInstituteId, toast]);
 
+  // Auto-load institute image history when user profile is available
+  useEffect(() => {
+    if (userProfile && currentInstituteId) {
+      loadInstituteImageHistory();
+    }
+  }, [userProfile?.userId, currentInstituteId]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
-        <Skeleton className="h-64 w-full rounded-3xl" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Skeleton className="h-48" />
-          <Skeleton className="h-48" />
+      <div className="min-h-screen bg-background">
+        <div className="h-56 sm:h-72 w-full animate-pulse" style={{ background: 'linear-gradient(135deg, hsl(var(--primary)/0.2) 0%, hsl(var(--primary)/0.1) 100%)' }} />
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 -mt-16 space-y-6 pb-10">
+          <Skeleton className="h-32 w-32 rounded-2xl border-4 border-background" />
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-5 w-48" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+            <Skeleton className="h-56 rounded-2xl" />
+            <Skeleton className="h-56 rounded-2xl" />
+          </div>
         </div>
       </div>
     );
@@ -116,8 +254,12 @@ const InstituteProfile = () => {
   const inst = instituteProfile;
   const user = userProfile;
 
+  const primaryColor = inst?.primaryColorCode || 'hsl(var(--primary))';
+  const secondaryColor = inst?.secondaryColorCode || primaryColor;
+  const heroGradient = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status?.toUpperCase()) {
       case 'ACTIVE': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
       case 'VERIFIED': return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
       case 'PENDING': return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
@@ -126,289 +268,598 @@ const InstituteProfile = () => {
     }
   };
 
+  const galleryImages = [
+    ...(inst?.imageUrl ? [inst.imageUrl] : []),
+    ...(inst?.imageUrls || []),
+  ];
+
   const InfoRow = ({ icon: Icon, label, value, href }: { icon: any; label: string; value?: string | null; href?: string }) => {
     if (!value) return null;
     return (
-      <div className="flex items-start gap-3 py-3 border-b border-border/40 last:border-0">
-        <div className="p-2 rounded-lg bg-primary/5 mt-0.5">
-          <Icon className="h-4 w-4 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
-          {href ? (
-            <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary hover:underline flex items-center gap-1 mt-0.5 break-all">
-              {value} <ExternalLink className="h-3 w-3 flex-shrink-0" />
-            </a>
-          ) : (
-            <p className="text-sm font-medium text-foreground mt-0.5 break-words">{value}</p>
-          )}
-        </div>
+      <div className="flex items-center gap-3 text-sm py-2 border-b border-border/30 last:border-0">
+        <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+        {href ? (
+          <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1 break-all">
+            {value} <ExternalLink className="h-3 w-3 flex-shrink-0" />
+          </a>
+        ) : (
+          <span className="break-words">{value}</span>
+        )}
       </div>
     );
   };
 
-  // Institute identity card (shared)
-  const identityCard = inst && (
-    <div className="relative overflow-hidden rounded-3xl border border-border/50 shadow-xl">
-      <div className="h-32 sm:h-40 relative" style={{
-        background: `linear-gradient(135deg, ${inst.primaryColorCode || 'hsl(var(--primary))'} 0%, ${inst.secondaryColorCode || 'hsl(var(--primary))'} 100%)`
-      }}>
-        <div className="absolute inset-0 bg-black/10" />
-        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-card to-transparent" />
-      </div>
+  return (
+    <div className="min-h-screen bg-background pb-20">
 
-      <div className="relative px-4 sm:px-8 pb-6 sm:pb-8 -mt-16 sm:-mt-20 bg-card">
-        <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 sm:gap-6">
-          <div className="relative z-10">
-            <div className="h-24 w-24 sm:h-32 sm:w-32 rounded-2xl border-4 border-card shadow-xl overflow-hidden bg-card flex items-center justify-center">
-              {inst.logoUrl ? (
-                <SafeImage src={inst.logoUrl} alt={inst.name} className="h-full w-full object-contain p-2" fallback={<Building2 className="h-12 w-12 text-muted-foreground" />} />
-              ) : (
-                <Building2 className="h-12 w-12 text-muted-foreground" />
-              )}
-            </div>
+      {/* â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â” */}
+      {/* HERO SECTION                            */}
+      {/* â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â” */}
+      {/* Banner: cover image if available, else brand gradient */}
+      <div className="relative overflow-hidden" style={{ minHeight: 300 }}>
+        {/* Background layer — cover image or gradient */}
+        {inst?.imageUrl ? (
+          <img
+            src={inst.imageUrl}
+            alt="Institute banner"
+            className="absolute inset-0 w-full h-full object-cover object-center"
+            style={{ filter: 'blur(2px) brightness(0.55) saturate(1.1)' }}
+          />
+        ) : (
+          <div className="absolute inset-0" style={{ background: heroGradient }} />
+        )}
+
+        {/* Gradient overlays for readability */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10 pointer-events-none" />
+        <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${primaryColor}55 0%, transparent 60%)` }} />
+
+        {/* Bottom fade to background */}
+        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+
+        {/* Refresh button */}
+        <Button
+          variant="secondary"
+          size="sm"
+          className="absolute top-4 right-4 bg-black/30 backdrop-blur-md text-white border border-white/20 hover:bg-black/50 z-10"
+          onClick={() => loadData(true)}
+        >
+          <RefreshCw className="h-4 w-4 mr-1.5" />Refresh
+        </Button>
+
+        {/* Hero content */}
+        <div className="relative max-w-5xl mx-auto px-4 sm:px-8 pt-12 pb-10 flex flex-col sm:flex-row items-center sm:items-end gap-5 z-10">
+          {/* Logo — frosted glass card */}
+          <div className="h-28 w-28 sm:h-36 sm:w-36 rounded-3xl border-2 border-white/30 shadow-2xl overflow-hidden bg-white/15 backdrop-blur-xl flex items-center justify-center shrink-0 ring-4 ring-black/20">
+            {inst?.logoUrl ? (
+              <SafeImage
+                src={inst.logoUrl}
+                alt={inst?.name || 'Logo'}
+                className="h-full w-full object-contain p-3"
+                fallback={<Building2 className="h-12 w-12 text-white/80" />}
+              />
+            ) : (
+              <Building2 className="h-12 w-12 text-white/80" />
+            )}
           </div>
 
-          <div className="flex-1 text-center sm:text-left pb-2 min-w-0">
-            <h2 className="text-xl sm:text-3xl font-bold text-foreground leading-tight">{inst.name}</h2>
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-2">
-              {inst.shortName && <Badge variant="secondary" className="text-xs">{inst.shortName}</Badge>}
-              <Badge variant="outline" className="text-xs">{inst.code}</Badge>
-              {inst.type && <Badge variant="outline" className="text-xs capitalize">{inst.type.toLowerCase().replace('_', ' ')}</Badge>}
-              {inst.city && (
-                <span className="text-sm text-muted-foreground flex items-center gap-1">
-                  <MapPin className="h-3 w-3" /> {inst.city}
+          {/* Name & badges */}
+          <div className="flex-1 text-center sm:text-left text-white pb-2">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight" style={{ textShadow: '0 2px 12px rgba(0,0,0,0.6)' }}>
+              {inst?.name || 'Institute'}
+            </h1>
+            <div className="flex flex-wrap gap-2 mt-3 justify-center sm:justify-start">
+              {inst?.shortName && (
+                <span className="text-sm bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full font-semibold border border-white/25">{inst.shortName}</span>
+              )}
+              {inst?.code && (
+                <span className="text-xs bg-black/30 backdrop-blur-sm text-white/90 px-3 py-1 rounded-full font-mono border border-white/15">{inst.code}</span>
+              )}
+              {inst?.type && (
+                <span className="text-xs bg-black/25 backdrop-blur-sm text-white/90 px-3 py-1 rounded-full capitalize border border-white/15">{inst.type.toLowerCase().replace(/_/g, ' ')}</span>
+              )}
+              {inst?.city && (
+                <span className="text-xs bg-black/25 backdrop-blur-sm text-white/90 px-3 py-1 rounded-full flex items-center gap-1 border border-white/15">
+                  <MapPin className="h-3 w-3" />{inst.city}
                 </span>
               )}
             </div>
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t border-border/50">
-          {inst.email && (
-            <a href={`mailto:${inst.email}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-              <Mail className="h-4 w-4" /> <span className="break-all">{inst.email}</span>
-            </a>
-          )}
-          {inst.phone && (
-            <a href={`tel:${inst.phone}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-              <Phone className="h-4 w-4" /> {inst.phone}
-            </a>
-          )}
-        </div>
       </div>
-    </div>
-  );
 
-  // About content
-  const aboutContent = (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {inst?.vision && (
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Eye className="h-4 w-4 text-primary" /> Vision
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{inst.vision}</p>
-          </CardContent>
-        </Card>
-      )}
-      {inst?.mission && (
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-primary" /> Mission
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{inst.mission}</p>
-          </CardContent>
-        </Card>
-      )}
-      {!inst?.vision && !inst?.mission && (
-        <Card className="col-span-full border-border/50">
-          <CardContent className="py-12 text-center">
-            <Building2 className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="text-muted-foreground">No vision or mission statement available.</p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-
-  // My Profile content
-  const myProfileContent = user ? (
-    <Card className="border-border/50">
-      <CardHeader>
-        <div className="flex items-center gap-4">
-          <Avatar className="h-16 w-16 ring-2 ring-primary/20">
-            <AvatarImage src={user.instituteUserImageUrl || ''} />
-            <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
-              {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1">
-            <CardTitle className="text-xl">{user.firstName} {user.lastName}</CardTitle>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
-              <Badge variant="secondary" className="text-xs">
-                <Shield className="h-3 w-3 mr-1" />{user.userType}
-              </Badge>
-              <Badge className={`text-xs ${getStatusColor(user.status)}`}>{user.status}</Badge>
-              <Badge className={`text-xs ${getStatusColor(user.imageVerificationStatus)}`}>
-                <CheckCircle className="h-3 w-3 mr-1" />{user.imageVerificationStatus}
-              </Badge>
+      {/* CONTACT BAR */}
+      {(inst?.email || inst?.phone || inst?.websiteUrl || inst?.facebookPageUrl || inst?.youtubeChannelUrl) && (
+        <div className="sticky top-0 z-20 bg-card/95 backdrop-blur-md border-b border-border/40 shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
+          {/* Brand accent line */}
+          <div className="h-0.5 w-full" style={{ background: heroGradient }} />
+          <div className="max-w-5xl mx-auto px-4 sm:px-8 py-2.5">
+            <div className="flex gap-2 overflow-x-auto pb-0.5 items-center" style={{ scrollbarWidth: 'none' }}>
+              {inst?.email && (
+                <a href={`mailto:${inst.email}`}
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-muted/70 hover:bg-primary/10 hover:text-primary border border-border/50 hover:border-primary/40 text-sm text-muted-foreground transition-all duration-200 whitespace-nowrap shrink-0 group">
+                  <span className="flex items-center justify-center h-6 w-6 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors shrink-0">
+                    <Mail className="h-3.5 w-3.5 text-primary" />
+                  </span>
+                  {inst.email}
+                </a>
+              )}
+              {inst?.phone && (
+                <a href={`tel:${inst.phone}`}
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-muted/70 hover:bg-emerald-500/10 hover:text-emerald-600 border border-border/50 hover:border-emerald-500/40 text-sm text-muted-foreground transition-all duration-200 whitespace-nowrap shrink-0 group">
+                  <span className="flex items-center justify-center h-6 w-6 rounded-full bg-emerald-500/10 group-hover:bg-emerald-500/20 transition-colors shrink-0">
+                    <Phone className="h-3.5 w-3.5 text-emerald-600" />
+                  </span>
+                  {inst.phone}
+                </a>
+              )}
+              {inst?.websiteUrl && (
+                <a href={inst.websiteUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-muted/70 hover:bg-sky-500/10 hover:text-sky-600 border border-border/50 hover:border-sky-500/40 text-sm text-muted-foreground transition-all duration-200 whitespace-nowrap shrink-0 group">
+                  <span className="flex items-center justify-center h-6 w-6 rounded-full bg-sky-500/10 group-hover:bg-sky-500/20 transition-colors shrink-0">
+                    <Globe className="h-3.5 w-3.5 text-sky-600" />
+                  </span>
+                  Website
+                  <ExternalLink className="h-3 w-3 opacity-40 group-hover:opacity-100 transition-opacity" />
+                </a>
+              )}
+              {inst?.facebookPageUrl && (
+                <a href={inst.facebookPageUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-muted/70 hover:bg-blue-600/10 hover:text-blue-600 border border-border/50 hover:border-blue-600/40 text-sm text-muted-foreground transition-all duration-200 whitespace-nowrap shrink-0 group">
+                  <span className="flex items-center justify-center h-6 w-6 rounded-full bg-blue-600/10 group-hover:bg-blue-600/20 transition-colors shrink-0">
+                    <Facebook className="h-3.5 w-3.5 text-blue-600" />
+                  </span>
+                  Facebook
+                </a>
+              )}
+              {inst?.youtubeChannelUrl && (
+                <a href={inst.youtubeChannelUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-muted/70 hover:bg-red-600/10 hover:text-red-600 border border-border/50 hover:border-red-600/40 text-sm text-muted-foreground transition-all duration-200 whitespace-nowrap shrink-0 group">
+                  <span className="flex items-center justify-center h-6 w-6 rounded-full bg-red-600/10 group-hover:bg-red-600/20 transition-colors shrink-0">
+                    <Youtube className="h-3.5 w-3.5 text-red-600" />
+                  </span>
+                  YouTube
+                </a>
+              )}
             </div>
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-0">
-          <InfoRow icon={Mail} label="Email" value={user.email} />
-          <InfoRow icon={Phone} label="Phone" value={user.phoneNumber} />
-          <InfoRow icon={IdCard} label="Institute User ID" value={user.userIdByInstitute} />
-          <InfoRow icon={IdCard} label="Institute Card ID" value={user.instituteCardId} />
-          <InfoRow icon={Calendar} label="Member Since" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : undefined} />
-          <InfoRow icon={Calendar} label="Last Updated" value={user.updatedAt ? new Date(user.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : undefined} />
-        </div>
-      </CardContent>
-    </Card>
-  ) : (
-    <Card className="border-border/50">
-      <CardContent className="py-12 text-center">
-        <User className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-        <p className="text-muted-foreground">Unable to load your institute profile.</p>
-      </CardContent>
-    </Card>
-  );
+      )}
 
-  // Links content
-  const linksContent = (
-    <Card className="border-border/50">
-      <CardHeader>
-        <CardTitle className="text-base">Online Presence</CardTitle>
-        <CardDescription>Website and social media links</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-0">
-          <InfoRow icon={Globe} label="Website" value={inst?.websiteUrl} href={inst?.websiteUrl || undefined} />
-          <InfoRow icon={Facebook} label="Facebook" value={inst?.facebookPageUrl} href={inst?.facebookPageUrl || undefined} />
-          <InfoRow icon={Youtube} label="YouTube" value={inst?.youtubeChannelUrl} href={inst?.youtubeChannelUrl || undefined} />
-          {!inst?.websiteUrl && !inst?.facebookPageUrl && !inst?.youtubeChannelUrl && (
-            <div className="py-8 text-center">
-              <Globe className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">No online links available.</p>
+      {/* ── TAB SWITCHER ── */}
+      <div className="bg-background border-b border-border/60">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8">
+          <div className="flex">
+            <button
+              onClick={() => setActiveTab('institute')}
+              className={"flex items-center gap-2 px-5 py-3.5 text-sm font-semibold border-b-2 transition-colors " + (activeTab === 'institute' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}
+            >
+              <Building2 className="h-4 w-4" />
+              Institute
+            </button>
+            <button
+              onClick={() => setActiveTab('my-profile')}
+              className={"flex items-center gap-2 px-5 py-3.5 text-sm font-semibold border-b-2 transition-colors " + (activeTab === 'my-profile' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground')}
+            >
+              <User className="h-4 w-4" />
+              My Profile
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â” */}
+      {/* MAIN PAGE BODY                          */}
+      {/* â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â” */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-8 py-8 space-y-14">
+
+        {/* â”€â”€ GALLERY â”€â”€ */}
+        {/* ──── INSTITUTE TAB ──── */}{activeTab === 'institute' && <>
+        {galleryImages.length > 0 && (
+          <section>
+            {galleryImages.length === 1 ? (
+              <div className="overflow-hidden rounded-2xl border border-border/40 shadow-md">
+                <SafeImage
+                  src={galleryImages[0]}
+                  alt="Institute image"
+                  className="w-full object-cover max-h-80 sm:max-h-[420px]"
+                  fallback={<div className="h-48 flex items-center justify-center bg-muted text-muted-foreground"><Images className="h-10 w-10" /></div>}
+                />
+              </div>
+            ) : galleryImages.length === 2 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {galleryImages.map((url, idx) => (
+                  <div key={idx} className="overflow-hidden rounded-2xl border border-border/40 shadow-md">
+                    <SafeImage
+                      src={url}
+                      alt={`Institute image ${idx + 1}`}
+                      className="w-full object-cover aspect-video"
+                      fallback={<div className="aspect-video flex items-center justify-center bg-muted text-muted-foreground"><Images className="h-8 w-8" /></div>}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {/* First image spans 2 cols */}
+                <div className="col-span-2 overflow-hidden rounded-2xl border border-border/40 shadow-md">
+                  <SafeImage
+                    src={galleryImages[0]}
+                    alt="Institute main image"
+                    className="w-full object-cover aspect-video"
+                    fallback={<div className="aspect-video flex items-center justify-center bg-muted text-muted-foreground"><Images className="h-10 w-10" /></div>}
+                  />
+                </div>
+                {galleryImages.slice(1).map((url, idx) => (
+                  <div key={idx} className="overflow-hidden rounded-2xl border border-border/40 shadow-md">
+                    <SafeImage
+                      src={url}
+                      alt={`Gallery ${idx + 2}`}
+                      className="w-full object-cover aspect-square sm:aspect-video"
+                      fallback={<div className="aspect-square sm:aspect-video flex items-center justify-center bg-muted text-muted-foreground"><Images className="h-8 w-8" /></div>}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* â”€â”€ VISION & MISSION â”€â”€ */}
+        {(inst?.vision || inst?.mission) && (
+          <section className="space-y-8">
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl sm:text-3xl font-bold">About Us</h2>
+              <div className="h-1 w-16 rounded-full mx-auto" style={{ background: heroGradient }} />
+            </div>
+            <div className={`grid gap-6 ${inst?.vision && inst?.mission ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+              {inst?.vision && (
+                <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
+                  <div className="absolute top-0 left-0 w-1.5 h-full rounded-l-2xl" style={{ background: heroGradient }} />
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 rounded-xl bg-primary/10">
+                      <Eye className="h-4 w-4 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold">Vision</h3>
+                  </div>
+                  <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{inst.vision}</p>
+                </div>
+              )}
+              {inst?.mission && (
+                <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-card p-6 shadow-sm">
+                  <div className="absolute top-0 left-0 w-1.5 h-full rounded-l-2xl" style={{ background: heroGradient }} />
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 rounded-xl bg-primary/10">
+                      <Building2 className="h-4 w-4 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-semibold">Mission</h3>
+                  </div>
+                  <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{inst.mission}</p>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* â”€â”€ LOADING GIF â”€â”€ */}
+        {inst?.loadingGifUrl && (
+          <section className="flex flex-col items-center gap-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Loading Animation</p>
+            <div className="p-5 rounded-2xl border border-border/40 bg-card shadow-sm inline-flex">
+              <img src={inst.loadingGifUrl} alt="Loading GIF" className="h-20 w-auto rounded-xl" />
+            </div>
+          </section>
+        )}
+
+        {/* â”€â”€ SOCIAL / LINKS â”€â”€ */}
+        {(inst?.websiteUrl || inst?.facebookPageUrl || inst?.youtubeChannelUrl) && (
+          <section className="space-y-8">
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl sm:text-3xl font-bold">Find Us Online</h2>
+              <div className="h-1 w-16 rounded-full mx-auto" style={{ background: heroGradient }} />
+            </div>
+            <div className="flex flex-wrap gap-4 justify-center">
+              {inst?.websiteUrl && (
+                <a
+                  href={inst.websiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-7 py-4 rounded-2xl border-2 border-primary/30 bg-card text-foreground font-medium hover:border-primary hover:bg-primary/5 transition-all shadow-sm group"
+                >
+                  <Globe className="h-5 w-5 text-primary" />
+                  <span>Website</span>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                </a>
+              )}
+              {inst?.facebookPageUrl && (
+                <a
+                  href={inst.facebookPageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-7 py-4 rounded-2xl border-2 border-blue-600/30 bg-card text-foreground font-medium hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-all shadow-sm group"
+                >
+                  <Facebook className="h-5 w-5 text-blue-600" />
+                  <span>Facebook</span>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-blue-600 transition-colors" />
+                </a>
+              )}
+              {inst?.youtubeChannelUrl && (
+                <a
+                  href={inst.youtubeChannelUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-7 py-4 rounded-2xl border-2 border-red-600/30 bg-card text-foreground font-medium hover:border-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all shadow-sm group"
+                >
+                  <Youtube className="h-5 w-5 text-red-600" />
+                  <span>YouTube</span>
+                  <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-red-600 transition-colors" />
+                </a>
+              )}
+            </div>
+          </section>
+        )}
+
+        </>}
+        {/* â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â” */}
+        {/* MY PROFILE SECTION                      */}
+        {/* â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â” */}
+        {activeTab === 'my-profile' && (
+        <section className="space-y-8">
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-bold">My Profile</h2>
+            <div className="h-1 w-16 rounded-full mx-auto" style={{ background: heroGradient }} />
+          </div>
+
+          {user ? (() => {
+            const approvedImageUrl = instituteImageHistory?.currentInstituteImageUrl ?? user.instituteUserImageUrl ?? '';
+            const historyEntries = instituteImageHistory?.data ?? [];
+            const latestRecord = historyEntries[0];
+            const hasPending = latestRecord?.status === 'PENDING';
+            const hasRejected = latestRecord?.status === 'REJECTED';
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                {/* â”€â”€ User Info â”€â”€ */}
+                <div className="rounded-2xl border border-border/50 bg-card shadow-sm overflow-hidden">
+                  <div className="h-1.5 w-full" style={{ background: heroGradient }} />
+                  <div className="p-6">
+                    <div className="flex items-start gap-4 mb-6">
+                      <Avatar className="h-16 w-16 ring-4 ring-primary/10 shrink-0">
+                        <AvatarImage src={approvedImageUrl} className="object-cover" />
+                        <AvatarFallback className="bg-primary/10 text-primary font-bold text-xl">
+                          {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-xl font-bold leading-tight">{user.nameWithInitials || `${user.firstName} ${user.lastName}`}</h3>
+                        {user.nameWithInitials && (
+                          <p className="text-sm text-muted-foreground">{user.firstName} {user.lastName}</p>
+                        )}
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <Badge variant="secondary" className="text-xs">
+                            <Shield className="h-3 w-3 mr-1" />{user.userType}
+                          </Badge>
+                          <Badge className={`text-xs ${getStatusColor(user.status)}`}>{user.status}</Badge>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <InfoRow icon={Mail} label="Email" value={user.email} />
+                      <InfoRow icon={Phone} label="Phone" value={user.phoneNumber} />
+                      <InfoRow icon={IdCard} label="Institute User ID" value={user.userIdByInstitute} />
+                      <InfoRow icon={IdCard} label="Institute Card ID" value={user.instituteCardId} />
+                      {user.createdAt && (
+                        <div className="flex items-center gap-3 text-sm py-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span>Member since {new Date(user.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* â”€â”€ Profile Image Management â”€â”€ */}
+                <div className="rounded-2xl border border-border/50 bg-card shadow-sm overflow-hidden">
+                  <div className="h-1.5 w-full" style={{ background: heroGradient }} />
+                  <div className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <Camera className="h-4 w-4 text-primary" />Profile Image
+                      </h4>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => loadData(true)}>
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-5">
+                      <div className="shrink-0 flex flex-col items-center gap-1.5">
+                        <Avatar className="h-20 w-20 ring-2 ring-primary/20">
+                          <AvatarImage src={approvedImageUrl} className="object-cover" />
+                          <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
+                            {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {hasPending && (
+                          <Badge className="bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700 text-xs gap-1">
+                            <Clock className="h-3 w-3" />Under Review
+                          </Badge>
+                        )}
+                        {!hasPending && !hasRejected && user.imageVerificationStatus === 'VERIFIED' && (
+                          <Badge className="bg-green-100 text-green-700 border border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700 text-xs gap-1">
+                            <CheckCircle className="h-3 w-3" />Verified
+                          </Badge>
+                        )}
+                        {hasRejected && (
+                          <Badge className="bg-red-100 text-red-700 border border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700 text-xs gap-1">
+                            <XCircle className="h-3 w-3" />Rejected
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Button size="sm" onClick={() => fileInputRef.current?.click()}>
+                          <Camera className="h-3.5 w-3.5 mr-1.5" />
+                          {hasRejected ? 'Re-upload Photo' : 'Change Photo'}
+                        </Button>
+                        {hasPending && (
+                          <Button
+                            size="sm" variant="outline"
+                            className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400"
+                            onClick={handleDeletePendingImage}
+                            disabled={deletingPending}
+                          >
+                            {deletingPending
+                              ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Removingâ€¦</>
+                              : <><Trash2 className="h-3.5 w-3.5 mr-1.5" />Cancel Submission</>
+                            }
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {hasPending && (
+                      <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800/50">
+                        {latestRecord?.imageUrl ? (
+                          <Avatar className="h-12 w-12 shrink-0 rounded-lg">
+                            <AvatarImage src={latestRecord.imageUrl} className="object-cover" />
+                            <AvatarFallback className="rounded-lg bg-muted text-xs">?</AvatarFallback>
+                          </Avatar>
+                        ) : <Clock className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />}
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">New image under review</p>
+                          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Your current image stays visible until approved.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasRejected && (
+                      <div className="flex items-start gap-3 p-3 rounded-xl bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800/50">
+                        <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-sm font-semibold text-red-800 dark:text-red-300">Image rejected</p>
+                          {latestRecord?.rejectionReason ? (
+                            <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Reason: {latestRecord.rejectionReason}</p>
+                          ) : (
+                            <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Please upload a new passport-style photo.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <Button
+                      size="sm" variant="outline" className="w-full"
+                      onClick={() => {
+                        const next = !showHistory;
+                        setShowHistory(next);
+                        if (next) {
+                          if (!instituteImageHistory) loadInstituteImageHistory();
+                          setTimeout(() => historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+                        }
+                      }}
+                    >
+                      <History className="h-3.5 w-3.5 mr-1.5" />
+                      {showHistory ? 'Hide History' : 'View History'}
+                      <ChevronRight className={`h-3.5 w-3.5 ml-1 transition-transform ${showHistory ? 'rotate-90' : ''}`} />
+                    </Button>
+
+                    {showHistory && (
+                      <div ref={historyRef} className="space-y-2 scroll-mt-4">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Submission History</p>
+                        {!instituteImageHistory ? (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Loadingâ€¦
+                          </div>
+                        ) : historyEntries.length === 0 ? (
+                          <p className="text-xs text-muted-foreground py-2">No history yet.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {historyEntries.map(entry => (
+                              <div key={entry.imageId} className="flex items-start gap-3 p-2.5 rounded-lg bg-muted/40 border border-border/40 text-xs">
+                                <Avatar className="h-9 w-9 shrink-0">
+                                  <AvatarImage src={entry.imageUrl} className="object-cover" />
+                                  <AvatarFallback className="text-[10px]">IMG</AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0 space-y-0.5">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {entry.status === 'VERIFIED' && <Badge className="bg-green-100 text-green-700 border border-green-300 dark:bg-green-900/30 dark:text-green-400 text-[10px] h-4 gap-0.5"><CheckCircle className="h-2.5 w-2.5" />Verified</Badge>}
+                                    {entry.status === 'PENDING'  && <Badge className="bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] h-4 gap-0.5"><Clock className="h-2.5 w-2.5" />Pending</Badge>}
+                                    {entry.status === 'REJECTED' && <Badge className="bg-red-100 text-red-700 border border-red-300 dark:bg-red-900/30 dark:text-red-400 text-[10px] h-4 gap-0.5"><XCircle className="h-2.5 w-2.5" />Rejected</Badge>}
+                                    <span className="text-muted-foreground">{new Date(entry.submittedAt).toLocaleDateString()}</span>
+                                  </div>
+                                  {entry.rejectionReason && <p className="text-red-600 dark:text-red-400">Reason: {entry.rejectionReason}</p>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })() : (
+            <div className="rounded-2xl border border-border/50 bg-card p-12 text-center shadow-sm">
+              <User className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+              <p className="text-muted-foreground">Unable to load your institute profile.</p>
             </div>
           )}
-        </div>
-      </CardContent>
-    </Card>
-  );
+        </section>
+        )}
 
-  const mobileMenuItems = [
-    { id: 'about', icon: Eye, label: 'About', description: 'Vision & mission', color: 'text-blue-500' },
-    { id: 'my-profile', icon: User, label: 'My Profile', description: 'Your institute membership details', color: 'text-emerald-500' },
-    { id: 'links', icon: Globe, label: 'Links & Social', description: 'Website & social media', color: 'text-violet-500' },
-  ];
+      </div>
 
-  // ===== MOBILE LAYOUT =====
-  if (isMobile) {
-    if (mobileSection) {
-      const item = mobileMenuItems.find(m => m.id === mobileSection);
-      return (
-        <div className="px-3 py-4 pb-20 space-y-4">
-          <button
-            onClick={() => setMobileSection(null)}
-            className="flex items-center gap-2 text-sm font-medium text-primary active:opacity-70 transition-opacity"
-          >
-            <ChevronRight className="h-4 w-4 rotate-180" />
-            Back
-          </button>
-          <h2 className="text-lg font-bold text-foreground">{item?.label}</h2>
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp"
+        className="hidden"
+        onChange={handleImageFileSelect}
+      />
 
-          {mobileSection === 'about' && aboutContent}
-          {mobileSection === 'my-profile' && myProfileContent}
-          {mobileSection === 'links' && linksContent}
-        </div>
-      );
-    }
-
-    return (
-      <div className="px-3 py-4 pb-20 space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-foreground">Institute Profile</h1>
-          <Button variant="outline" size="sm" onClick={loadData}>
-            <RefreshCw className="h-4 w-4 mr-1.5" />
-            Refresh
-          </Button>
-        </div>
-
-        {identityCard}
-
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            {mobileMenuItems.map((item, index) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setMobileSection(item.id)}
-                  className={`w-full flex items-center gap-3.5 px-4 py-3.5 text-left active:bg-muted/60 transition-colors ${
-                    index < mobileMenuItems.length - 1 ? 'border-b border-border/40' : ''
-                  }`}
+      {/* Crop + Upload Dialog */}
+      <Dialog open={showImageUpload} onOpenChange={open => { if (!open) setShowImageUpload(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Crop Institute Photo (35mm Ã— 45mm)</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {cropImgSrc && (
+              <div className="flex justify-center overflow-hidden rounded-xl">
+                <ReactCrop
+                  crop={imageCrop}
+                  onChange={(_, pct) => setImageCrop(pct)}
+                  onComplete={c => setCompletedCrop(c)}
+                  aspect={PROFILE_ASPECT_RATIO}
+                  minWidth={30}
+                  minHeight={30}
+                  keepSelection
                 >
-                  <div className={`p-2 rounded-xl bg-muted/50 ${item.color}`}>
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{item.label}</p>
-                    <p className="text-xs text-muted-foreground truncate">{item.description}</p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                </button>
-              );
-            })}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // ===== DESKTOP LAYOUT =====
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/10 p-4 md:p-6 lg:p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Institute Profile</h1>
-          <Button variant="outline" size="sm" onClick={loadData}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-        </div>
-
-        {identityCard}
-
-        <Tabs defaultValue="about" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 h-auto">
-            <TabsTrigger value="about" className="text-sm">
-              <Eye className="h-4 w-4 mr-1.5" />About
-            </TabsTrigger>
-            <TabsTrigger value="my-profile" className="text-sm">
-              <User className="h-4 w-4 mr-1.5" />My Profile
-            </TabsTrigger>
-            <TabsTrigger value="links" className="text-sm">
-              <Globe className="h-4 w-4 mr-1.5" />Links
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="about">{aboutContent}</TabsContent>
-          <TabsContent value="my-profile">{myProfileContent}</TabsContent>
-          <TabsContent value="links">{linksContent}</TabsContent>
-        </Tabs>
-      </div>
+                  <img
+                    ref={imgRef}
+                    src={cropImgSrc}
+                    alt="Crop"
+                    onLoad={handleInstituteImageLoad}
+                    style={{ maxHeight: 360, maxWidth: '100%', display: 'block' }}
+                  />
+                </ReactCrop>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setShowImageUpload(false)} disabled={uploading}>Cancel</Button>
+              <Button className="flex-1" onClick={handleInstituteImageUpload} disabled={!completedCrop || uploading}>
+                {uploading
+                  ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Uploadingâ€¦</>
+                  : <><Upload className="h-4 w-4 mr-1.5" />Upload</>
+                }
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
 export default InstituteProfile;
+

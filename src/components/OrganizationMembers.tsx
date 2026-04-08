@@ -48,10 +48,10 @@ const OrganizationMembers = ({ organizationId, userRole }: OrganizationMembersPr
     try {
       setLoading(true);
       const response = await organizationSpecificApi.get<MembersResponse>(
-        `/organization/api/v1/organizations/${organizationId}/management/members`
+        `/organizations/${organizationId}/members`
       );
       setMembersData(response);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching members:', error);
       toast({
         title: "Error",
@@ -105,7 +105,7 @@ const OrganizationMembers = ({ organizationId, userRole }: OrganizationMembersPr
       setShowRemoveDialog(false);
       setSelectedMember(null);
       fetchMembers(); // Refresh the members list
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error removing member:', error);
       toast({
         title: "Error",

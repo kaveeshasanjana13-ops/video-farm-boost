@@ -11,7 +11,7 @@ const AppLoadingScreen: React.FC<AppLoadingScreenProps> = ({ message = 'Loading.
       <div className="text-center space-y-5">
         {/* Branded logo with ping animation */}
         <div className="relative mx-auto w-20 h-20">
-          <div className="absolute inset-0 rounded-2xl bg-primary/15 animate-ping" style={{ animationDuration: '2s' }} />
+
           <img
             src={appIcon}
             alt="App Logo"

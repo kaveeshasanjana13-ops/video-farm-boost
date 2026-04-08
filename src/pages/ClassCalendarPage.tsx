@@ -59,7 +59,7 @@ const ClassCalendarPage: React.FC = () => {
       if (todayRes.status === 'fulfilled') setTodayData(todayRes.value?.data || null);
       if (daysRes.status === 'fulfilled') setDays(Array.isArray(daysRes.value?.data) ? daysRes.value.data : []);
       if (eventsRes.status === 'fulfilled') setEvents(Array.isArray(eventsRes.value?.data) ? eventsRes.value.data : []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load class calendar:', error);
       toast.error('Failed to load class calendar');
     } finally {

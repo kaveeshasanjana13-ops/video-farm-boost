@@ -57,7 +57,7 @@ const EnrollOrganizationDialog = ({
       onEnrollmentSuccess?.();
       onOpenChange(false);
       setEnrollmentKey('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error enrolling in organization:', error);
       
       // Get the error message from the API response

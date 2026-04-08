@@ -1,5 +1,6 @@
 import { enhancedCachedClient } from './enhancedCachedClient';
 import { getAccessTokenAsync, getBaseUrl, getCredentialsMode } from '@/contexts/utils/auth.api';
+import { parseApiError } from '@/api/apiError';
 
 // Subject Types - plain strings (no enums)
 // 12 options: MAIN, BASKET, COMMON, GRADE_6TO9_BASKET, 
@@ -194,8 +195,8 @@ export const subjectsApi = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Failed to create subject');
+      const errorText = await response.text().catch(() => '');
+      throw parseApiError(response.status, errorText, `${baseUrl}/subjects`);
     }
 
     return response.json();
@@ -203,7 +204,8 @@ export const subjectsApi = {
 
   // Update a subject
   update: (id: string, data: UpdateSubjectDto, instituteId?: string) => {
-    return enhancedCachedClient.patch<Subject>(`/subjects/${id}`, data, {
+    const endpoint = instituteId ? `/subjects/${id}?instituteId=${encodeURIComponent(instituteId)}` : `/subjects/${id}`;
+    return enhancedCachedClient.patch<Subject>(endpoint, data, {
       instituteId,
       subjectId: id
     });
@@ -211,7 +213,17 @@ export const subjectsApi = {
 
   // Soft delete (deactivate) a subject
   deactivate: (id: string, instituteId?: string) => {
-    return enhancedCachedClient.patch<Subject>(`/subjects/${id}/deactivate`, {}, {
+    const endpoint = instituteId ? `/subjects/${id}/deactivate?instituteId=${encodeURIComponent(instituteId)}` : `/subjects/${id}/deactivate`;
+    return enhancedCachedClient.patch<Subject>(endpoint, {}, {
+      instituteId,
+      subjectId: id
+    });
+  },
+
+  // Activate an inactive subject
+  activate: (id: string, instituteId?: string) => {
+    const endpoint = instituteId ? `/subjects/${id}/activate?instituteId=${encodeURIComponent(instituteId)}` : `/subjects/${id}/activate`;
+    return enhancedCachedClient.patch<Subject>(endpoint, {}, {
       instituteId,
       subjectId: id
     });
@@ -219,7 +231,8 @@ export const subjectsApi = {
 
   // Permanent delete a subject (SUPERADMIN only)
   delete: (id: string, instituteId?: string) => {
-    return enhancedCachedClient.delete<void>(`/subjects/${id}`, {
+    const endpoint = instituteId ? `/subjects/${id}?instituteId=${encodeURIComponent(instituteId)}` : `/subjects/${id}`;
+    return enhancedCachedClient.delete<void>(endpoint, {
       instituteId,
       subjectId: id
     });

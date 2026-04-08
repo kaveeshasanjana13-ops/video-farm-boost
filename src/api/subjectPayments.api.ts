@@ -129,18 +129,19 @@ class SubjectPaymentsApi {
     );
   }
 
-  // Get student's subject payments
+  // Get student's subject payments (studentId: pass child's ID when parent is viewing as child)
   async getMySubjectPayments(
     instituteId: string, 
     classId: string, 
     subjectId: string,
     page: number = 1,
     limit: number = 50,
-    forceRefresh: boolean = false
+    forceRefresh: boolean = false,
+    studentId?: string
   ): Promise<SubjectPaymentsResponse> {
     return enhancedCachedClient.get(
       `/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}/my-payments`,
-      { page, limit },
+      { page, limit, ...(studentId ? { studentId } : {}) },
       {
         ttl: CACHE_TTL.SUBJECT_PAYMENTS,
         forceRefresh,
@@ -158,7 +159,10 @@ class SubjectPaymentsApi {
     subjectId: string,
     paymentId: string
   ): Promise<SubjectPayment> {
-    return apiClient.get(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}/payment/${paymentId}`);
+    return enhancedCachedClient.get(`/institute-class-subject-payments/payment/${paymentId}`, undefined, {
+      ttl: CACHE_TTL.SUBJECT_PAYMENTS,
+      instituteId,
+    });
   }
 
   // Create subject payment (admin/teacher)
@@ -188,7 +192,7 @@ class SubjectPaymentsApi {
     paymentId: string,
     data: Record<string, any>
   ): Promise<any> {
-    return apiClient.patch(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}/payment/${paymentId}`, data);
+    return apiClient.patch(`/institute-class-subject-payments/payment/${paymentId}`, data);
   }
 
   // List payments by class (all subjects)
@@ -198,7 +202,11 @@ class SubjectPaymentsApi {
     page: number = 1,
     limit: number = 50
   ): Promise<SubjectPaymentsResponse> {
-    return apiClient.get(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/payments`, { page, limit });
+    return enhancedCachedClient.get(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}`, { page, limit }, {
+      ttl: CACHE_TTL.SUBJECT_PAYMENTS,
+      instituteId,
+      classId,
+    });
   }
 
   // List payments by institute (all classes)
@@ -207,7 +215,10 @@ class SubjectPaymentsApi {
     page: number = 1,
     limit: number = 50
   ): Promise<SubjectPaymentsResponse> {
-    return apiClient.get(`/institute-class-subject-payments/institute/${instituteId}/payments`, { page, limit });
+    return enhancedCachedClient.get(`/institute-class-subject-payments/institute/${instituteId}`, { page, limit }, {
+      ttl: CACHE_TTL.SUBJECT_PAYMENTS,
+      instituteId,
+    });
   }
 
   // Get enrolled users for a class/subject
@@ -216,18 +227,29 @@ class SubjectPaymentsApi {
     classId: string,
     subjectId: string
   ): Promise<any> {
-    return apiClient.get(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}/enrolled-users`);
+    return enhancedCachedClient.get(`/institute-class-subject-payments/institute/${instituteId}/class/${classId}/subject/${subjectId}/users`, undefined, {
+      ttl: CACHE_TTL.SUBJECT_PAYMENTS,
+      instituteId,
+      classId,
+      subjectId,
+    });
   }
 
-  // Get student's subject payment submissions
+  // Get student's subject payment submissions (studentId: pass child's ID when parent is viewing as child)
   async getMySubjectSubmissions(
     instituteId: string, 
     classId: string, 
     subjectId: string,
     page: number = 1,
-    limit: number = 10
+    limit: number = 10,
+    studentId?: string
   ): Promise<SubjectSubmissionsResponse> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/my-submissions`, { page, limit });
+    return enhancedCachedClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/my-submissions`, { page, limit, ...(studentId ? { studentId } : {}) }, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      instituteId,
+      classId,
+      subjectId,
+    });
   }
 
   // Get all submissions for a specific subject payment (admin/teacher)
@@ -237,7 +259,10 @@ class SubjectPaymentsApi {
     subjectId: string,
     paymentId: string
   ): Promise<SubjectSubmissionsResponse> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/payment/${paymentId}/submissions`);
+    return enhancedCachedClient.get(`/institute-class-subject-payment-submissions/payment/${paymentId}/submissions`, undefined, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      instituteId,
+    });
   }
 
   // Get all submissions (admin/teacher) with status filter
@@ -247,7 +272,12 @@ class SubjectPaymentsApi {
     subjectId: string,
     params?: { page?: number; limit?: number; status?: string }
   ): Promise<SubjectSubmissionsResponse> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/all-submissions`, params);
+    return enhancedCachedClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/all-submissions`, params, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      instituteId,
+      classId,
+      subjectId,
+    });
   }
 
   // Get submission statistics
@@ -256,7 +286,12 @@ class SubjectPaymentsApi {
     classId: string,
     subjectId: string
   ): Promise<SubjectPaymentStatsResponse> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/stats`);
+    return enhancedCachedClient.get(`/institute-class-subject-payment-submissions/institute/${instituteId}/class/${classId}/subject/${subjectId}/stats`, undefined, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      instituteId,
+      classId,
+      subjectId,
+    });
   }
 
   // Get payment submissions by payment ID only
@@ -265,12 +300,16 @@ class SubjectPaymentsApi {
     page: number = 1, 
     limit: number = 50
   ): Promise<SubjectSubmissionsResponse> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/payment/${paymentId}/submissions`, { page, limit });
+    return enhancedCachedClient.get(`/institute-class-subject-payment-submissions/payment/${paymentId}/submissions`, { page, limit }, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+    });
   }
 
   // Check my submission status for a payment
   async getMySubmissionStatus(paymentId: string): Promise<SubjectMyStatusResponse> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/payment/${paymentId}/my-status`);
+    return enhancedCachedClient.get(`/institute-class-subject-payment-submissions/payment/${paymentId}/my-status`, undefined, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+    });
   }
 
   // Verify payment submission (admin/teacher)
@@ -302,12 +341,19 @@ class SubjectPaymentsApi {
 
   // Get submission details
   async getSubmissionDetails(submissionId: string): Promise<any> {
-    return apiClient.get(`/institute-class-subject-payment-submissions/submission/${submissionId}`);
+    return enhancedCachedClient.get(`/institute-class-subject-payment-submissions/submission/${submissionId}`, undefined, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+    });
   }
 
   // Delete submission (student/parent - pending only)
   async deleteSubmission(submissionId: string): Promise<{ success: boolean; message: string }> {
     return apiClient.patch(`/institute-class-subject-payment-submissions/submission/${submissionId}/delete`, {});
+  }
+
+  // Soft delete a subject payment (admin/teacher, blocked if submissions exist)
+  async deletePayment(paymentId: string): Promise<any> {
+    return apiClient.delete(`/institute-class-subject-payments/payment/${paymentId}`);
   }
 }
 

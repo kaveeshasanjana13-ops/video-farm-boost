@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { homeworkSubmissionsApi } from '@/api/homeworkSubmissions.api';
 import { Upload, Loader2 } from 'lucide-react';
 import FileUploadZone, { type UploadResult } from '@/components/common/FileUploadZone';
+import { getErrorMessage } from '@/api/apiError';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface HomeworkSubmission {
   id: string;
@@ -47,6 +49,7 @@ const UploadCorrectionDialog = ({
   onSuccess
 }: UploadCorrectionDialogProps) => {
   const { toast } = useToast();
+  const { selectedInstitute, selectedClass, selectedSubject } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [remarks, setRemarks] = useState('');
@@ -74,7 +77,10 @@ const UploadCorrectionDialog = ({
 
     setIsSubmitting(true);
     try {
-      if (uploadResult.method === 'google-drive' && uploadResult.driveFileId) {
+      if (uploadResult.method === 'institute-drive' && uploadResult.driveFileId && uploadResult.accessToken) {
+        // Institute Drive upload - use Drive endpoint with institute token
+        await homeworkSubmissionsApi.uploadCorrectionFileDrive(effectiveId, uploadResult.driveFileId, uploadResult.accessToken);
+      } else if (uploadResult.method === 'google-drive' && uploadResult.driveFileId) {
         // Google Drive upload - use dedicated Drive endpoint with access token
         const token = uploadResult.accessToken || (await import('@/lib/driveTokenCache').then(m => m.getValidDriveToken())).accessToken;
         await homeworkSubmissionsApi.uploadCorrectionFileDrive(effectiveId, uploadResult.driveFileId, token);
@@ -93,7 +99,7 @@ const UploadCorrectionDialog = ({
       onClose();
     } catch (error: any) {
       console.error('Error uploading correction:', error);
-      toast({ title: 'Error', description: error.message || 'Failed to upload correction', variant: 'destructive' });
+      toast({ title: 'Error', description: getErrorMessage(error, 'Failed to upload correction'), variant: 'destructive' });
     } finally {
       setIsSubmitting(false);
     }
@@ -123,6 +129,13 @@ const UploadCorrectionDialog = ({
             onClear={() => setUploadResult(null)}
             disabled={isSubmitting}
             label="Select correction file"
+            instituteId={selectedInstitute?.id}
+            instituteDrivePurpose="HOMEWORK_CORRECTION"
+            instituteFolderParams={{
+              subjectName: selectedSubject?.name,
+              className: selectedClass?.name,
+              grade: selectedClass?.grade ? Number(selectedClass.grade) : undefined,
+            }}
           />
 
           {/* Remarks */}

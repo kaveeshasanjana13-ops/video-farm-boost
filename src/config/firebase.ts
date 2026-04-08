@@ -28,26 +28,23 @@ let messaging: Messaging | null = null;
 
 // Only initialize Firebase messaging on web browsers, not on native Capacitor apps
 // Native apps will use Capacitor Push Notifications plugin instead
-const isNativePlatform = Capacitor.isNativePlatform();
+// Use a distinct name to avoid collision with the isNativePlatform() function
+// exported from tokenStorageService.ts which is a callable function.
+const ON_NATIVE_PLATFORM = Capacitor.isNativePlatform();
 
 if (isFirebaseConfigured) {
   try {
     app = initializeApp(firebaseConfig);
-    
-    if (!isNativePlatform && typeof window !== 'undefined' && 'Notification' in window) {
+
+    if (!ON_NATIVE_PLATFORM && typeof window !== 'undefined' && 'Notification' in window) {
       messaging = getMessaging(app);
-      console.log('Firebase Web Messaging initialized');
-    } else if (isNativePlatform) {
-      console.log('Native platform detected - using Capacitor Push Notifications instead of Firebase Web');
     }
-  } catch (error) {
-    console.warn('Firebase initialization failed:', error);
+  } catch (error: any) {
+    if (import.meta.env.DEV) console.warn('Firebase initialization failed:', error);
   }
-} else {
-  console.warn('Firebase not configured. Set VITE_FIREBASE_* environment variables for web push notifications.');
 }
 
 // VAPID key for web push from environment variable
 export const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY || '';
 
-export { app, messaging, getToken, onMessage, isNativePlatform, isFirebaseConfigured };
+export { app, messaging, getToken, onMessage, ON_NATIVE_PLATFORM, isFirebaseConfigured };

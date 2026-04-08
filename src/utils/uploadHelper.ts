@@ -44,23 +44,27 @@ export type UploadFolder =
   | 'correction-files'
   | 'institute-payment-receipts'
   | 'subject-payment-receipts'
+  | 'enrollment-payment-receipts'
   | 'id-documents'
   | 'bookhire-vehicle-images'
-  | 'bookhire-owner-images';
+  | 'bookhire-owner-images'
+  | 'service-payment-receipts';
 
 const MAX_FILE_SIZES: Record<UploadFolder, number> = {
   'profile-images': 5 * 1024 * 1024,        // 5MB
   'student-images': 5 * 1024 * 1024,        // 5MB
-  'institute-images': 10 * 1024 * 1024,     // 10MB
+  'institute-images': 5 * 1024 * 1024,      // 5MB
   'institute-user-images': 5 * 1024 * 1024, // 5MB
   'subject-images': 5 * 1024 * 1024,        // 5MB
-  'homework-files': 20 * 1024 * 1024,       // 20MB
-  'correction-files': 20 * 1024 * 1024,     // 20MB
-  'institute-payment-receipts': 10 * 1024 * 1024,     // 10MB
-  'subject-payment-receipts': 10 * 1024 * 1024,       // 10MB
-  'id-documents': 10 * 1024 * 1024,          // 10MB
-  'bookhire-vehicle-images': 10 * 1024 * 1024,        // 10MB
-  'bookhire-owner-images': 10 * 1024 * 1024           // 10MB
+  'homework-files': 5 * 1024 * 1024,        // 5MB
+  'correction-files': 5 * 1024 * 1024,      // 5MB
+  'institute-payment-receipts': 5 * 1024 * 1024,      // 5MB
+  'subject-payment-receipts': 5 * 1024 * 1024,        // 5MB
+  'enrollment-payment-receipts': 5 * 1024 * 1024,     // 5MB
+  'id-documents': 5 * 1024 * 1024,           // 5MB
+  'bookhire-vehicle-images': 5 * 1024 * 1024,         // 5MB
+  'bookhire-owner-images': 5 * 1024 * 1024,            // 5MB
+  'service-payment-receipts': 5 * 1024 * 1024           // 5MB
 };
 
 export class FileUploader {
@@ -175,7 +179,7 @@ export class FileUploader {
     } else {
       // GCS PUT with direct file upload (legacy - backend not migrated yet)
       console.log('📤 Using GCS PUT method (legacy)');
-      const maxSize = MAX_FILE_SIZES[folder] || (100 * 1024 * 1024);
+      const maxSize = MAX_FILE_SIZES[folder] || (5 * 1024 * 1024);
       const response = await fetch(uploadUrl, {
         method: 'PUT',
         headers: {
@@ -248,7 +252,7 @@ export class FileUploader {
         // GCS PUT with direct file upload (legacy)
         console.log('📤 XHR: Using GCS PUT method (legacy)');
         const contentType = file.type || 'application/octet-stream';
-        const maxSize = MAX_FILE_SIZES[folder] || (100 * 1024 * 1024);
+        const maxSize = MAX_FILE_SIZES[folder] || (5 * 1024 * 1024);
         xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Content-Type', contentType);
         xhr.setRequestHeader('x-goog-content-length-range', `0,${maxSize}`); // MUST match backend signature
@@ -340,7 +344,7 @@ export class FileUploader {
       });
 
       return publishData.publicUrl;
-    } catch (error) {
+    } catch (error: any) {
       onProgress?.({
         stage: 'error',
         message: error instanceof Error ? error.message : 'Upload failed',
@@ -394,7 +398,7 @@ export class FileUploader {
       try {
         console.log(`Upload attempt ${attempt}/${maxRetries}`);
         return await this.uploadFile(file, folder, onProgress);
-      } catch (error) {
+      } catch (error: any) {
         console.error(`Attempt ${attempt} failed:`, error);
         lastError = error instanceof Error ? error : new Error('Unknown error');
 

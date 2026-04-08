@@ -45,9 +45,7 @@ export const sanitizeUrlParam = (param: string): string => {
   
   // Trim whitespace
   sanitized = sanitized.trim();
-  
-  console.log('🧹 Sanitized URL param:', { original: param, sanitized });
-  
+
   return sanitized;
 };
 
@@ -64,11 +62,7 @@ export const isValidId = (id: string): boolean => {
   const numericRegex = /^\d+$/;
   
   const isValid = uuidRegex.test(id) || numericRegex.test(id);
-  
-  if (!isValid) {
-    console.warn('⚠️ Invalid ID format detected:', id);
-  }
-  
+
   return isValid;
 };
 
@@ -297,7 +291,7 @@ export const useSessionValidation = (intervalMs: number = 60000) => {
           }
           
           console.log('✅ Session valid');
-        } catch (error) {
+        } catch (error: any) {
           console.warn('⚠️ Unable to validate token:', error);
         }
       }

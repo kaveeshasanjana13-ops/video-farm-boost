@@ -6,21 +6,30 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Calendar, Clock, MapPin, User, RefreshCw, AlertTriangle, TrendingUp, UserCheck, UserX, Filter, Building2, BookOpen, GraduationCap, ChevronLeft, ChevronRight, CalendarDays, Zap, LogOut, DoorOpen, List, PieChart, CalendarRange } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, RefreshCw, AlertTriangle, TrendingUp, UserCheck, UserX, Filter, Building2, BookOpen, GraduationCap, ChevronLeft, ChevronRight, CalendarDays, Zap, LogOut, DoorOpen, List, PieChart, CalendarRange, ChevronDown, LayoutGrid, Table2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useRefreshWithCooldown } from '@/hooks/useRefreshWithCooldown';
-import { studentAttendanceApi, type StudentAttendanceRecord, type StudentAttendanceResponse } from '@/api/studentAttendance.api';
+import { myAttendanceHistoryApi, type MyAttendanceHistoryResponse, type MyAttendanceRecord as MyAttendanceHistoryRecord } from '@/api/myAttendanceHistory.api';
 import { AttendanceStatus, ATTENDANCE_STATUS_CONFIG, normalizeAttendanceSummary, ATTENDANCE_CHART_COLORS } from '@/types/attendance.types';
-import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getImageUrl } from '@/utils/imageUrlHelper';
+import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { useViewMode } from '@/hooks/useViewMode';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const MyAttendance = () => {
-  const { user, selectedInstitute, selectedClass, selectedSubject, currentInstituteId, currentClassId, currentSubjectId } = useAuth();
+  const { user, selectedInstitute, selectedClass, selectedSubject, currentInstituteId, currentClassId, currentSubjectId, isViewingAsParent, selectedChild } = useAuth();
   const params = useParams();
   const { toast } = useToast();
-  const [attendanceData, setAttendanceData] = useState<StudentAttendanceResponse | null>(null);
+  const [attendanceData, setAttendanceData] = useState<MyAttendanceHistoryResponse | null>(null);
   const [activeTab, setActiveTab] = useState('records');
-  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    const slStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+    return new Date(slStr + 'T00:00:00');
+  });
   
   const instituteId = params.instituteId || currentInstituteId || selectedInstitute?.id;
   const classId = params.classId || currentClassId || selectedClass?.id;
@@ -65,36 +74,44 @@ const MyAttendance = () => {
   const [limit, setLimit] = useState(5);
   const [showFilters, setShowFilters] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
+  const { viewMode, setViewMode } = useViewMode();
   const { refresh, isRefreshing, canRefresh, cooldownRemaining } = useRefreshWithCooldown(10);
 
+  const toggleCard = (index: number) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
   const loadStudentAttendance = async (forceRefresh = false) => {
-    if (!user?.id || !instituteId) {
+    if (!user?.id) {
       toast({
         title: "Missing Context",
-        description: "Please select an institute to view attendance",
+        description: "Please log in to view attendance",
         variant: "destructive",
       });
       return;
     }
 
     setLoading(true);
+    const effectiveStudentId = isViewingAsParent && selectedChild ? selectedChild.id : undefined;
     try {
-      const response = await studentAttendanceApi.getAttendance({
-        studentId: user.id,
-        instituteId,
-        classId,
-        subjectId,
+      const response = await myAttendanceHistoryApi.getMyHistory({
         startDate,
         endDate,
+        instituteId: instituteId?.toString(),
         page: currentPage,
         limit,
-        userId: user.id,
-        role: 'Student'
+        ...(effectiveStudentId ? { studentId: effectiveStudentId } : {}),
       }, forceRefresh);
       
       setAttendanceData(response);
-    } catch (error) {
-      console.error('Error loading student attendance:', error);
+    } catch (error: any) {
+      console.error('Error loading attendance:', error);
       toast({
         title: "Error",
         description: "Failed to load attendance data",
@@ -106,10 +123,10 @@ const MyAttendance = () => {
   };
 
   useEffect(() => {
-    if (user?.id && instituteId) {
+    if (user?.id) {
       loadStudentAttendance();
     }
-  }, [user?.id, currentPage, limit, instituteId, classId, subjectId]);
+  }, [user?.id, currentPage, limit, instituteId, classId, subjectId, isViewingAsParent, selectedChild?.id]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -125,6 +142,9 @@ const MyAttendance = () => {
       minute: '2-digit'
     });
   };
+
+  const getInitials = (name?: string) =>
+    (name || 'Me').split(' ').filter(Boolean).map(part => part[0]).join('').toUpperCase().slice(0, 2);
 
   const getStatusStyles = (status: string) => {
     const normalizedStatus = status?.toLowerCase() as AttendanceStatus;
@@ -223,7 +243,7 @@ const MyAttendance = () => {
 
   // Pie chart data
   const pieChartData = useMemo(() => {
-    const summary = attendanceData?.summary ? normalizeAttendanceSummary(attendanceData.summary) : null;
+    const summary = attendanceData?.summary ? normalizeAttendanceSummary(attendanceData.summary as any) : null;
     if (!summary) return [];
 
     const data = [
@@ -240,93 +260,64 @@ const MyAttendance = () => {
 
   if (!user) {
     return (
-      <div className="container mx-auto p-6">
-        <Card className="border-dashed">
-          <CardContent className="p-12 text-center">
-            <div className="w-16 h-16 mx-auto rounded-full bg-muted flex items-center justify-center mb-4">
-              <AlertTriangle className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">Authentication Required</h3>
-            <p className="text-muted-foreground">Please log in to view your attendance records.</p>
-          </CardContent>
-        </Card>
+      <div className="p-6">
+        <EmptyState icon={AlertTriangle} title="Authentication Required" description="Please log in to view your attendance records." />
       </div>
     );
   }
 
-  const summary = attendanceData?.summary ? normalizeAttendanceSummary(attendanceData.summary) : null;
-  const totalRecords = summary ? 
+  const summary = attendanceData?.summary ? normalizeAttendanceSummary(attendanceData.summary as any) : null;
+  const totalRecords = summary ?
     (summary.totalPresent + summary.totalAbsent + summary.totalLate + summary.totalLeft + summary.totalLeftEarly + summary.totalLeftLately) : 0;
 
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <div className="container mx-auto p-4 md:p-6 space-y-6">
-      {/* Modern Header with Context Breadcrumb */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-6 md:p-8 border border-primary/10">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-primary/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-        
-        <div className="relative flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-primary/10 border border-primary/20">
-                <CalendarDays className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Attendance</h1>
-              </div>
-            </div>
-            
-            {/* Context Breadcrumb */}
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              {selectedInstitute && (
-                <Badge variant="outline" className="bg-background/60 backdrop-blur-sm border-border/50 gap-1.5 py-1.5 px-3">
-                  <Building2 className="h-3.5 w-3.5 text-primary" />
-                  {selectedInstitute.name}
-                </Badge>
-              )}
-              {selectedClass && (
-                <>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  <Badge variant="outline" className="bg-background/60 backdrop-blur-sm border-border/50 gap-1.5 py-1.5 px-3">
-                    <GraduationCap className="h-3.5 w-3.5 text-primary" />
-                    {selectedClass.name}
-                  </Badge>
-                </>
-              )}
-              {selectedSubject && (
-                <>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  <Badge variant="outline" className="bg-background/60 backdrop-blur-sm border-border/50 gap-1.5 py-1.5 px-3">
-                    <BookOpen className="h-3.5 w-3.5 text-primary" />
-                    {selectedSubject.name}
-                  </Badge>
-                </>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowFilters(!showFilters)}
-              className="gap-2 bg-background/50 backdrop-blur-sm hover:bg-background/80"
+    <div className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
+      {/* Header */}
+      <div className="flex flex-col gap-2 sm:gap-3">
+        <div>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold">My Attendance</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
+            Your attendance records{selectedInstitute ? ` • ${selectedInstitute.name}` : ''}{selectedClass ? ` • ${selectedClass.name}` : ''}{selectedSubject ? ` • ${selectedSubject.name}` : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="h-8 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
+          >
+            <Filter className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5" />
+            <span className="hidden xs:inline">Filters</span>
+          </Button>
+          <Button
+            onClick={() => loadStudentAttendance(false)}
+            disabled={loading}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          {/* View Mode Toggle */}
+          <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Card View"
             >
-              <Filter className="h-4 w-4" />
-              Filters
-            </Button>
-            <Button 
-              onClick={() => loadStudentAttendance(false)} 
-              disabled={loading}
-              variant="outline"
-              size="sm"
-              className="gap-2 bg-background/50 backdrop-blur-sm hover:bg-background/80"
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Table View"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
+              <Table2 className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </div>
@@ -386,255 +377,24 @@ const MyAttendance = () => {
         </Card>
       )}
 
-      {/* Tab Navigation - Arrow Style (Manual Navigation) */}
-      <div className="w-full">
-        {/* Arrow Navigation Header */}
-        <div className="flex items-center justify-center gap-4 py-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              const tabs = ['records', 'calendar', 'statistics'];
-              const currentIndex = tabs.indexOf(activeTab);
-              if (currentIndex > 0) {
-                setActiveTab(tabs[currentIndex - 1]);
-              }
-            }}
-            disabled={activeTab === 'records'}
-            className="h-10 w-10 rounded-full bg-muted/50 hover:bg-muted disabled:opacity-30"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-
-          {/* Tab Dots Indicator */}
-          <div className="flex items-center gap-2">
-            {[
-              { id: 'records', icon: List, label: 'Records' },
-              { id: 'calendar', icon: CalendarRange, label: 'Calendar' },
-              { id: 'statistics', icon: PieChart, label: 'Statistics' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-300
-                  ${activeTab === tab.id
-                    ? 'bg-primary text-primary-foreground shadow-lg scale-105'
-                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                  }
-                `}
-              >
-                <tab.icon className="h-4 w-4" />
-                <span className="text-sm font-medium hidden sm:inline">{tab.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              const tabs = ['records', 'calendar', 'statistics'];
-              const currentIndex = tabs.indexOf(activeTab);
-              if (currentIndex < tabs.length - 1) {
-                setActiveTab(tabs[currentIndex + 1]);
-              }
-            }}
-            disabled={activeTab === 'statistics'}
-            className="h-10 w-10 rounded-full bg-muted/50 hover:bg-muted disabled:opacity-30"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </Button>
-        </div>
-
-        {/* Down Arrow Indicator */}
-        <div className="flex justify-center pb-2">
-          <div className="animate-bounce text-muted-foreground/50">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14M5 12l7 7 7-7"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="hidden" />
+        <TabsList className="w-full grid grid-cols-3">
+          <TabsTrigger value="records">Records</TabsTrigger>
+          <TabsTrigger value="calendar">Calendar</TabsTrigger>
+          <TabsTrigger value="statistics">Statistics</TabsTrigger>
+        </TabsList>
 
-        {/* Tab 1: Records (Original List View) */}
-        <TabsContent value="records" className="mt-6 space-y-6">
-          {/* Summary Cards */}
-          {summary && (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-              <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                <CardContent className="relative pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Present</p>
-                      <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{summary.totalPresent}</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-emerald-500/10">
-                      <UserCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
-                    </div>
-                  </div>
-                  {totalRecords > 0 && (
-                    <div className="mt-3 h-1.5 bg-emerald-500/20 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(summary.totalPresent / totalRecords) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-red-500/10 to-red-500/5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                <CardContent className="relative pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Absent</p>
-                      <p className="text-3xl font-bold text-red-600 dark:text-red-400">{summary.totalAbsent}</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-red-500/10">
-                      <UserX className="h-6 w-6 text-red-600 dark:text-red-400" />
-                    </div>
-                  </div>
-                  {totalRecords > 0 && (
-                    <div className="mt-3 h-1.5 bg-red-500/20 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-red-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(summary.totalAbsent / totalRecords) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-amber-500/10 to-amber-500/5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                <CardContent className="relative pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Late</p>
-                      <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{summary.totalLate}</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-amber-500/10">
-                      <Clock className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-                    </div>
-                  </div>
-                  {totalRecords > 0 && (
-                    <div className="mt-3 h-1.5 bg-amber-500/20 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(summary.totalLate / totalRecords) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500/10 to-purple-500/5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                <CardContent className="relative pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Left</p>
-                      <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">{summary.totalLeft}</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-purple-500/10">
-                      <LogOut className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                    </div>
-                  </div>
-                  {totalRecords > 0 && (
-                    <div className="mt-3 h-1.5 bg-purple-500/20 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-purple-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(summary.totalLeft / totalRecords) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-pink-500/10 to-pink-500/5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-pink-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                <CardContent className="relative pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Left Early</p>
-                      <p className="text-3xl font-bold text-pink-600 dark:text-pink-400">{summary.totalLeftEarly}</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-pink-500/10">
-                      <DoorOpen className="h-6 w-6 text-pink-600 dark:text-pink-400" />
-                    </div>
-                  </div>
-                  {totalRecords > 0 && (
-                    <div className="mt-3 h-1.5 bg-pink-500/20 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-pink-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(summary.totalLeftEarly / totalRecords) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-indigo-500/10 to-indigo-500/5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                <CardContent className="relative pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Left Late</p>
-                      <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">{summary.totalLeftLately}</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-indigo-500/10">
-                      <Clock className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
-                    </div>
-                  </div>
-                  {totalRecords > 0 && (
-                    <div className="mt-3 h-1.5 bg-indigo-500/20 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(summary.totalLeftLately / totalRecords) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-primary/10 to-primary/5">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-primary/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
-                <CardContent className="relative pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Rate</p>
-                      <p className="text-3xl font-bold text-primary">{summary.attendanceRate}%</p>
-                    </div>
-                    <div className="p-3 rounded-xl bg-primary/10">
-                      <TrendingUp className="h-6 w-6 text-primary" />
-                    </div>
-                  </div>
-                  <div className="mt-3 h-1.5 bg-primary/20 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary rounded-full transition-all duration-500"
-                      style={{ width: `${summary.attendanceRate}%` }}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
+        {/* Tab 1: Records */}
+        <TabsContent value="records" className="mt-4 space-y-4">
           {/* Attendance Records Table */}
           <Card className="border-border/50">
             <CardHeader className="border-b border-border/50">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                 <CardTitle className="text-lg font-semibold">Attendance Records</CardTitle>
-                {attendanceData?.pagination && (
+                {attendanceData?.totalPages != null && (
                   <p className="text-sm text-muted-foreground">
-                    Page {attendanceData.pagination.currentPage} of {attendanceData.pagination.totalPages} 
-                    <span className="hidden sm:inline"> • {attendanceData.pagination.totalRecords} total records</span>
+                    Page {attendanceData.page} of {attendanceData.totalPages}
+                    <span className="hidden sm:inline"> • {attendanceData.total} total records</span>
                   </p>
                 )}
               </div>
@@ -647,86 +407,122 @@ const MyAttendance = () => {
                 </div>
               ) : attendanceData?.data && attendanceData.data.length > 0 ? (
                 <>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/30 hover:bg-muted/30">
-                          <TableHead className="font-semibold">Date & Time</TableHead>
-                          <TableHead className="font-semibold">Status</TableHead>
-                          <TableHead className="font-semibold">Institute</TableHead>
-                          {contextLevel === 'class' || contextLevel === 'subject' ? (
-                            <TableHead className="font-semibold">Class</TableHead>
-                          ) : null}
-                          {contextLevel === 'subject' ? (
-                            <TableHead className="font-semibold">Subject</TableHead>
-                          ) : null}
-                          <TableHead className="font-semibold hidden md:table-cell">Location</TableHead>
-                          <TableHead className="font-semibold hidden lg:table-cell">Method</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {attendanceData.data.map((record, index) => {
-                          const statusStyles = getStatusStyles(record.status);
-                          return (
-                            <TableRow 
-                              key={`${record.studentId}-${record.date}-${index}`} 
-                              className="group hover:bg-muted/30 transition-colors"
-                            >
-                              <TableCell className="py-4">
-                                <div className="flex items-center gap-3">
-                                  <div className={`w-10 h-10 rounded-lg ${statusStyles.bg} border flex items-center justify-center shrink-0`}>
-                                    <span className={`text-xs font-bold ${statusStyles.text}`}>
-                                      {new Date(record.date).getDate()}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <p className="font-medium text-sm">{formatDate(record.date)}</p>
-                                    <p className="text-xs text-muted-foreground">{formatTime(record.date)}</p>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge className={`${statusStyles.bg} ${statusStyles.text} border gap-1.5 font-medium`}>
-                                  {statusStyles.icon}
-                                  {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <p className="font-medium text-sm">{record.instituteName || 'N/A'}</p>
-                              </TableCell>
-                              {contextLevel === 'class' || contextLevel === 'subject' ? (
+                  {viewMode === 'table' ? (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Institute</TableHead>
+                            <TableHead>Class</TableHead>
+                            <TableHead>Subject</TableHead>
+                            <TableHead>Marked By</TableHead>
+                            <TableHead>Time</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {attendanceData.data.map((record, index) => {
+                            const statusStyles = getStatusStyles(record.status);
+                            return (
+                              <TableRow key={`tbl-${record.studentId ?? 'me'}-${record.date}-${index}`}>
+                                <TableCell className="text-sm">{formatDate(record.date)}</TableCell>
                                 <TableCell>
-                                  <p className="font-medium text-sm">{record.className || 'N/A'}</p>
+                                  <Badge className={`${statusStyles.bg} ${statusStyles.text} border text-xs gap-1`}>
+                                    {statusStyles.icon}
+                                    {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                                  </Badge>
                                 </TableCell>
-                              ) : null}
-                              {contextLevel === 'subject' ? (
-                                <TableCell>
-                                  <p className="font-medium text-sm">{record.subjectName || 'N/A'}</p>
-                                </TableCell>
-                              ) : null}
-                              <TableCell className="hidden md:table-cell">
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <MapPin className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="max-w-[150px] truncate" title={record.location}>
-                                    {record.location || 'N/A'}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                <Badge variant="outline" className="text-xs font-normal">
-                                  {record.markingMethod}
+                                <TableCell className="text-sm">{record.instituteName || 'N/A'}</TableCell>
+                                <TableCell className="text-sm">{record.className || 'N/A'}</TableCell>
+                                <TableCell className="text-sm">{record.subjectName || 'N/A'}</TableCell>
+                                <TableCell className="text-sm">{record.markedBy || 'N/A'}</TableCell>
+                                <TableCell className="text-sm">{record.markedAt ? formatTime(record.markedAt) : 'N/A'}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                  <div className="space-y-2">
+                    {attendanceData.data.map((record, index) => {
+                      const statusStyles = getStatusStyles(record.status);
+                      const isExpanded = expandedCards.has(index);
+                      return (
+                        <Card
+                          key={`${record.studentId ?? 'me'}-${record.date}-${index}`}
+                          className="hover:shadow-md transition-shadow cursor-pointer select-none"
+                          onClick={() => toggleCard(index)}
+                        >
+                          {/* Always-visible summary row */}
+                          <div className="p-4 space-y-3">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10 shrink-0">
+                                <AvatarImage src={getImageUrl(record.studentImageUrl || '')} alt={record.studentName || 'Me'} />
+                                <AvatarFallback className="text-xs">{getInitials(record.studentName || (user?.name ?? ''))}</AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-sm truncate">{formatDate(record.date)}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{formatTime(record.markedAt || record.date)}</p>
+                              </div>
+                              <Badge className={`${statusStyles.bg} ${statusStyles.text} border text-xs shrink-0 gap-1`}>
+                                {statusStyles.icon}
+                                {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                              </Badge>
+                              <ChevronDown
+                                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                                  isExpanded ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </div>
+                            
+                            {/* Date, Time, User Type badges */}
+                            <div className="flex flex-wrap gap-2 items-center text-xs">
+                              {record.date && (
+                                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                                  {new Date(record.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
                                 </Badge>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                              )}
+                              {record.markedAt && (
+                                <Badge variant="outline" className="bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/20">
+                                  {new Date(record.markedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                </Badge>
+                              )}
+                              {(record as any).userType && (
+                                <Badge variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
+                                  {(record as any).userType}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Expandable detail section */}
+                          {isExpanded && (
+                            <div className="px-4 pb-4 border-t pt-3 space-y-2 text-xs">
+                              {record.instituteName && (
+                                <p><span className="font-medium text-foreground">Institute:</span> <span className="text-muted-foreground">{record.instituteName}</span></p>
+                              )}
+                              {record.className && (
+                                <p><span className="font-medium text-foreground">Class:</span> <span className="text-muted-foreground">{record.className}</span></p>
+                              )}
+                              {record.subjectName && (
+                                <p><span className="font-medium text-foreground">Subject:</span> <span className="text-muted-foreground">{record.subjectName}</span></p>
+                              )}
+                              {record.markedBy && (
+                                <p><span className="font-medium text-foreground">Marked by:</span> <span className="text-muted-foreground">{record.markedBy}</span></p>
+                              )}
+                            </div>
+                          )}
+                        </Card>
+                      );
+                    })}
                   </div>
+                  )}
 
                   {/* Pagination */}
-                  {attendanceData.pagination && attendanceData.pagination.totalPages > 1 && (
-                    <div className="flex items-center justify-between p-4 border-t border-border/50">
+                  {attendanceData.totalPages != null && attendanceData.totalPages > 1 && (
+                    <div className="flex items-center justify-between p-4 border-t border-border/50 bg-muted/20">
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -738,17 +534,17 @@ const MyAttendance = () => {
                         Previous
                       </Button>
                       <div className="flex items-center gap-2">
-                        {Array.from({ length: Math.min(5, attendanceData.pagination.totalPages) }, (_, i) => {
-                          const page = i + 1;
+                        {Array.from({ length: Math.min(5, attendanceData.totalPages) }, (_, i) => {
+                          const pg = i + 1;
                           return (
                             <Button
-                              key={page}
-                              variant={currentPage === page ? "default" : "outline"}
+                              key={pg}
+                              variant={currentPage === pg ? "default" : "outline"}
                               size="sm"
-                              onClick={() => setCurrentPage(page)}
+                              onClick={() => setCurrentPage(pg)}
                               className="w-8 h-8 p-0"
                             >
-                              {page}
+                              {pg}
                             </Button>
                           );
                         })}
@@ -756,8 +552,8 @@ const MyAttendance = () => {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={() => setCurrentPage(prev => Math.min(attendanceData.pagination.totalPages, prev + 1))}
-                        disabled={currentPage === attendanceData.pagination.totalPages}
+                        onClick={() => setCurrentPage(prev => Math.min(attendanceData.totalPages, prev + 1))}
+                        disabled={currentPage === attendanceData.totalPages}
                         className="gap-1"
                       >
                         Next
@@ -767,14 +563,12 @@ const MyAttendance = () => {
                   )}
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center py-16 gap-4">
-                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-                    <Calendar className="h-8 w-8 text-muted-foreground" />
-                  </div>
-                  <div className="text-center">
-                    <h3 className="font-semibold mb-1">No Attendance Records</h3>
-                    <p className="text-sm text-muted-foreground">No attendance records found for the selected date range</p>
-                  </div>
+                <div className="p-4">
+                  <EmptyState
+                    icon={Calendar}
+                    title="No Attendance Records"
+                    description="No attendance records found for the selected date range"
+                  />
                 </div>
               )}
             </CardContent>
@@ -784,21 +578,21 @@ const MyAttendance = () => {
         {/* Tab 2: Calendar View */}
         <TabsContent value="calendar" className="mt-6">
           <Card className="border-border/50">
-            <CardHeader className="border-b border-border/50">
-              <div className="flex items-center justify-between">
+            <CardHeader className="border-b border-border/50 pb-3">
+              <div className="flex flex-col gap-3">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
                   <CalendarRange className="h-5 w-5 text-primary" />
                   Attendance Calendar
                 </CardTitle>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={() => navigateMonth('prev')}>
-                    <ChevronLeft className="h-4 w-4" />
+                <div className="flex items-center justify-between gap-2">
+                  <Button variant="outline" size="lg" onClick={() => navigateMonth('prev')} className="h-11 w-11 sm:h-9 sm:w-9 flex-shrink-0">
+                    <ChevronLeft className="h-5 w-5 sm:h-4 sm:w-4" />
                   </Button>
-                  <span className="font-medium min-w-[140px] text-center">
-                    {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  <span className="font-semibold text-base sm:text-sm text-center flex-1">
+                    {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Colombo' })}
                   </span>
-                  <Button variant="outline" size="icon" onClick={() => navigateMonth('next')}>
-                    <ChevronRight className="h-4 w-4" />
+                  <Button variant="outline" size="lg" onClick={() => navigateMonth('next')} className="h-11 w-11 sm:h-9 sm:w-9 flex-shrink-0">
+                    <ChevronRight className="h-5 w-5 sm:h-4 sm:w-4" />
                   </Button>
                 </div>
               </div>
@@ -833,33 +627,40 @@ const MyAttendance = () => {
               </div>
 
               {/* Calendar Grid */}
-              <div className="grid grid-cols-7 gap-1 md:gap-2">
+              <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2">
                 {/* Week Day Headers */}
                 {weekDays.map(day => (
-                  <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
-                    {day}
+                  <div key={day} className="text-center text-[10px] sm:text-xs md:text-sm font-medium text-muted-foreground py-1 sm:py-2">
+                    <span className="hidden sm:inline">{day}</span>
+                    <span className="sm:hidden">{day.charAt(0)}</span>
                   </div>
                 ))}
                 
                 {/* Calendar Days */}
                 {getCalendarDays.map((day, index) => {
                   if (day === null) {
-                    return <div key={`empty-${index}`} className="aspect-square" />;
+                    return <div key={`empty-${index}`} className="min-h-[52px] sm:min-h-[70px] md:min-h-[80px]" />;
                   }
                   
                   const status = getDateStatus(day);
                   const statusColor = getDateStatusColor(status);
-                  const isToday = new Date().getDate() === day && 
-                                  new Date().getMonth() === calendarMonth.getMonth() && 
-                                  new Date().getFullYear() === calendarMonth.getFullYear();
+                  const weekday = index % 7; // 0=Sun, 6=Sat
+                  const isWeekend = weekday === 0 || weekday === 6;
+                  const slStr = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'Asia/Colombo', year: 'numeric', month: '2-digit', day: '2-digit',
+                  }).format(new Date());
+                  const slToday = new Date(slStr + 'T00:00:00');
+                  const isToday = slToday.getDate() === day &&
+                                  slToday.getMonth() === calendarMonth.getMonth() &&
+                                  slToday.getFullYear() === calendarMonth.getFullYear();
                   
                   return (
                     <div 
                       key={day}
                       className={`
-                        aspect-square flex items-center justify-center rounded-lg text-sm font-medium
-                        transition-all duration-200 cursor-default
-                        ${statusColor}
+                        min-h-[52px] sm:min-h-[70px] md:min-h-[80px] flex items-center justify-center rounded-lg
+                        text-sm font-semibold transition-all duration-200 cursor-default
+                        ${status ? statusColor : isWeekend ? 'bg-sky-100 dark:bg-sky-900/30 text-foreground' : 'bg-muted/50 text-muted-foreground'}
                         ${isToday ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}
                       `}
                     >
@@ -873,109 +674,129 @@ const MyAttendance = () => {
         </TabsContent>
 
         {/* Tab 3: Statistics View */}
-        <TabsContent value="statistics" className="mt-6 space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Pie Chart */}
+        <TabsContent value="statistics" className="mt-6 space-y-4">
+          {/* Attendance Rate (full width) */}
+          {summary && totalRecords > 0 && (
             <Card className="border-border/50">
-              <CardHeader className="border-b border-border/50">
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <PieChart className="h-5 w-5 text-primary" />
-                  Attendance Distribution
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 md:p-6">
-                {pieChartData.length > 0 ? (
-                  <div className="h-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RechartsPie>
-                        <Pie
-                          data={pieChartData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={100}
-                          paddingAngle={2}
-                          dataKey="value"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          labelLine={false}
-                        >
-                          {pieChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          formatter={(value: number, name: string) => [`${value} days`, name]}
-                          contentStyle={{ 
-                            backgroundColor: 'hsl(var(--card))', 
-                            borderColor: 'hsl(var(--border))',
-                            borderRadius: '8px'
-                          }}
-                        />
-                        <Legend />
-                      </RechartsPie>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                    No data available
-                  </div>
-                )}
+              <CardContent className="p-4 sm:p-6">
+                <div className="text-center py-4 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5">
+                  <p className="text-sm text-muted-foreground mb-1">Overall Attendance Rate</p>
+                  <p className="text-5xl font-bold text-primary">{summary.attendanceRate}%</p>
+                  <p className="text-xs text-muted-foreground mt-1">{totalRecords} total records</p>
+                </div>
               </CardContent>
             </Card>
+          )}
 
-            {/* Monthly Statistics */}
-            <Card className="border-border/50">
-              <CardHeader className="border-b border-border/50">
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  Monthly Statistics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 md:p-6">
-                {summary && totalRecords > 0 ? (
-                  <div className="space-y-4">
-                    {/* Attendance Rate */}
-                    <div className="text-center p-6 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5">
-                      <p className="text-sm text-muted-foreground mb-2">Overall Attendance Rate</p>
-                      <p className="text-5xl font-bold text-primary">{summary.attendanceRate}%</p>
-                    </div>
+          {/* Pie Chart */}
+          <Card className="border-border/50">
+            <CardHeader className="border-b border-border/50 pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <PieChart className="h-5 w-5 text-primary" />
+                Attendance Distribution
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              {pieChartData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <RechartsPie>
+                      <Pie
+                        data={pieChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {pieChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number, name: string) => [`${value} days`, name]}
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--card))',
+                          borderColor: 'hsl(var(--border))',
+                          borderRadius: '8px',
+                          fontSize: '13px',
+                        }}
+                      />
+                    </RechartsPie>
+                  </ResponsiveContainer>
+                  {/* Legend grid below chart */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+                    {pieChartData.map((entry) => {
+                      const pct = totalRecords > 0 ? ((entry.value / totalRecords) * 100).toFixed(1) : '0';
+                      return (
+                        <div key={entry.name} className="flex items-center gap-2 bg-muted/40 rounded-lg px-2 py-1.5">
+                          <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
+                          <span className="text-xs font-medium truncate flex-1">{entry.name}</span>
+                          <span className="text-xs font-bold">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
+                  No data available
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-                    {/* Stats Breakdown */}
-                    <div className="space-y-3">
-                      {[
-                        { label: 'Present', count: summary.totalPresent, color: 'bg-emerald-500', textColor: 'text-emerald-600 dark:text-emerald-400' },
-                        { label: 'Absent', count: summary.totalAbsent, color: 'bg-red-500', textColor: 'text-red-600 dark:text-red-400' },
-                        { label: 'Late', count: summary.totalLate, color: 'bg-amber-500', textColor: 'text-amber-600 dark:text-amber-400' },
-                        { label: 'Left', count: summary.totalLeft, color: 'bg-purple-500', textColor: 'text-purple-600 dark:text-purple-400' },
-                        { label: 'Left Early', count: summary.totalLeftEarly, color: 'bg-pink-500', textColor: 'text-pink-600 dark:text-pink-400' },
-                        { label: 'Left Late', count: summary.totalLeftLately, color: 'bg-indigo-500', textColor: 'text-indigo-600 dark:text-indigo-400' },
-                      ].map((item) => {
-                        const percentage = totalRecords > 0 ? ((item.count / totalRecords) * 100).toFixed(1) : '0';
-                        return (
-                          <div key={item.label} className="flex items-center gap-3">
-                            <div className={`w-3 h-3 rounded-full ${item.color}`} />
-                            <span className="flex-1 text-sm font-medium">{item.label}</span>
-                            <span className={`font-semibold ${item.textColor}`}>{item.count}</span>
-                            <span className="text-sm text-muted-foreground w-16 text-right">({percentage}%)</span>
+          {/* Stats Breakdown */}
+          <Card className="border-border/50">
+            <CardHeader className="border-b border-border/50 pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                Monthly Breakdown
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              {summary && totalRecords > 0 ? (
+                <div className="space-y-2.5">
+                  {[
+                    { label: 'Present',    count: summary.totalPresent,     color: 'bg-emerald-500', textColor: 'text-emerald-600 dark:text-emerald-400' },
+                    { label: 'Absent',     count: summary.totalAbsent,      color: 'bg-red-500',     textColor: 'text-red-600 dark:text-red-400' },
+                    { label: 'Late',       count: summary.totalLate,        color: 'bg-amber-500',   textColor: 'text-amber-600 dark:text-amber-400' },
+                    { label: 'Left',       count: summary.totalLeft,        color: 'bg-purple-500',  textColor: 'text-purple-600 dark:text-purple-400' },
+                    { label: 'Left Early', count: summary.totalLeftEarly,   color: 'bg-pink-500',    textColor: 'text-pink-600 dark:text-pink-400' },
+                    { label: 'Left Late',  count: summary.totalLeftLately,  color: 'bg-indigo-500',  textColor: 'text-indigo-600 dark:text-indigo-400' },
+                  ].map((item) => {
+                    const percentage = totalRecords > 0 ? ((item.count / totalRecords) * 100) : 0;
+                    return (
+                      <div key={item.label}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2.5 h-2.5 rounded-full ${item.color}`} />
+                            <span className="text-sm font-medium">{item.label}</span>
                           </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Total */}
-                    <div className="pt-3 border-t border-border/50 flex items-center justify-between">
-                      <span className="font-medium">Total Records</span>
-                      <span className="text-xl font-bold">{totalRecords}</span>
-                    </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-sm font-bold ${item.textColor}`}>{item.count}</span>
+                            <span className="text-xs text-muted-foreground w-10 text-right">{percentage.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${item.color}`} style={{ width: `${percentage}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="pt-3 mt-1 border-t border-border/50 flex items-center justify-between">
+                    <span className="text-sm font-medium">Total Records</span>
+                    <span className="text-xl font-bold">{totalRecords}</span>
                   </div>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground py-16">
-                    No statistics available
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                </div>
+              ) : (
+                <div className="py-12 flex items-center justify-center text-muted-foreground text-sm">
+                  No statistics available
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

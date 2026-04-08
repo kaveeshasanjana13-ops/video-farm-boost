@@ -14,6 +14,7 @@ import ReactCrop, {
 import 'react-image-crop/dist/ReactCrop.css';
 import { getSignedUrl, uploadToSignedUrl, verifyAndPublish } from '@/utils/imageUploadHelper';
 import { getImageUrl } from '@/utils/imageUrlHelper';
+import { getErrorMessage } from '@/api/apiError';
 
 interface ImageCropUploadProps {
   currentImageUrl?: string | null;
@@ -113,7 +114,7 @@ const ImageCropUpload: React.FC<ImageCropUploadProps> = ({
         type: blob.type || 'image/jpeg',
       });
       handleSelectedFile(file);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Native camera failed:', error);
       toast({
         title: 'Camera unavailable',
@@ -223,11 +224,11 @@ const ImageCropUpload: React.FC<ImageCropUploadProps> = ({
       });
       
       handleCloseDialog();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading image:', error);
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to upload image. Please try again.",
+        description: getErrorMessage(error, 'Failed to upload image. Please try again.'),
         variant: "destructive",
       });
     } finally {

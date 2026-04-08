@@ -72,7 +72,7 @@ export function useRefreshWithCooldown(cooldownSeconds: number = 10) {
       }
       
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Refresh error:', error);
       toast({
         title: "Refresh Failed",

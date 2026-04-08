@@ -57,8 +57,12 @@ import {
   isExpiringSoon,
 } from '@/utils/cardHelpers';
 import { toast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/api/apiError';
+import { useAuth } from '@/contexts/AuthContext';
 
 const MyCards: React.FC = () => {
+  const { selectedChild, isViewingAsParent } = useAuth();
+  const forUserId = isViewingAsParent && selectedChild ? (selectedChild.userId || selectedChild.id) : undefined;
   const [cards, setCards] = useState<UserIdCardOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,13 +89,13 @@ const MyCards: React.FC = () => {
       if (forceRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const response = await userCardApi.getMyCards({}, forceRefresh);
+      const response = await userCardApi.getMyCards({}, forceRefresh, forUserId);
       setCards(response.data || []);
     } catch (error: any) {
       console.error('Error fetching cards:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load cards',
+        description: getErrorMessage(error, 'Failed to load cards'),
         variant: 'destructive',
       });
     } finally {
@@ -102,7 +106,7 @@ const MyCards: React.FC = () => {
 
   useEffect(() => {
     fetchCards();
-  }, []);
+  }, [forUserId]);
 
   const handleAction = (card: UserIdCardOrder, status: CardStatus) => {
     setSelectedCard(card);
@@ -130,7 +134,7 @@ const MyCards: React.FC = () => {
       console.error('Error updating card status:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to update card status',
+        description: getErrorMessage(error, 'Failed to update card status'),
         variant: 'destructive',
       });
     } finally {
@@ -199,8 +203,8 @@ const MyCards: React.FC = () => {
     if (loading) {
       return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-items-center">
-          {[1, 2].map((i) => (
-            <Card key={i} className="w-full max-w-[300px]">
+          {[1, 2].map((i, index) => (
+            <Card key={i} className="w-full max-w-[300px] animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-backwards" style={{ animationDelay: `${index * 100}ms` }}>
               <CardHeader>
                 <Skeleton className="h-6 w-3/4" />
                 <Skeleton className="h-4 w-1/2" />
@@ -230,39 +234,53 @@ const MyCards: React.FC = () => {
 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-items-center">
-        {cards.map((card) => {
+        {cards.map((card, index) => {
           const daysUntilExpiry = getDaysUntilExpiry(card.cardExpiryDate);
           const expiringSoon = isExpiringSoon(card.cardExpiryDate);
           const isActive = card.status === CardStatus.ACTIVE;
 
           return (
-            <Card key={card.id} className={`w-full max-w-[300px] overflow-hidden ${!isActive ? 'opacity-75' : ''}`}>
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1.5">
-                <div className="space-y-1">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <CreditCard className="h-3.5 w-3.5" />
-                    {card.card?.cardName || 'ID Card'}
-                  </CardTitle>
-                  <Badge variant="outline" className="text-xs">{card.cardType}</Badge>
+            <div
+              key={card.id}
+              className={`relative flex w-full max-w-[320px] flex-col rounded-xl bg-card text-card-foreground shadow-md animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-backwards ${!isActive ? 'opacity-75' : ''}`}
+              style={{ animationDelay: `${index * 100}ms` }}
+            >
+              {/* Raised gradient header */}
+              <div className={`relative mx-4 -mt-6 h-36 overflow-hidden rounded-xl bg-clip-border shadow-lg flex items-center justify-center ${
+                isActive
+                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 shadow-blue-500/40'
+                  : 'bg-gradient-to-r from-gray-400 to-gray-500 shadow-gray-500/30'
+              }`}>
+                <CreditCard className="h-16 w-16 text-white/80" />
+                <div className="absolute top-3 right-3">
+                  {renderActionsDropdown(card)}
                 </div>
-                {renderActionsDropdown(card)}
-              </CardHeader>
-              <CardContent className="space-y-4 pt-3">
-                <Badge className={`${cardStatusColors[card.status]} flex items-center gap-1 w-fit`}>
-                  {isActive ? <CheckCircle className="h-3 w-3" /> : <Ban className="h-3 w-3" />}{cardStatusLabels[card.status]}
-                </Badge>
+              </div>
+
+              {/* Body */}
+              <div className="p-6">
+                <h5 className="mb-1 font-sans text-lg font-semibold leading-snug tracking-normal antialiased">
+                  {card.card?.cardName || 'ID Card'}
+                </h5>
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge variant="outline" className="text-[10px]">{card.cardType}</Badge>
+                  <Badge className={`${cardStatusColors[card.status]} flex items-center gap-1 text-[10px] px-1.5 py-0`}>
+                    {isActive ? <CheckCircle className="h-3 w-3" /> : <Ban className="h-3 w-3" />}
+                    {cardStatusLabels[card.status]}
+                  </Badge>
+                </div>
                 {card.rfidNumber && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Wifi className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-mono text-xs">{card.rfidNumber}</span>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
+                    <Wifi className="h-3.5 w-3.5" />
+                    <span className="font-mono">{card.rfidNumber}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 text-sm">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
+                  <Calendar className="h-3.5 w-3.5" />
                   <span className={expiringSoon ? 'text-orange-500 font-medium' : ''}>
                     Expires: {formatDate(card.cardExpiryDate)}
                     {daysUntilExpiry > 0 && daysUntilExpiry <= 30 && (
-                      <span className="text-xs ml-1">({daysUntilExpiry} days)</span>
+                      <span className="ml-1">({daysUntilExpiry} days)</span>
                     )}
                   </span>
                 </div>
@@ -271,8 +289,8 @@ const MyCards: React.FC = () => {
                     Delivered: {formatDate(card.deliveredAt)}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           );
         })}
       </div>
@@ -316,7 +334,7 @@ const MyCards: React.FC = () => {
 
     return (
       <Paper sx={{ width: '100%', overflow: 'hidden', backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}>
-        <MuiTableContainer sx={{ maxHeight: 440 }}>
+        <MuiTableContainer sx={{ maxHeight: 440, overflow: 'auto' }}>
           <MuiTable stickyHeader aria-label="cards table">
             <MuiTableHead>
               <MuiTableRow>

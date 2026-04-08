@@ -53,6 +53,7 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
   });
   const [courses, setCourses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loadingCourses, setLoadingCourses] = useState(true);
   const [documents, setDocuments] = useState<File[]>([]);
   const { toast } = useToast();
@@ -77,7 +78,7 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
           const response = await organizationApi.getCourses(params);
           setCourses(response.data);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching courses:', error);
         toast({
           title: "Error",
@@ -101,6 +102,17 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
         description: "Please fill in all required fields",
         variant: "destructive",
       });
+      return;
+    }
+
+        const errors: Record<string, string> = {};
+    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
+    if (!formData.description && formData.description !== 0) errors.description = 'Description is required';
+    if (!formData.venue && formData.venue !== 0) errors.venue = 'Venue is required';
+    if (!formData.timeStart && formData.timeStart !== 0) errors.timeStart = 'Time Start is required';
+    if (!formData.timeEnd && formData.timeEnd !== 0) errors.timeEnd = 'Time End is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -153,7 +165,7 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
       });
 
       onSuccess?.(lecture);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating lecture:', error);
       toast({
         title: "Error",
@@ -166,6 +178,8 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
   };
 
   const handleInputChange = (field: keyof LectureCreateData, value: string | boolean) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -236,7 +250,10 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
                   value={formData.title}
                   onChange={(e) => handleInputChange('title', e.target.value)}
                   required
+              className={`${fieldErrors.title ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                 />
+
+                {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
               </div>
 
               <div className="space-y-2">
@@ -248,7 +265,10 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
                   onChange={(e) => handleInputChange('description', e.target.value)}
                   rows={3}
                   required
+              className={`${fieldErrors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                 />
+
+                {fieldErrors.description && <p className="text-xs text-red-500 mt-1">{fieldErrors.description}</p>}
               </div>
 
               <div className="space-y-2">
@@ -294,7 +314,10 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
                     value={formData.venue}
                     onChange={(e) => handleInputChange('venue', e.target.value)}
                     required
+              className={`${fieldErrors.venue ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.venue && <p className="text-xs text-red-500 mt-1">{fieldErrors.venue}</p>}
                 </div>
               </div>
 
@@ -307,7 +330,10 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
                     value={formData.timeStart}
                     onChange={(e) => handleInputChange('timeStart', e.target.value)}
                     required
+              className={`${fieldErrors.timeStart ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.timeStart && <p className="text-xs text-red-500 mt-1">{fieldErrors.timeStart}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -318,7 +344,10 @@ const CreateOrganizationLectureForm = ({ courseId, organizationId, onSuccess, on
                     value={formData.timeEnd}
                     onChange={(e) => handleInputChange('timeEnd', e.target.value)}
                     required
+              className={`${fieldErrors.timeEnd ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.timeEnd && <p className="text-xs text-red-500 mt-1">{fieldErrors.timeEnd}</p>}
                 </div>
               </div>
 

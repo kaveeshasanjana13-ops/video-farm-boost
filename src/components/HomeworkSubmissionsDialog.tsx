@@ -58,7 +58,7 @@ const HomeworkSubmissionsDialog = ({ homework, isOpen, onClose }: HomeworkSubmis
 
       const submissionsList = Array.isArray(response) ? response : response.data || [];
       setSubmissions(submissionsList);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading submissions:', error);
       toast({
         title: "Error",

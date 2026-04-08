@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 export interface InstituteUserFilterParams {
   page?: number;
   limit?: number;
+  houseId?: string;
   search?: string;
   isActive?: boolean;
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
@@ -36,6 +37,7 @@ interface InstituteUsersFiltersProps {
   onClearFilters: () => void;
   userType: 'STUDENT' | 'TEACHER' | 'ATTENDANCE_MARKER' | 'INSTITUTE_ADMIN' | 'PENDING' | 'INACTIVE';
   isApplying?: boolean;
+  houseOptions?: Array<{ id: string; name: string }>;
 }
 
 const InstituteUsersFilters: React.FC<InstituteUsersFiltersProps> = ({
@@ -44,7 +46,8 @@ const InstituteUsersFilters: React.FC<InstituteUsersFiltersProps> = ({
   onApplyFilters,
   onClearFilters,
   userType,
-  isApplying = false
+  isApplying = false,
+  houseOptions = []
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -67,6 +70,7 @@ const InstituteUsersFilters: React.FC<InstituteUsersFiltersProps> = ({
   };
 
   const isStudent = userType === 'STUDENT';
+  const supportsHouseFilter = userType === 'STUDENT' || userType === 'TEACHER' || userType === 'ATTENDANCE_MARKER';
 
   return (
     <Card className="mb-6">
@@ -150,6 +154,27 @@ const InstituteUsersFilters: React.FC<InstituteUsersFiltersProps> = ({
 
             {/* Filter Controls */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* House Filter */}
+              {supportsHouseFilter && (
+                <div>
+                  <Label>House</Label>
+                  <Select
+                    value={filters.houseId || 'all'}
+                    onValueChange={(value) => updateFilter('houseId', value === 'all' ? undefined : value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All houses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All houses</SelectItem>
+                      {houseOptions.map((house) => (
+                        <SelectItem key={house.id} value={house.id}>{house.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               {/* Active Status Filter */}
               {userType !== 'INACTIVE' && (
                 <div>

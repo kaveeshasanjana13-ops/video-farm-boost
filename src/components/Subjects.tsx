@@ -231,7 +231,7 @@ const Subjects = () => {
       setShowUnassignConfirm(false);
       setSubjectToUnassign(null);
       actions.refresh();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error unassigning teacher:', error);
       toast({
         title: "Error",
@@ -259,7 +259,7 @@ const Subjects = () => {
         description: "Teacher assigned successfully"
       });
       actions.refresh();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning teacher:', error);
       toast({
         title: "Error",
@@ -685,10 +685,6 @@ const Subjects = () => {
           </DialogHeader>
           <AssignSubjectToClassForm onSuccess={() => {
           setIsAssignDialogOpen(false);
-          toast({
-            title: "Success",
-            description: "Subjects assigned successfully!"
-          });
         }} onCancel={() => setIsAssignDialogOpen(false)} />
         </DialogContent>
       </Dialog>

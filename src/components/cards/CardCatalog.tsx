@@ -14,6 +14,7 @@ import { Card as CardType, CardType as CardTypeEnum, userCardApi } from '@/api/u
 import { toast } from '@/hooks/use-toast';
 import { formatPrice } from '@/utils/cardHelpers';
 import OrderCardDialog from './OrderCardDialog';
+import { getErrorMessage } from '@/api/apiError';
 
 const CardCatalog: React.FC = () => {
   const [cards, setCards] = useState<CardType[]>([]);
@@ -36,7 +37,7 @@ const CardCatalog: React.FC = () => {
       console.error('Error fetching cards:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to load cards',
+        description: getErrorMessage(error, 'Failed to load cards'),
         variant: 'destructive'
       });
     } finally {
@@ -46,7 +47,6 @@ const CardCatalog: React.FC = () => {
 
   useEffect(() => {
     fetchCards();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardTypeFilter]);
 
   useEffect(() => {
@@ -54,7 +54,6 @@ const CardCatalog: React.FC = () => {
       fetchCards();
     }, 300);
     return () => clearTimeout(debounce);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
   const handleOrderClick = (card: CardType) => {
@@ -118,25 +117,26 @@ const CardCatalog: React.FC = () => {
 
       {/* Cards Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-items-center pt-8">
-          {[1, 2, 3].map((i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-10 justify-items-center md:pt-8">
+          {[1, 2, 3].map((i, index) => (
             <div
               key={i}
-              className="relative flex w-72 min-h-[360px] flex-col rounded-xl bg-card text-card-foreground shadow-md"
+              className="relative flex w-full md:w-72 md:min-h-[360px] flex-row md:flex-col rounded-xl bg-card text-card-foreground shadow-sm md:shadow-md border border-border/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-backwards"
+              style={{ animationDelay: `${index * 100}ms` }}
             >
-              <div className="relative mx-4 -mt-6 h-32 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/80 shadow-lg shadow-primary/20">
+              <div className="relative w-24 md:w-auto md:mx-4 md:-mt-6 shrink-0 md:h-32 overflow-hidden md:rounded-xl bg-gradient-to-r from-primary to-primary/80 shadow-lg shadow-primary/20">
                 <Skeleton className="h-full w-full" />
               </div>
-              <div className="p-5 flex-1 space-y-2.5">
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-3.5 w-full" />
-                <Skeleton className="h-3.5 w-5/6" />
-                <div className="pt-3 space-y-2">
-                  <Skeleton className="h-3.5 w-full" />
-                  <Skeleton className="h-3.5 w-full" />
+              <div className="p-3 md:p-5 flex-1 space-y-2.5 flex flex-col justify-center">
+                <Skeleton className="h-4 md:h-5 w-3/4" />
+                <Skeleton className="h-3 md:h-3.5 w-full" />
+                <Skeleton className="hidden md:block h-3.5 w-5/6" />
+                <div className="pt-2 md:pt-3 space-y-2">
+                  <Skeleton className="h-3 md:h-3.5 w-full" />
+                  <Skeleton className="h-3 md:h-3.5 w-full" />
                 </div>
               </div>
-              <div className="p-5 pt-0">
+              <div className="hidden md:block p-5 pt-0">
                 <Skeleton className="h-9 w-full" />
               </div>
             </div>
@@ -153,14 +153,15 @@ const CardCatalog: React.FC = () => {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-items-center pt-8">
-          {cards.map((card) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-10 justify-items-center md:pt-8">
+          {cards.map((card, index) => (
             <div
               key={card.id}
-              className="relative flex w-72 min-h-[360px] flex-col rounded-xl bg-card text-card-foreground shadow-md"
+              className="relative flex w-full md:w-72 md:min-h-[360px] flex-row md:flex-col rounded-xl bg-card text-card-foreground shadow-sm md:shadow-md border border-border/50 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-backwards"
+              style={{ animationDelay: `${index * 100}ms` }}
             >
               {/* Image / top header */}
-              <div className="relative mx-4 -mt-6 h-32 overflow-hidden rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/20">
+              <div className="relative w-24 md:w-auto md:mx-4 md:-mt-6 shrink-0 md:h-32 overflow-hidden md:rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground md:shadow-lg md:shadow-primary/20">
                 {card.cardImageUrl ? (
                   <img
                     src={card.cardImageUrl}
@@ -170,49 +171,60 @@ const CardCatalog: React.FC = () => {
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center">
-                    <CreditCard className="h-12 w-12 text-primary-foreground/70" />
+                    <CreditCard className="h-8 w-8 md:h-12 md:w-12 text-primary-foreground/70" />
                   </div>
                 )}
-
-                <Badge className={`absolute top-3 right-3 ${getCardTypeBadgeClass(card.cardType)}`}>
-                  {card.cardType}
-                </Badge>
               </div>
 
               {/* Content */}
-              <div className="p-5 flex-1">
-                <h3 className="mb-2 text-lg font-semibold leading-snug tracking-normal">
-                  {card.cardName}
-                </h3>
-                <p className="text-xs text-muted-foreground line-clamp-3">
-                  {card.description || 'No description available'}
-                </p>
+              <div className="p-3 md:p-5 flex-1 flex flex-col justify-between min-w-0">
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-1 md:mb-2">
+                    <h3 className="text-base md:text-lg font-semibold leading-tight truncate md:whitespace-normal">
+                      {card.cardName}
+                    </h3>
+                    <Badge className={`shrink-0 text-[10px] md:text-xs px-1.5 py-0 md:py-0.5 ${getCardTypeBadgeClass(card.cardType)}`}>
+                      {card.cardType}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-1 md:line-clamp-3 mb-2 md:mb-0">
+                    {card.description || 'No description available'}
+                  </p>
+                </div>
 
-                <div className="mt-3 space-y-2 text-sm">
+                <div className="mt-auto md:mt-3 space-y-1 md:space-y-2 text-xs md:text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      Validity
+                      <Clock className="h-3 w-3 md:h-4 md:w-4" />
+                      <span className="hidden md:inline">Validity</span>
                     </span>
                     <span className="font-medium">{formatValidity(card.validityDays)}</span>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground flex items-center gap-1">
-                      <Package className="h-4 w-4" />
-                      Available
+                      <Package className="h-3 w-3 md:h-4 md:w-4" />
+                      <span className="hidden md:inline">Available</span>
                     </span>
-                    <span className="font-medium">{card.quantityAvailable} cards</span>
+                    <span className="font-medium">{card.quantityAvailable}</span>
                   </div>
 
-                  <div className="pt-3 border-t border-border">
-                    <span className="text-xl font-bold text-primary">{formatPrice(card.price)}</span>
+                  <div className="pt-2 md:pt-3 md:border-t border-border flex items-center justify-between md:block">
+                    <span className="text-sm md:text-xl font-bold text-primary">{formatPrice(card.price)}</span>
+                    <Button
+                      size="sm"
+                      className="md:hidden h-8 px-3"
+                      onClick={() => handleOrderClick(card)}
+                      disabled={card.quantityAvailable <= 0}
+                    >
+                      {card.quantityAvailable > 0 ? 'Order' : 'Out'}
+                    </Button>
                   </div>
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="p-5 pt-0">
+              <div className="hidden md:block p-5 pt-0">
                 <Button
                   className="w-full"
                   onClick={() => handleOrderClick(card)}

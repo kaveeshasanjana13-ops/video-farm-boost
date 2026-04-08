@@ -81,13 +81,19 @@ export const useContextUrlSync = (currentPage: string) => {
     const derivedPage = extractPageFromUrl(location.pathname);
     const effectivePage = (!currentPage || currentPage.includes('/')) ? derivedPage : currentPage;
 
-    // Skip selection step routes
+    // Skip selection step routes (but NOT select-attendance-mark-type — it should update with class/subject)
     if (
-      effectivePage.startsWith('select-') ||
+      (effectivePage.startsWith('select-') && effectivePage !== 'select-attendance-mark-type') ||
       location.pathname.includes('/select-institute') ||
       location.pathname.includes('/select-class') ||
       location.pathname.includes('/select-subject')
     ) {
+      return;
+    }
+
+    // Skip global pages — they must never be re-prefixed with institute/class/subject context
+    const globalPageSet = new Set(['profile', 'settings', 'appearance', 'feedback', 'all-notifications', 'id-cards', 'card-demo', 'payment-submissions']);
+    if (globalPageSet.has(effectivePage)) {
       return;
     }
     
@@ -133,6 +139,12 @@ export const extractPageFromUrl = (pathname: string): string => {
   
   // Handle nested hierarchical routes with IDs
   // These routes should highlight their parent menu item in sidebar
+  // houses/:id -> houses (for sidebar highlighting)
+  const houseDetailMatch = path.match(/^houses\/([^\/]+)$/);
+  if (houseDetailMatch) {
+    return 'houses';
+  }
+
   // homework/:id/submissions -> homework (for sidebar) but return actual page for rendering
   const homeworkSubmissionsMatch = path.match(/^homework\/([^\/]+)\/submissions$/);
   if (homeworkSubmissionsMatch) {
@@ -151,6 +163,18 @@ export const extractPageFromUrl = (pathname: string): string => {
     return 'exams'; // Map to parent for sidebar highlighting
   }
   
+  // payment-submissions-pysical/:id -> map to payment-submissions-pysical for sidebar
+  const paymentSubmissionsPhysicalMatch = path.match(/^payment-submissions-pysical(\/.*)?$/);
+  if (paymentSubmissionsPhysicalMatch) {
+    return 'payment-submissions-pysical';
+  }
+
+  // payment-submissions/:id or payment-submissions -> map to payment-submissions for sidebar
+  const paymentSubmissionsMatch = path.match(/^payment-submissions(\/.*)?$/);
+  if (paymentSubmissionsMatch) {
+    return 'payment-submissions';
+  }
+  
   // Map sub-routes to their parent pages (for sidebar highlighting only - NOT for component rendering)
   const subRouteMap: Record<string, string> = {
     'system-payments/create': 'system-payment',
@@ -165,6 +189,7 @@ export const extractPageFromUrl = (pathname: string): string => {
   const urlToPageMap: Record<string, string> = {
     'institutes/users': 'institute-users',
     'institutes/classes': 'institute-classes',
+    'rfid': 'rfid-attendance',
   };
   
   // Check if path matches any special URL pattern
@@ -184,10 +209,15 @@ export const getSidebarHighlightPage = (pathname: string): string => {
   
   // Map pages to their sidebar parent for highlighting
   const sidebarParentMap: Record<string, string> = {
-    'rfid-attendance': 'qr-attendance',
-    'institute-mark-attendance': 'qr-attendance',
+    'rfid-attendance': 'select-attendance-mark-type',
+    'rfid': 'select-attendance-mark-type',
+    'qr-attendance': 'select-attendance-mark-type',
+    'institute-mark-attendance': 'select-attendance-mark-type',
+    'close-attendance': 'select-attendance-mark-type',
     'daily-attendance': 'daily-attendance',
     'select-institute': 'select-institute',
+    'payment-submissions-pysical': 'subject-payments',
+    'payment-submissions': 'subject-payments',
   };
   
   return sidebarParentMap[basePage] || basePage;
@@ -246,12 +276,15 @@ export const buildSidebarUrl = (
   const pagePath = pageToUrlMap[page] || page;
 
   // Pages that must ALWAYS be global (no institute/class/subject prefix)
-  // These are dedicated top-level routes like "/id-cards".
-  const globalPages = new Set(['id-cards', 'card-demo']);
+  const globalPages = new Set([
+    'id-cards', 'card-demo', 'payment-submissions',
+    'profile', 'settings', 'appearance', 'feedback', 'all-notifications'
+  ]);
   if (globalPages.has(page)) {
     return `/${pagePath}`;
   }
 
+  // eslint-disable-next-line no-useless-assignment
   let url = '';
 
   // Handle special dashboard case
@@ -273,6 +306,24 @@ export const buildSidebarUrl = (
     if (page === 'select-class') {
       // Stay at institute level: /institute/:id/select-class
       url = `/institute/${context.instituteId}/select-class`;
+    } else if (page === 'select-attendance-mark-type' || page === 'qr-attendance' || page === 'rfid-attendance' || page === 'rfid' || page === 'institute-mark-attendance' || page === 'close-attendance') {
+      // Attendance pages include class/subject in URL when selected
+      url = `/institute/${context.instituteId}`;
+      if (context.classId) {
+        url += `/class/${context.classId}`;
+        if (context.subjectId) {
+          url += `/subject/${context.subjectId}`;
+        }
+      }
+      const attendancePageMap: Record<string, string> = {
+        'rfid-attendance': 'rfid',
+        'rfid': 'rfid',
+        'qr-attendance': 'qr-attendance',
+        'select-attendance-mark-type': 'select-attendance-mark-type',
+        'institute-mark-attendance': 'institute-mark-attendance',
+        'close-attendance': 'close-attendance',
+      };
+      url += `/${attendancePageMap[page] || page}`;
     } else if (page === 'select-subject') {
       // Use institute + class, but no subject yet: /institute/:id/class/:classId/select-subject
       url = `/institute/${context.instituteId}`;

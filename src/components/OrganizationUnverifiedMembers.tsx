@@ -38,7 +38,7 @@ const OrganizationUnverifiedMembers = ({ organizationId, userRole }: Organizatio
       setLoading(true);
       const response = await organizationApi.getUnverifiedMembers(organizationId);
       setUnverifiedData(response);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching unverified members:', error);
       toast({
         title: "Error",
@@ -78,7 +78,7 @@ const OrganizationUnverifiedMembers = ({ organizationId, userRole }: Organizatio
 
       // Refresh the unverified members list
       await fetchUnverifiedMembers();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error verifying member:', error);
       toast({
         title: "Error",

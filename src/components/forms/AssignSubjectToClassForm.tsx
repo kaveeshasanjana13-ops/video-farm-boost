@@ -14,8 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useToast } from '@/hooks/use-toast';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
-import { tokenStorageService } from '@/services/tokenStorageService';
+import { getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
 
@@ -103,27 +102,6 @@ const AssignSubjectToClassForm: React.FC<AssignSubjectToClassFormProps> = ({
     }));
   };
 
-  const getAuthToken = () => {
-    return tokenStorageService.getAccessTokenSync() || 
-           localStorage.getItem('access_token') || 
-           localStorage.getItem('token') || 
-           localStorage.getItem('authToken');
-  };
-
-  const getApiHeaders = () => {
-    const token = getAuthToken();
-    
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    return headers;
-  };
-
   const handleLoadSubjects = async (forceRefresh = false) => {
     if (!currentInstituteId) {
       toast({
@@ -155,7 +133,7 @@ const AssignSubjectToClassForm: React.FC<AssignSubjectToClassFormProps> = ({
       );
       
       setSubjects(result.filter(subject => subject.isActive));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading subjects:', error);
       toast({
         title: "Load Failed",
@@ -233,7 +211,7 @@ const AssignSubjectToClassForm: React.FC<AssignSubjectToClassFormProps> = ({
       
       setClasses(mappedClasses);
       setShowClassSelector(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading classes:', error);
       toast({
         title: "Load Failed",
@@ -284,11 +262,22 @@ const AssignSubjectToClassForm: React.FC<AssignSubjectToClassFormProps> = ({
     setIsLoading(true);
     try {
       const baseUrl = getBaseUrl();
-      const headers = getApiHeaders();
+      const headers = await getApiHeadersAsync();
       
-      // API expects subjectIds as array of strings
+      // Build per-subject objects with enrollment settings
+      const subjects = selectedSubjectIds.map(subjectId => {
+        const enrollment = getSubjectEnrollment(subjectId);
+        return {
+          subjectId,
+          teacherId: defaultTeacherId || undefined,
+          isActive: true,
+          enrollmentEnabled: enrollment.enabled,
+          enrollmentKey: enrollment.enabled && enrollment.key ? enrollment.key : undefined
+        };
+      });
+
       const requestBody = {
-        subjectIds: selectedSubjectIds,
+        subjects,
         defaultTeacherId: defaultTeacherId || user?.id || undefined
       };
 
@@ -312,11 +301,9 @@ const AssignSubjectToClassForm: React.FC<AssignSubjectToClassFormProps> = ({
       });
 
       if (result.assignedCount > 0) {
-        setTimeout(() => {
-          onSuccess();
-        }, 2000);
+        onSuccess();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning subjects:', error);
       toast({
         title: "Assignment Failed",
@@ -625,17 +612,17 @@ const AssignSubjectToClassForm: React.FC<AssignSubjectToClassFormProps> = ({
 
           {/* Assignment Result */}
           {assignResult && (
-            <Alert className={assignResult.success ? "border-emerald-500/30 bg-emerald-500/10" : "border-destructive/30 bg-destructive/10"}>
+            <Alert variant={assignResult.success ? "success" : "destructive"}>
               {assignResult.success ? (
-                <CheckCircle className="h-4 w-4 text-emerald-600" />
+                <CheckCircle className="h-4 w-4" />
               ) : (
-                <AlertCircle className="h-4 w-4 text-destructive" />
+                <AlertCircle className="h-4 w-4" />
               )}
               <AlertDescription className="text-sm">
                 <div className="space-y-1">
                   <p className="font-medium">{assignResult.message}</p>
                   {assignResult.assignedCount > 0 && (
-                    <p className="text-emerald-600">✓ {assignResult.assignedCount} subjects assigned successfully</p>
+                    <p className="text-green-700 dark:text-green-300">✓ {assignResult.assignedCount} subjects assigned successfully</p>
                   )}
                   {assignResult.skippedCount > 0 && (
                     <p className="text-amber-600">⚠ {assignResult.skippedCount} subjects were skipped (already assigned)</p>

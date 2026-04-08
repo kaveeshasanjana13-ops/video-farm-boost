@@ -34,6 +34,7 @@ export type DriveUploadPurpose =
   | 'HOMEWORK_CORRECTION'
   | 'EXAM_SUBMISSION'
   | 'PROFILE_DOCUMENT'
+  | 'ID_CARD_PAYMENT'
   | 'GENERAL';
 
 export interface DriveFolder {
@@ -77,9 +78,13 @@ export async function checkDriveConnection(): Promise<DriveConnectionStatus> {
   return apiClient.get<DriveConnectionStatus>('/drive-access/status');
 }
 
-export async function getDriveConnectUrl(returnUrl?: string): Promise<DriveAuthUrl> {
-  const params = returnUrl ? `?returnUrl=${encodeURIComponent(returnUrl)}` : '';
-  return apiClient.get<DriveAuthUrl>(`/drive-access/connect${params}`);
+export async function getDriveConnectUrl(
+  returnUrl?: string,
+  platform: 'web' | 'mobile' = 'web',
+): Promise<DriveAuthUrl> {
+  const qs = new URLSearchParams({ platform });
+  if (returnUrl) qs.set('returnUrl', returnUrl);
+  return apiClient.get<DriveAuthUrl>(`/drive-access/connect?${qs.toString()}`);
 }
 
 export async function getDriveAccessToken(): Promise<DriveAccessToken> {

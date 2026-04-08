@@ -81,7 +81,7 @@ export const TeacherSelectorDialog: React.FC<TeacherSelectorDialogProps> = ({
       const teacherList = response?.data || response || [];
       setTeachers(teacherList);
       setFilteredTeachers(teacherList);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching teachers:', error);
       toast({
         title: "Error",
@@ -109,7 +109,7 @@ export const TeacherSelectorDialog: React.FC<TeacherSelectorDialogProps> = ({
       onClose();
       setSelectedTeacherId('');
       setSearchTerm('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning teacher:', error);
     } finally {
       setAssigning(false);

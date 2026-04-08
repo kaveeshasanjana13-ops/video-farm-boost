@@ -25,6 +25,7 @@ interface AssignUserResponse {
 const AssignUserForm = ({ instituteId, onSubmit, onCancel, initialUserId }: AssignUserFormProps) => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     userId: initialUserId || '',
     userIdByInstitute: '',
@@ -33,6 +34,8 @@ const AssignUserForm = ({ instituteId, onSubmit, onCancel, initialUserId }: Assi
   });
 
   const handleInputChange = (field: string, value: string) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -41,6 +44,14 @@ const AssignUserForm = ({ instituteId, onSubmit, onCancel, initialUserId }: Assi
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+        const errors: Record<string, string> = {};
+    if (!formData.userId && formData.userId !== 0) errors.userId = 'User Id is required';
+    if (!formData.userIdByInstitute && formData.userIdByInstitute !== 0) errors.userIdByInstitute = 'User Id By Institute is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -127,9 +138,11 @@ const AssignUserForm = ({ instituteId, onSubmit, onCancel, initialUserId }: Assi
           value={formData.userId}
           onChange={(e) => handleInputChange('userId', e.target.value)}
           placeholder="Enter user ID"
-          className="mt-1"
+          className={`mt-1${fieldErrors.userId ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
           required
         />
+
+        {fieldErrors.userId && <p className="text-xs text-red-500 mt-1">{fieldErrors.userId}</p>}
       </div>
 
       <div>
@@ -139,9 +152,11 @@ const AssignUserForm = ({ instituteId, onSubmit, onCancel, initialUserId }: Assi
           value={formData.userIdByInstitute}
           onChange={(e) => handleInputChange('userIdByInstitute', e.target.value)}
           placeholder="e.g., EMP2024001"
-          className="mt-1"
+          className={`mt-1${fieldErrors.userIdByInstitute ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
           required
         />
+
+        {fieldErrors.userIdByInstitute && <p className="text-xs text-red-500 mt-1">{fieldErrors.userIdByInstitute}</p>}
       </div>
 
       <div>
@@ -159,7 +174,7 @@ const AssignUserForm = ({ instituteId, onSubmit, onCancel, initialUserId }: Assi
         
         <div>
           <Label htmlFor="role" className="text-sm font-medium">User Role *</Label>
-          <Select value={formData.role || ''} onValueChange={(value) => handleInputChange('role', value)}>
+          <Select value={formData.role || undefined} onValueChange={(value) => handleInputChange('role', value)}>
             <SelectTrigger className="mt-1">
               <SelectValue placeholder="Select user role" />
             </SelectTrigger>

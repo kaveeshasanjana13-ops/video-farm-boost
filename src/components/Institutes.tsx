@@ -23,6 +23,7 @@ import { DataCardView } from '@/components/ui/data-card-view';
 import { useAuth } from '@/contexts/AuthContext';
 import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, EyeIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import {
   Dialog,
   DialogContent,
@@ -43,6 +44,7 @@ import CreateInstituteForm from '@/components/forms/CreateInstituteForm';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 
 const Institutes = () => {
   const [institutes, setInstitutes] = useState<any[]>([]);
@@ -56,17 +58,17 @@ const Institutes = () => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
   const [selectedInstitute, setSelectedInstitute] = useState<any>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; item: any }>({ open: false, item: null });
+  const [isDeleting, setIsDeleting] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
 
   // Mobile view toggle state
-  const [mobileViewMode, setMobileViewMode] = useState<'table' | 'card'>('card');
+  const [mobileViewMode, setMobileViewMode] = useState<'table' | 'card'>(() =>
+    (localStorage.getItem('viewMode') as 'table' | 'card') || 'card'
+  );
 
   const itemsPerPage = 10;
-
-  const getBaseUrl = () => {
-    return localStorage.getItem('baseUrl') || '';
-  };
 
   const fetchInstitutes = async (page: number = 1, search: string = '', isActive: string = 'true', forceRefresh = false) => {
     try {
@@ -121,7 +123,7 @@ const Institutes = () => {
         console.error('Unexpected data format:', data);
         setInstitutes([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading institutes:', error);
       setError('Failed to load institutes. Please try again.');
       toast({
@@ -154,7 +156,7 @@ const Institutes = () => {
 
       return data;
       return data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching institute by ID:', error);
       throw error;
     }
@@ -179,12 +181,10 @@ const Institutes = () => {
   const handleCreateInstitute = async (instituteData: any) => {
     try {
       const baseUrl = getBaseUrl();
+      const headers = await getApiHeadersAsync();
       const response = await fetch(`${baseUrl}/institutes`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(instituteData),
       });
 
@@ -199,7 +199,7 @@ const Institutes = () => {
 
       await fetchInstitutes(currentPage, searchTerm, isActiveFilter);
       setShowCreateDialog(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating institute:', error);
       toast({
         title: "Error",
@@ -215,7 +215,7 @@ const Institutes = () => {
       const instituteData = await fetchInstituteById(id);
       setSelectedInstitute(instituteData);
       setShowEditDialog(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching institute for edit:', error);
       toast({
         title: "Error",
@@ -244,12 +244,10 @@ const Institutes = () => {
         imageUrl: instituteData.imageUrl || ''
       };
       
+      const headers = await getApiHeadersAsync();
       const response = await fetch(`${baseUrl}/institutes/${selectedInstitute.id}`, {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(updateData),
       });
 
@@ -267,7 +265,7 @@ const Institutes = () => {
       await fetchInstitutes(currentPage, searchTerm, isActiveFilter);
       setShowEditDialog(false);
       setSelectedInstitute(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating institute:', error);
       toast({
         title: "Error",
@@ -277,17 +275,19 @@ const Institutes = () => {
     }
   };
 
-  const handleDeleteInstitute = async (instituteId: string) => {
-    if (!confirm('Are you sure you want to delete this institute?')) return;
+  const handleDeleteInstitute = (institute: any) => {
+    setDeleteDialog({ open: true, item: institute });
+  };
 
+  const confirmDeleteInstitute = async () => {
+    if (!deleteDialog.item) return;
+    setIsDeleting(true);
     try {
       const baseUrl = getBaseUrl();
-      const response = await fetch(`${baseUrl}/institutes/${instituteId}`, {
+      const headers = await getApiHeadersAsync();
+      const response = await fetch(`${baseUrl}/institutes/${deleteDialog.item.id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -295,18 +295,22 @@ const Institutes = () => {
       }
 
       toast({
-        title: "Success",
-        description: "Institute deleted successfully",
+        title: "Institute Deleted",
+        description: `Institute "${deleteDialog.item.name}" has been permanently deleted.`,
+        variant: "destructive",
       });
 
+      setDeleteDialog({ open: false, item: null });
       await fetchInstitutes(currentPage, searchTerm, isActiveFilter);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting institute:', error);
       toast({
         title: "Error",
         description: "Failed to delete institute. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -315,10 +319,10 @@ const Institutes = () => {
       const instituteData = await fetchInstituteById(id);
       setSelectedInstitute(instituteData);
       setShowViewDialog(true);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to fetch institute details.",
+        description: error.message || "Failed to fetch institute details.",
         variant: "destructive",
       });
     }
@@ -441,7 +445,7 @@ const Institutes = () => {
                           <PencilIcon className="h-4 w-4 mr-1" />
                           <span className="hidden lg:inline">Edit</span>
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteInstitute(institute.id)}>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteInstitute(institute)}>
                           <TrashIcon className="h-4 w-4 mr-1" />
                           <span className="hidden lg:inline">Delete</span>
                         </Button>
@@ -550,58 +554,73 @@ const Institutes = () => {
 
       {/* View Dialog - Mobile Responsive */}
       <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-auto">
-          <DialogHeader>
-            <DialogTitle>Institute Details</DialogTitle>
-          </DialogHeader>
-          {selectedInstitute && (
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-              {selectedInstitute.imageUrl && (
-                <div className="flex justify-center">
-                  <img 
-                    src={getImageUrl(selectedInstitute.imageUrl)} 
-                    alt={selectedInstitute.name}
-                    className="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-lg border"
-                  />
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[88vh] overflow-y-auto">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="flex items-center gap-3">
+              {selectedInstitute?.imageUrl ? (
+                <img
+                  src={getImageUrl(selectedInstitute.imageUrl)}
+                  alt={selectedInstitute.name}
+                  className="w-16 h-16 object-cover rounded-2xl border border-border/50"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/15 flex items-center justify-center text-primary font-bold">
+                  {selectedInstitute?.name?.slice(0, 2).toUpperCase() || 'IN'}
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Name:</label>
-                  <p className="text-sm break-words">{selectedInstitute.name}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Code:</label>
-                  <p className="text-sm break-words">{selectedInstitute.code}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Email:</label>
-                  <p className="text-sm break-words">{selectedInstitute.email}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Phone:</label>
-                  <p className="text-sm break-words">{selectedInstitute.phone}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">City:</label>
-                  <p className="text-sm break-words">{selectedInstitute.city}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">State:</label>
-                  <p className="text-sm break-words">{selectedInstitute.state}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Country:</label>
-                  <p className="text-sm break-words">{selectedInstitute.country}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Pin Code:</label>
-                  <p className="text-sm break-words">{selectedInstitute.pinCode}</p>
+              <div>
+                <p className="font-bold text-base leading-tight">{selectedInstitute?.name || 'Institute Details'}</p>
+                <p className="text-xs font-mono text-muted-foreground mt-0.5">{selectedInstitute?.code || 'No code'}</p>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+          {selectedInstitute && (
+            <div className="space-y-5">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Overview</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Code</span>
+                    <span className="text-xs font-mono font-bold text-primary break-all">{selectedInstitute.code}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Email</span>
+                    <span className="text-xs font-medium break-all">{selectedInstitute.email}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Phone</span>
+                    <span className="text-xs font-medium">{selectedInstitute.phone}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Pin Code</span>
+                    <span className="text-xs font-medium">{selectedInstitute.pinCode}</span>
+                  </div>
                 </div>
               </div>
+
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Address:</label>
-                <p className="text-sm break-words">{selectedInstitute.address}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Location</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">City</span>
+                    <span className="text-xs font-medium">{selectedInstitute.city}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">State</span>
+                    <span className="text-xs font-medium">{selectedInstitute.state}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Country</span>
+                    <span className="text-xs font-medium">{selectedInstitute.country}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Address</p>
+                <div className="p-3.5 rounded-xl bg-muted/60 border border-border/50">
+                  <p className="text-sm break-words leading-6">{selectedInstitute.address}</p>
+                </div>
               </div>
             </div>
           )}

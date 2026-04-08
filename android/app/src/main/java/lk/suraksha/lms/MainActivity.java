@@ -1,34 +1,69 @@
-package lk.suraksha.lms;
+    package lk.suraksha.lms;
 
 import android.os.Bundle;
 import android.webkit.WebSettings;
+import android.content.res.Configuration;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
 
+    private long lastPauseTime = 0;
+    private static final long RELOAD_THRESHOLD_MS = 30 * 60 * 1000L;
+
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(NavigationBarPlugin.class);
         super.onCreate(savedInstanceState);
 
-        // Force the WebView to always revalidate cached resources using HTTP headers.
-        // This ensures that when lms.suraksha.lk is updated, the app picks up changes
-        // on next open without needing a Play Store update.
-        // - index.html (no-cache on S3) will always be re-fetched → new bundle hashes load.
-        // - Hashed JS/CSS (immutable on S3) stay cached → zero re-download if unchanged.
         if (getBridge() != null && getBridge().getWebView() != null) {
+            // ── Cold-start: always wipe the entire WebView disk cache ─────────────
+            // clearCache(true) deletes ALL cached resources regardless of expiry,
+            // so the WebView must re-fetch index.html and every bundle from
+            // lms.suraksha.lk on every fresh app open.
+            //
+            // Why true, not false?
+            //   clearCache(false) only removes EXPIRED entries — if the CDN sent
+            //   Cache-Control: max-age=300 for index.html, clearCache(false) keeps
+            //   that entry alive for 5 min and the user sees stale content.
+            //   clearCache(true) nukes everything unconditionally on cold start.
+            //
+            // Hashed JS/CSS bundles (e.g. app.a1b2c3.js immutable) are also cleared
+            // here, but they are small (~100-500 KB compressed) and are immediately
+            // re-cached for the rest of the session via LOAD_DEFAULT below.
+            getBridge().getWebView().clearCache(true);
+
+            // ── Use browser-default HTTP caching within the session ───────────────
+            // LOAD_DEFAULT respects Cache-Control / ETag headers for all subsequent
+            // navigations and asset requests within this session, so hashed bundles
+            // are not re-downloaded on every click — only on the next cold start.
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         }
     }
 
     @Override
-    protected void onResume() {
+    public void onPause() {
+        super.onPause();
+        // Record when the app goes to background so onResume can decide
+        // whether enough time has passed to justify a full reload.
+        lastPauseTime = System.currentTimeMillis();
+    }
+
+    @Override
+    public void onResume() {
         super.onResume();
-        // Clear expired cache entries when app comes to foreground.
-        // Passing false keeps valid cached resources (hashed bundles),
-        // but forces revalidation of no-cache resources (index.html).
         if (getBridge() != null && getBridge().getWebView() != null) {
+            // Remove expired cache entries (harmless; leaves valid hashed bundles intact).
             getBridge().getWebView().clearCache(false);
+
+            // Only do a full reload when the app was in the background long enough
+            // that a new frontend deployment may have happened.
+            // Short resumes (camera return, OAuth redirect, notification tap, QR scan,
+            // gallery picker) are intentionally skipped to preserve page state.
+            if (lastPauseTime > 0
+                    && (System.currentTimeMillis() - lastPauseTime) > RELOAD_THRESHOLD_MS) {
+                getBridge().getWebView().reload();
+            }
         }
     }
 }

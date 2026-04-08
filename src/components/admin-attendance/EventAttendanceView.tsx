@@ -15,6 +15,8 @@ import { Progress } from '@/components/ui/progress';
 import { RefreshCw, Search, Download, Filter, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { renderAttendanceStatusBadge } from '@/components/calendar/calendarTheme';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getImageUrl } from '@/utils/imageUrlHelper';
 
 function toSriLankaTime(utcStr: string): string {
   try {
@@ -37,6 +39,7 @@ const EventAttendanceView: React.FC = () => {
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [studentImagesMap, setStudentImagesMap] = useState<Map<string, string>>(new Map());
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30);
     return d.toISOString().split('T')[0];
@@ -85,6 +88,51 @@ const EventAttendanceView: React.FC = () => {
   useEffect(() => {
     if (selectedEventId) loadEventAttendance();
   }, [selectedEventId, loadEventAttendance]);
+
+  // ✅ NEW: Load student images when records are loaded
+  useEffect(() => {
+    if (records.length === 0 || !currentInstituteId) {
+      setStudentImagesMap(new Map());
+      return;
+    }
+
+    const fetchStudentImages = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        // Get classId from first record if available, otherwise fetch all students
+        const classId = (records[0] as any)?.classId;
+        
+        if (classId) {
+          // Fetch students from specific class
+          const response = await fetch(
+            `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/institutes/${currentInstituteId}/classes/${classId}/students`,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            const studentsData = data.data || [];
+            const imagesMap = new Map<string, string>();
+            studentsData.forEach((student: any) => {
+              if (student.id && student.imageUrl) {
+                imagesMap.set(student.id.toString(), student.imageUrl);
+              }
+            });
+            setStudentImagesMap(imagesMap);
+          }
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch student images:', error);
+      }
+    };
+
+    fetchStudentImages();
+  }, [records, currentInstituteId]);
 
   // Summary - use records if available, fall back to API summary
   const summary = React.useMemo(() => {
@@ -255,7 +303,22 @@ const EventAttendanceView: React.FC = () => {
                     {filteredRecords.map((r, i) => (
                       <TableRow key={i}>
                         <TableCell className="text-xs">{i + 1}</TableCell>
-                        <TableCell className="text-xs font-medium">{r.studentName || r.userName || r.studentId}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-7 w-7 shrink-0">
+                              {/* ✅ NEW: Try to get image from studentImagesMap first */}
+                              {(() => {
+                                const mappedImage = studentImagesMap.get(r.studentId);
+                                const imageUrl = mappedImage || r.studentImageUrl || r.imageUrl || '';
+                                return <AvatarImage src={getImageUrl(imageUrl)} />;
+                              })()}
+                              <AvatarFallback className="text-[10px]">
+                                {((r.studentName || r.userName || '?').charAt(0)).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-xs font-medium">{r.studentName || r.userName || r.studentId}</span>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-xs text-center">
                           {renderAttendanceStatusBadge(r.status)}
                         </TableCell>

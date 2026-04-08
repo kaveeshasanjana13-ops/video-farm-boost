@@ -13,6 +13,7 @@ import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { institutePaymentsApi, PaymentSubmission, PendingSubmissionsResponse } from '@/api/institutePayments.api';
+import { EmptyState } from '@/components/ui/EmptyState';
 import VerifySubmissionDialog from '@/components/forms/VerifySubmissionDialog';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,6 +25,19 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
+
+const PS_COL_DEFS: ColumnDef[] = [
+  { key: 'student', header: 'Student', locked: true, defaultWidth: 200, minWidth: 150 },
+  { key: 'amount', header: 'Amount', defaultWidth: 120, minWidth: 90 },
+  { key: 'transactionRef', header: 'Transaction Ref', defaultWidth: 160, minWidth: 120 },
+  { key: 'paymentDate', header: 'Payment Date', defaultWidth: 130, minWidth: 100 },
+  { key: 'submitted', header: 'Submitted', defaultWidth: 130, minWidth: 100 },
+  { key: 'receipt', header: 'Receipt', defaultWidth: 100, minWidth: 80 },
+  { key: 'actions', header: 'Actions', locked: true, defaultWidth: 120, minWidth: 90 },
+];
 
 const PendingSubmissions = () => {
   const { selectedInstitute } = useAuth();
@@ -38,6 +52,12 @@ const PendingSubmissions = () => {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<PaymentSubmission | null>(null);
+
+  const psColIds = useMemo(() => PS_COL_DEFS.map(c => c.key), []);
+  const psColDefaultWidths = useMemo(() => Object.fromEntries(PS_COL_DEFS.map(c => [c.key, c.defaultWidth!])), []);
+  const { getWidth: getPSColWidth, setHoveredCol: setPSHoveredCol, ResizeHandle: PSResizeHandle } = useResizableColumns(psColIds, psColDefaultWidths);
+  const { colState: psColState, visibleColumns: psVisDefs, toggleColumn: togglePSCol, resetColumns: resetPSCols } = useColumnConfig(PS_COL_DEFS, 'pending-submissions');
+  const psVisKeys = useMemo(() => new Set(psVisDefs.map(c => c.key)), [psVisDefs]);
 
   const canVerify = role === 'InstituteAdmin' || role === 'Teacher';
 
@@ -93,11 +113,11 @@ const PendingSubmissions = () => {
   if (!canVerify) {
     return (
       <PageContainer>
-        <div className="text-center py-12">
-          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-          <p className="text-lg font-medium">Access Denied</p>
-          <p className="text-muted-foreground">Only admins and teachers can review submissions.</p>
-        </div>
+        <EmptyState
+          icon={AlertCircle}
+          title="Access Denied"
+          description="Only admins and teachers can review submissions."
+        />
       </PageContainer>
     );
   }
@@ -148,6 +168,7 @@ const PendingSubmissions = () => {
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
+            <ColumnConfigurator allColumns={PS_COL_DEFS} colState={psColState} onToggle={togglePSCol} onReset={resetPSCols} />
           </div>
         </CardContent>
       </Card>
@@ -173,24 +194,24 @@ const PendingSubmissions = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-              <TableContainer sx={{ minHeight: 400 }}>
-                <Table stickyHeader>
+            <Paper sx={{ width: '100%', overflow: 'hidden', height: 'calc(100vh - 320px)', display: 'flex', flexDirection: 'column' }}>
+              <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                <Table stickyHeader sx={{ tableLayout: 'fixed', minWidth: psVisDefs.reduce((s, c) => s + getPSColWidth(c.key), 0) }}>
                   <TableHead>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}>Student</TableCell>
-                      <TableCell sx={{ fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }} align="right">Amount</TableCell>
-                      <TableCell sx={{ fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}>Transaction Ref</TableCell>
-                      <TableCell sx={{ fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}>Payment Date</TableCell>
-                      <TableCell sx={{ fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}>Submitted</TableCell>
-                      <TableCell sx={{ fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }} align="center">Receipt</TableCell>
-                      <TableCell sx={{ fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }} align="center">Actions</TableCell>
+                      {psVisDefs.map((col) => (
+                        <TableCell key={col.key} sx={{ position: 'relative', width: getPSColWidth(col.key), fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}
+                          onMouseEnter={() => setPSHoveredCol(col.key)} onMouseLeave={() => setPSHoveredCol(null)}>
+                          <div style={{ paddingRight: 12 }}>{col.header}</div>
+                          <PSResizeHandle colId={col.key} />
+                        </TableCell>
+                      ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredSubmissions.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} align="center">
+                        <TableCell colSpan={psVisDefs.length} align="center">
                           <div className="py-12">
                             <CheckCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                             <p className="text-muted-foreground text-lg">
@@ -205,43 +226,48 @@ const PendingSubmissions = () => {
                     ) : (
                       filteredSubmissions.map(submission => (
                         <TableRow hover key={submission.id}>
-                          <TableCell>
-                            <div className="font-medium text-foreground">{submission.username || 'Unknown'}</div>
-                            <div className="text-xs text-muted-foreground">ID: {submission.userId}</div>
-                          </TableCell>
-                          <TableCell align="right">
-                            <span className="font-semibold text-primary">
-                              Rs {parseFloat(submission.submittedAmount || '0').toLocaleString()}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="font-mono text-xs">{submission.transactionId || '-'}</span>
-                          </TableCell>
-                          <TableCell>
-                            {submission.paymentDate ? new Date(submission.paymentDate).toLocaleDateString() : '-'}
-                          </TableCell>
-                          <TableCell>
-                            {submission.uploadedAt ? new Date(submission.uploadedAt).toLocaleDateString() : '-'}
-                          </TableCell>
-                          <TableCell align="center">
-                            {submission.receiptUrl ? (
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                onClick={() => handleViewReceipt(submission.receiptUrl)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            ) : '-'}
-                          </TableCell>
-                          <TableCell align="center">
-                            <Button 
-                              size="sm" 
-                              onClick={() => handleVerify(submission)}
-                            >
-                              Verify
-                            </Button>
-                          </TableCell>
+                          {psVisKeys.has('student') && (
+                            <TableCell style={{ width: getPSColWidth('student'), maxWidth: getPSColWidth('student'), overflow: 'hidden' }}>
+                              <div className="font-medium text-foreground">{submission.username || 'Unknown'}</div>
+                              <div className="text-xs text-muted-foreground">ID: {submission.userId}</div>
+                            </TableCell>
+                          )}
+                          {psVisKeys.has('amount') && (
+                            <TableCell style={{ width: getPSColWidth('amount'), maxWidth: getPSColWidth('amount'), overflow: 'hidden' }}>
+                              <span className="font-semibold text-primary">
+                                Rs {parseFloat(submission.submittedAmount || '0').toLocaleString()}
+                              </span>
+                            </TableCell>
+                          )}
+                          {psVisKeys.has('transactionRef') && (
+                            <TableCell style={{ width: getPSColWidth('transactionRef'), maxWidth: getPSColWidth('transactionRef'), overflow: 'hidden' }}>
+                              <span className="font-mono text-xs">{submission.transactionId || '-'}</span>
+                            </TableCell>
+                          )}
+                          {psVisKeys.has('paymentDate') && (
+                            <TableCell style={{ width: getPSColWidth('paymentDate'), maxWidth: getPSColWidth('paymentDate'), overflow: 'hidden' }}>
+                              {submission.paymentDate ? new Date(submission.paymentDate).toLocaleDateString() : '-'}
+                            </TableCell>
+                          )}
+                          {psVisKeys.has('submitted') && (
+                            <TableCell style={{ width: getPSColWidth('submitted'), maxWidth: getPSColWidth('submitted'), overflow: 'hidden' }}>
+                              {submission.uploadedAt ? new Date(submission.uploadedAt).toLocaleDateString() : '-'}
+                            </TableCell>
+                          )}
+                          {psVisKeys.has('receipt') && (
+                            <TableCell style={{ width: getPSColWidth('receipt'), maxWidth: getPSColWidth('receipt'), overflow: 'hidden' }}>
+                              {submission.receiptUrl ? (
+                                <Button variant="outline" size="sm" onClick={() => handleViewReceipt(submission.receiptUrl)}>
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              ) : '-'}
+                            </TableCell>
+                          )}
+                          {psVisKeys.has('actions') && (
+                            <TableCell style={{ width: getPSColWidth('actions'), maxWidth: getPSColWidth('actions'), overflow: 'hidden' }}>
+                              <Button size="sm" onClick={() => handleVerify(submission)}>Verify</Button>
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))
                     )}

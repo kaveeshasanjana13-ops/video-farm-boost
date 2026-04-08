@@ -12,6 +12,7 @@ import { studentsApi } from '@/api/students.api';
 import { Settings, Copy, Users, UserPlus, Loader2, Key, Lock, Unlock } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { getErrorMessage } from '@/api/apiError';
 
 interface TeacherEnrollmentManagerProps {
   instituteId: string;
@@ -54,7 +55,7 @@ const TeacherEnrollmentManager: React.FC<TeacherEnrollmentManagerProps> = ({
       setIsLoadingSettings(true);
       const result = await enrollmentApi.getEnrollmentSettings(instituteId, classId, subjectId);
       setSettings(result);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load enrollment settings:', error);
       toast({
         title: "Error",
@@ -77,7 +78,7 @@ const TeacherEnrollmentManager: React.FC<TeacherEnrollmentManagerProps> = ({
         { id: '3', firstName: 'Mike', lastName: 'Johnson', email: 'mike@example.com' },
       ];
       setAvailableStudents(mockStudents);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load available students:', error);
       toast({
         title: "Error",
@@ -107,7 +108,7 @@ const TeacherEnrollmentManager: React.FC<TeacherEnrollmentManagerProps> = ({
         title: "Settings Updated",
         description: `Enrollment ${enabled ? 'enabled' : 'disabled'} successfully`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update enrollment settings:', error);
       if (error instanceof ApiError) {
         toast({
@@ -144,7 +145,7 @@ const TeacherEnrollmentManager: React.FC<TeacherEnrollmentManagerProps> = ({
         title: "Key Updated",
         description: key ? "Enrollment key set successfully" : "Switched to open enrollment",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update enrollment key:', error);
       if (error instanceof ApiError) {
         toast({
@@ -198,7 +199,7 @@ const TeacherEnrollmentManager: React.FC<TeacherEnrollmentManagerProps> = ({
       setSelectedStudents([]);
       loadAvailableStudents(); // Refresh the list
       loadEnrollmentSettings(); // Update enrollment count
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to assign students:', error);
       if (error instanceof ApiError) {
         toast({
@@ -226,10 +227,10 @@ const TeacherEnrollmentManager: React.FC<TeacherEnrollmentManagerProps> = ({
           title: "Copied",
           description: "Enrollment key copied to clipboard",
         });
-      } catch (error) {
+      } catch (error: any) {
         toast({
           title: "Copy Failed",
-          description: "Failed to copy enrollment key",
+          description: getErrorMessage(error, 'Failed to copy enrollment key'),
           variant: "destructive",
         });
       }

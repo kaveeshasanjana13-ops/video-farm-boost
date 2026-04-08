@@ -5,12 +5,15 @@
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js');
 
-// Firebase config will be injected at runtime via message from main app
-// This allows us to avoid hardcoding sensitive values
+// Firebase config will be injected at runtime via postMessage from the main app.
+// NEVER pass credentials in the SW registration URL — they appear in access logs.
 let firebaseInitialized = false;
 
-// Listen for config message from main app
+// Listen for config message from main app — validate origin before accepting
 self.addEventListener('message', (event) => {
+  // Reject messages from unexpected origins
+  if (event.origin !== self.location.origin) return;
+
   if (event.data && event.data.type === 'FIREBASE_CONFIG') {
     if (!firebaseInitialized) {
       try {
@@ -24,32 +27,24 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Fallback: Try to initialize with config from query params (set during registration)
-// This is a backup method if message passing fails
-const urlParams = new URL(self.location).searchParams;
-const configParam = urlParams.get('firebaseConfig');
-if (configParam && !firebaseInitialized) {
-  try {
-    const config = JSON.parse(decodeURIComponent(configParam));
-    firebase.initializeApp(config);
-    firebaseInitialized = true;
-    initializeMessaging();
-  } catch (error) {
-    // silent
-  }
-}
-
 function initializeMessaging() {
   const messaging = firebase.messaging();
 
   // Handle background messages
   messaging.onBackgroundMessage((payload) => {
     const notificationTitle = payload.notification?.title || 'New Notification';
+
+    // Extract image from notification or data payload
+    // FCM can send image in notification.image OR data.image OR data.imageUrl
+    const imageUrl = payload.notification?.image
+      || payload.data?.image
+      || payload.data?.imageUrl
+      || null;
+
     const notificationOptions = {
       body: payload.notification?.body || '',
       icon: payload.notification?.icon || '/favicon.png',
       badge: '/favicon.png',
-      image: payload.notification?.image,
       data: payload.data,
       tag: payload.data?.notificationId || 'default',
       requireInteraction: true,
@@ -58,6 +53,12 @@ function initializeMessaging() {
         { action: 'dismiss', title: 'Dismiss' }
       ]
     };
+
+    // Only add image if it exists and is a valid HTTPS URL
+    // This prevents errors on devices that don't support notification images
+    if (imageUrl && (imageUrl.startsWith('https://') || imageUrl.startsWith('http://'))) {
+      notificationOptions.image = imageUrl;
+    }
 
     return self.registration.showNotification(notificationTitle, notificationOptions);
   });

@@ -32,7 +32,7 @@ const AllNotificationsPage: React.FC = () => {
       });
       setNotifications(result.data || []);
       setTotalPages(result.totalPages || 1);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load notifications:', error);
       toast({ title: 'Error', description: 'Failed to load notifications', variant: 'destructive' });
     } finally {
@@ -53,7 +53,7 @@ const AllNotificationsPage: React.FC = () => {
       await notificationApiService.markAsRead(notificationId);
       setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
       decrementUnread();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to mark as read:', error);
     }
   };
@@ -64,7 +64,7 @@ const AllNotificationsPage: React.FC = () => {
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       resetUnread();
       toast({ title: 'Done', description: 'All notifications marked as read' });
-    } catch (error) {
+    } catch (error: any) {
       toast({ title: 'Error', description: 'Failed to mark all as read', variant: 'destructive' });
     }
   };

@@ -64,7 +64,7 @@ const CreateCourseForm = ({ onSuccess, onCancel }: CreateCourseFormProps) => {
           role: userRole || 'User'
         });
         setOrganizations(response.data);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching organizations:', error);
         toast({
           title: "Error",
@@ -139,7 +139,7 @@ const CreateCourseForm = ({ onSuccess, onCancel }: CreateCourseFormProps) => {
       });
       
       onSuccess(newCourse);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating course:', error);
       toast({
         title: "Error",

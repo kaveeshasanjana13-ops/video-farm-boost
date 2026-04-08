@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,11 +9,11 @@ import { AlertCircle, Video, User, Calendar, ChevronDown, ChevronRight, Play, Pl
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format } from 'date-fns';
 import VideoPreviewDialog from '@/components/VideoPreviewDialog';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import CreateStructuredLectureForm from '@/components/forms/CreateStructuredLectureForm';
 import UpdateStructuredLectureForm from '@/components/forms/UpdateStructuredLectureForm';
 import DeleteStructuredLectureDialog from '@/components/forms/DeleteStructuredLectureDialog';
-import { StructuredLecture } from '@/api/structuredLectures.api';
+import { structuredLecturesApi, StructuredLecture } from '@/api/structuredLectures.api';
 
 interface Attachment {
   documentName: string;
@@ -42,6 +43,7 @@ interface Lecture {
 
 const FreeLectures = () => {
   const { selectedInstitute, selectedClass, selectedSubject, selectedClassGrade } = useAuth();
+  const { subjectLabel } = useInstituteLabels();
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +59,7 @@ const FreeLectures = () => {
   const isTeacher = instituteUserType === 'TEACHER';
   const canManageLectures = isInstituteAdmin || isTeacher;
 
-  const contextKey = `${selectedSubject?.id}-${selectedClassGrade}`;
+  const contextKey = `${selectedInstitute?.id}-${selectedSubject?.id}-${selectedClassGrade ?? ''}`;
   const [lastLoadedContext, setLastLoadedContext] = useState<string>('');
 
   const lecturesByLesson = React.useMemo(() => {
@@ -83,41 +85,55 @@ const FreeLectures = () => {
   const totalLessons = availableLessons.length;
 
   useEffect(() => {
-    if (selectedSubject && (selectedClassGrade !== null && selectedClassGrade !== undefined) && contextKey !== lastLoadedContext) {
+    if (selectedInstitute && selectedSubject && contextKey !== lastLoadedContext) {
       setLastLoadedContext(contextKey);
       fetchFreeLectures(false);
     }
   }, [contextKey]);
 
   const handleLoadLectures = () => {
-    if (selectedSubject && (selectedClassGrade !== null && selectedClassGrade !== undefined)) {
+    if (selectedInstitute && selectedSubject) {
       fetchFreeLectures(true);
     }
   };
 
   const fetchFreeLectures = async (forceRefresh = false) => {
-    if (!selectedSubject || selectedClassGrade === null || selectedClassGrade === undefined) return;
+    if (!selectedInstitute || !selectedSubject) return;
     setLoading(true);
     setError(null);
     try {
-      const baseUrl = import.meta.env.VITE_LMS_BASE_URL || 'https://lmsapi.suraksha.lk';
-      const grade = selectedClassGrade || selectedClass?.grade || 10;
-      const endpoint = `/api/structured-lectures/subject/${selectedSubject.id}?grade=${grade}`;
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const response = await fetch(`${baseUrl}${endpoint}`, { method: 'GET', headers });
-      if (!response.ok) {
-        if (response.status === 404) { setLectures([]); setError(null); return; }
-        if (response.status === 401) { setError('Authentication required. Please log in again.'); return; }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data: Lecture[] = await response.json();
-      setLectures(data);
+      const grade = selectedClassGrade || selectedClass?.grade || undefined;
+      const result = await structuredLecturesApi.getByInstituteAndSubject(selectedInstitute.id, selectedSubject.id, grade);
+      const fetchedLectures: Lecture[] = result.lectures.map(sl => ({
+        id: sl._id,
+        title: sl.title,
+        description: sl.description,
+        subjectId: sl.subjectId,
+        grade: sl.grade,
+        lessonNumber: sl.lessonNumber,
+        lectureNumber: sl.lectureNumber,
+        videoUrl: sl.lectureLink || null,
+        lectureVideoUrl: sl.lectureLink || null,
+        thumbnailUrl: sl.coverImageUrl || null,
+        coverImageUrl: sl.coverImageUrl || null,
+        attachments: sl.documents.map(d => ({ documentName: d.documentName, documentUrl: d.documentUrl })),
+        documentUrls: null,
+        isActive: sl.isActive,
+        createdBy: sl.createdBy || '',
+        createdAt: sl.createdAt,
+        updatedAt: sl.updatedAt,
+        provider: sl.provider,
+      }));
+      setLectures(fetchedLectures);
     } catch (err: any) {
-      console.error('Error fetching free lectures:', err);
-      if (err.message?.includes('404')) { setLectures([]); setError(null); return; }
-      setError('Error loading free lectures. Please try again.');
+      console.error('Error fetching lectures:', err);
+      if (err?.status === 404 || err?.message?.includes('404')) {
+        setLectures([]);
+        setError(null);
+        return;
+      }
+      if (err?.status === 401) { setError('Authentication required. Please log in again.'); return; }
+      setError('Error loading lectures. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -140,34 +156,38 @@ const FreeLectures = () => {
   const handleDeleteSuccess = () => { setDeletingLecture(null); fetchFreeLectures(true); };
 
   const toStructuredLecture = (lecture: Lecture): StructuredLecture => ({
-    id: lecture.id,
+    _id: lecture.id,
     instituteId: selectedInstitute?.id || '',
-    classId: selectedClass?.id || '',
     subjectId: lecture.subjectId,
     grade: lecture.grade,
     lessonNumber: lecture.lessonNumber || 1,
     lectureNumber: lecture.lectureNumber || 1,
     title: lecture.title,
     description: lecture.description,
-    lectureVideoUrl: lecture.videoUrl || lecture.lectureVideoUrl || undefined,
+    lectureLink: lecture.videoUrl || lecture.lectureVideoUrl || undefined,
     coverImageUrl: lecture.thumbnailUrl || lecture.coverImageUrl || undefined,
-    documentUrls: lecture.documentUrls || lecture.attachments?.map(a => a.documentUrl),
+    documents: (lecture.attachments || []).map(a => ({
+      documentName: a.documentName,
+      documentUrl: a.documentUrl,
+      name: a.documentName,
+      url: a.documentUrl,
+    })),
     provider: lecture.provider,
     isActive: lecture.isActive,
     createdBy: lecture.createdBy,
     createdAt: lecture.createdAt,
-    updatedAt: lecture.updatedAt
+    updatedAt: lecture.updatedAt,
   });
 
-  if (!selectedSubject || selectedClassGrade === null || selectedClassGrade === undefined) {
+  if (!selectedInstitute || !selectedSubject) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-3">
           <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
             <BookOpen className="h-8 w-8 text-primary" />
           </div>
-          <h2 className="text-xl font-semibold">Select a Subject</h2>
-          <p className="text-sm text-muted-foreground">Please select a subject to view lectures</p>
+          <h2 className="text-xl font-semibold">Select a {subjectLabel}</h2>
+          <p className="text-sm text-muted-foreground">Please select a {subjectLabel.toLowerCase()} to view lectures</p>
         </div>
       </div>
     );
@@ -346,11 +366,15 @@ const FreeLectures = () => {
       />
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="sr-only">Create Lecture</DialogTitle>
+          <DialogDescription className="sr-only">Form to create a new structured lecture</DialogDescription>
           <CreateStructuredLectureForm onClose={() => setShowCreateDialog(false)} onSuccess={handleCreateSuccess} />
         </DialogContent>
       </Dialog>
       <Dialog open={!!editingLecture} onOpenChange={(open) => !open && setEditingLecture(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="sr-only">Edit Lecture</DialogTitle>
+          <DialogDescription className="sr-only">Form to update an existing structured lecture</DialogDescription>
           {editingLecture && (
             <UpdateStructuredLectureForm lecture={toStructuredLecture(editingLecture)} onClose={() => setEditingLecture(null)} onSuccess={handleUpdateSuccess} />
           )}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import {
   Download,
   Search
 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { childAttendanceApi, type ChildAttendanceResponse } from '@/api/childAttendance.api';
@@ -27,8 +28,27 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
+
+const CAP_COL_DEFS: ColumnDef[] = [
+  { key: 'date', header: 'Date', locked: true, defaultWidth: 120, minWidth: 90 },
+  { key: 'status', header: 'Status', defaultWidth: 110, minWidth: 80 },
+  { key: 'institute', header: 'Institute', defaultWidth: 150, minWidth: 110 },
+  { key: 'class', header: 'Class', defaultWidth: 130, minWidth: 90 },
+  { key: 'subject', header: 'Subject', defaultWidth: 150, minWidth: 110 },
+  { key: 'location', header: 'Location', defaultVisible: false, defaultWidth: 150, minWidth: 110 },
+  { key: 'method', header: 'Method', defaultWidth: 120, minWidth: 90 },
+];
 
 const ChildAttendancePage = () => {
+  const capColIds = useMemo(() => CAP_COL_DEFS.map(c => c.key), []);
+  const capColDefaultWidths = useMemo(() => Object.fromEntries(CAP_COL_DEFS.map(c => [c.key, c.defaultWidth!])), []);
+  const { getWidth: getCAPColWidth, setHoveredCol: setCAPHoveredCol, ResizeHandle: CAPResizeHandle } = useResizableColumns(capColIds, capColDefaultWidths);
+  const { colState: capColState, visibleColumns: capVisDefs, toggleColumn: toggleCAPCol, resetColumns: resetCAPCols } = useColumnConfig(CAP_COL_DEFS, 'child-attendance-page');
+  const capVisKeys = useMemo(() => new Set(capVisDefs.map(c => c.key)), [capVisDefs]);
+
   const { selectedChild } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -40,6 +60,12 @@ const ChildAttendancePage = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [showFilters, setShowFilters] = useState(false);
+
+  useEffect(() => {
+    if (selectedChild?.id) {
+      loadAttendance();
+    }
+  }, [selectedChild?.id]);
 
   const loadAttendance = async () => {
     if (!selectedChild?.id) {
@@ -62,11 +88,7 @@ const ChildAttendancePage = () => {
       });
       
       setAttendanceData(response);
-      toast({
-        title: "Success",
-        description: `Loaded ${response.data?.length || 0} attendance records`,
-      });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading attendance:', error);
       toast({
         title: "Error",
@@ -127,6 +149,8 @@ const ChildAttendancePage = () => {
         <p className="text-muted-foreground">
           {selectedChild?.user?.firstName 
             ? `Viewing attendance for ${selectedChild.user.firstName} ${selectedChild.user.lastName || ''}`.trim() 
+            : selectedChild?.name
+            ? `Viewing attendance for ${selectedChild.name}`
             : 'Select a child to view attendance'}
         </p>
         </div>
@@ -189,41 +213,21 @@ const ChildAttendancePage = () => {
         </CardContent>
       </Card>
 
-      {/* Load Button - Show when no data */}
-      {!attendanceData && !showFilters && (
-        <Card className="border-dashed border-2 bg-gradient-to-br from-muted/30 to-muted/10">
-          <CardContent className="py-12">
-            <div className="text-center space-y-6">
-              <div className="relative inline-flex">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                  <CalendarDays className="w-10 h-10 text-primary" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-semibold">Load Attendance Data</h3>
-                <p className="text-muted-foreground max-w-sm mx-auto">
-                  Click below to fetch attendance records for your child
-                </p>
-              </div>
-              <Button onClick={loadAttendance} disabled={loading} size="lg" className="gap-2 px-8">
-                {loading ? (
-                  <>
-                    <RefreshCw className="h-5 w-5 animate-spin" />
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    <CalendarDays className="h-5 w-5" />
-                    Load Attendance
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Summary Cards */}
+      {loading && !attendanceData && (
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      )}
+      {!loading && !attendanceData && (
+        <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+            <CalendarDays className="h-7 w-7 opacity-40" />
+          </div>
+          <p className="font-medium">No attendance records found</p>
+          <p className="text-sm text-muted-foreground">No records available for the selected date range.</p>
+        </div>
+      )}
       {attendanceData?.summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="bg-card">
@@ -304,22 +308,23 @@ const ChildAttendancePage = () => {
                   {attendanceData.pagination.totalRecords}
                 </Badge>
               </span>
+              <ColumnConfigurator allColumns={CAP_COL_DEFS} colState={capColState} onToggle={toggleCAPCol} onReset={resetCAPCols} />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">
             {attendanceData.data && attendanceData.data.length > 0 ? (
               <Paper sx={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-                  <Table stickyHeader aria-label="attendance records table">
+                  <Table stickyHeader aria-label="attendance records table" sx={{ tableLayout: 'fixed', minWidth: capVisDefs.reduce((s, c) => s + getCAPColWidth(c.key), 0) }}>
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Institute</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Class</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Subject</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>Method</TableCell>
+                        {capVisDefs.map((col) => (
+                          <TableCell key={col.key} sx={{ position: 'relative', width: getCAPColWidth(col.key), fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}
+                            onMouseEnter={() => setCAPHoveredCol(col.key)} onMouseLeave={() => setCAPHoveredCol(null)}>
+                            <div style={{ paddingRight: 12 }}>{col.header}</div>
+                            <CAPResizeHandle colId={col.key} />
+                          </TableCell>
+                        ))}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -327,28 +332,13 @@ const ChildAttendancePage = () => {
                         .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                         .map((record, index) => (
                           <TableRow hover key={record.attendanceId || `${record.studentId}-${record.date}-${index}`}>
-                            <TableCell>
-                              <span className="font-medium">
-                                {new Date(record.date || record.markedAt || '').toLocaleDateString()}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={`${getStatusColor(record.status)} border`}>
-                                <div className="flex items-center gap-1.5">
-                                  {getStatusIcon(record.status)}
-                                  {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                                </div>
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{record.instituteName || '-'}</TableCell>
-                            <TableCell>{record.className || '-'}</TableCell>
-                            <TableCell>{record.subjectName || '-'}</TableCell>
-                            <TableCell className="text-muted-foreground">{record.location || record.address || '-'}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs font-normal">
-                                {record.markingMethod}
-                              </Badge>
-                            </TableCell>
+                            {capVisKeys.has('date') && <TableCell style={{ width: getCAPColWidth('date'), maxWidth: getCAPColWidth('date'), overflow: 'hidden' }}><span className="font-medium">{new Date(record.date || record.markedAt || '').toLocaleDateString()}</span></TableCell>}
+                            {capVisKeys.has('status') && <TableCell style={{ width: getCAPColWidth('status'), maxWidth: getCAPColWidth('status'), overflow: 'hidden' }}><Badge className={`${getStatusColor(record.status)} border`}><div className="flex items-center gap-1.5">{getStatusIcon(record.status)}{record.status.charAt(0).toUpperCase() + record.status.slice(1)}</div></Badge></TableCell>}
+                            {capVisKeys.has('institute') && <TableCell style={{ width: getCAPColWidth('institute'), maxWidth: getCAPColWidth('institute'), overflow: 'hidden' }}>{record.instituteName || '-'}</TableCell>}
+                            {capVisKeys.has('class') && <TableCell style={{ width: getCAPColWidth('class'), maxWidth: getCAPColWidth('class'), overflow: 'hidden' }}>{record.className || '-'}</TableCell>}
+                            {capVisKeys.has('subject') && <TableCell style={{ width: getCAPColWidth('subject'), maxWidth: getCAPColWidth('subject'), overflow: 'hidden' }}>{record.subjectName || '-'}</TableCell>}
+                            {capVisKeys.has('location') && <TableCell style={{ width: getCAPColWidth('location'), maxWidth: getCAPColWidth('location'), overflow: 'hidden' }} className="text-muted-foreground">{record.location || record.address || '-'}</TableCell>}
+                            {capVisKeys.has('method') && <TableCell style={{ width: getCAPColWidth('method'), maxWidth: getCAPColWidth('method'), overflow: 'hidden' }}><Badge variant="outline" className="text-xs font-normal">{record.markingMethod}</Badge></TableCell>}
                           </TableRow>
                         ))}
                     </TableBody>
@@ -365,13 +355,11 @@ const ChildAttendancePage = () => {
                 />
               </Paper>
             ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <CalendarDays className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                <p className="text-lg font-medium">No Records Found</p>
-                <p className="text-muted-foreground">
-                  No attendance records found for the selected date range.
-                </p>
-              </div>
+              <EmptyState
+                icon={CalendarDays}
+                title="No Records Found"
+                description="No attendance records found for the selected date range."
+              />
             )}
           </CardContent>
         </Card>

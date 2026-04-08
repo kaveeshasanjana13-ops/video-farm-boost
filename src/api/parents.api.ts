@@ -1,5 +1,7 @@
 
 import { apiClient } from './client';
+import { enhancedCachedClient } from './enhancedCachedClient';
+import { CACHE_TTL } from '@/config/cacheTTL';
 
 export interface ParentCreateData {
   user: {
@@ -137,9 +139,10 @@ export const parentsApi = {
     if (params?.sortOrder) queryParams.append('sortOrder', params.sortOrder);
     
     const url = `/institute-users/institute/${instituteId}/users/PARENT${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    const response = await apiClient.get(url);
-    console.log('Raw response from API client:', response);
-    // Return the response directly since apiClient.handleResponse already parses the JSON
+    const response = await enhancedCachedClient.get(url, undefined, {
+      ttl: CACHE_TTL.STUDENTS,
+      instituteId,
+    });
     return response;
   },
 
@@ -158,8 +161,11 @@ export const parentsApi = {
     if (params?.sortOrder) queryParams.append('sortOrder', params.sortOrder);
     
     const url = `/institute-users/institute/${instituteId}/users/PARENT/class/${classId}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    const response = await apiClient.get(url);
-    console.log('Class parents raw response from API client:', response);
+    const response = await enhancedCachedClient.get(url, undefined, {
+      ttl: CACHE_TTL.STUDENTS,
+      instituteId,
+      classId,
+    });
     return response;
   },
 
@@ -179,13 +185,19 @@ export const parentsApi = {
     if (params?.sortOrder) queryParams.append('sortOrder', params.sortOrder);
     
     const url = `/institute-users/institute/${instituteId}/users/PARENT/class/${classId}/subject/${subjectId}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-    const response = await apiClient.get(url);
-    console.log('Subject parents raw response from API client:', response);
+    const response = await enhancedCachedClient.get(url, undefined, {
+      ttl: CACHE_TTL.STUDENTS,
+      instituteId,
+      classId,
+      subjectId,
+    });
     return response;
   },
 
   getChildren: async (parentId: string): Promise<ParentChildrenResponse> => {
-    const response = await apiClient.get(`/parents/${parentId}/children`);
+    const response = await enhancedCachedClient.get(`/parents/${parentId}/children`, undefined, {
+      ttl: CACHE_TTL.DEFAULT,
+    });
     return response;
   },
   

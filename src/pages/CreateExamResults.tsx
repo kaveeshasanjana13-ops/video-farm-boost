@@ -9,11 +9,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { ArrowLeft, Save, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Save, RefreshCw, Users } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import donutChartIcon from '@/assets/donut-chart.png';
 import { examApi } from '@/api/exam.api';
-import { examResultsApi } from '@/api/examResults.api';
-import { instituteApi } from '@/api/institute.api';
+import { examResultsApi, type Grade } from '@/api/examResults.api';
 import GradeConfigurationCard, { GradeRange } from '@/components/GradeConfigurationCard';
 import { cn } from '@/lib/utils';
 
@@ -43,7 +43,7 @@ interface Student {
 interface StudentResult {
   studentId: string;
   score: string;
-  grade: string;
+  grade: Grade | '';
   remarks: string;
 }
 
@@ -86,7 +86,6 @@ const CreateExamResults = () => {
   }, [examId, instituteId, classId, subjectId]);
 
   const loadData = async () => {
-    // Use URL params directly - they should always be present in this route
     if (!examId || !instituteId || !classId || !subjectId) {
       console.log('Missing URL params:', { examId, instituteId, classId, subjectId });
       return;
@@ -94,53 +93,51 @@ const CreateExamResults = () => {
 
     setLoading(true);
     try {
-      // Load exam details from the exams list to avoid 403 error on single exam endpoint
+      // Load exam details
       const examsResponse = await examApi.getExams({
-        instituteId: instituteId,
-        classId: classId,
-        subjectId: subjectId,
-        page: 1,
-        limit: 50
-      });
-      
-      // Find the specific exam from the list
-      const examData = examsResponse.data.find((exam: any) => exam.id === examId);
-      if (examData) {
-        setExam(examData);
-      }
-
-      // Load students from API
-      const response = await instituteApi.getInstituteStudentsByClassAndSubject(
         instituteId,
         classId,
         subjectId,
-        { page: 1, limit: 100 }
-      );
+        page: 1,
+        limit: 50
+      });
+      const examData = examsResponse.data.find((e: any) => e.id === examId);
+      if (examData) setExam(examData);
 
-      // Map the API response to Student interface
-      const studentsData: Student[] = response.data?.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        email: item.email || '',
-        imageUrl: item.imageUrl,
-        userIdByInstitute: item.userIdByInstitute || item.studentId || ''
-      })) || [];
+      // Load students WITH their existing marks in one call
+      const studentsWithMarks = await examResultsApi.getStudentsWithMarks({
+        instituteId,
+        classId,
+        subjectId,
+        examId,
+      });
+
+      const studentsData: Student[] = studentsWithMarks.map((s) => ({
+        id: s.userId,
+        name: [s.firstName, s.lastName].filter(Boolean).join(' ') || s.userId,
+        email: '',
+        imageUrl: s.imageUrl ?? undefined,
+        userIdByInstitute: '',
+      }));
 
       setStudents(studentsData);
 
-      // Initialize results object
+      // Pre-populate results — use existing mark if already graded
+      const isUngraded = (s: typeof studentsWithMarks[number]) =>
+        s.score === '0' && s.grade === null;
+
       const initialResults: Record<string, StudentResult> = {};
-      studentsData.forEach((student: Student) => {
-        initialResults[student.id] = {
-          studentId: student.id,
-          score: '',
-          grade: '',
-          remarks: ''
+      studentsWithMarks.forEach((s) => {
+        initialResults[s.userId] = {
+          studentId: s.userId,
+          score: isUngraded(s) ? '' : s.score,
+          grade: s.grade ?? '',
+          remarks: '',
         };
       });
       setResults(initialResults);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading data:', error);
       toast({
         title: "Error",
@@ -214,7 +211,12 @@ const CreateExamResults = () => {
         classId: classId,
         subjectId: subjectId,
         examId: examId,
-        results: validResults
+        results: validResults.map(r => ({
+          studentId: r.studentId,
+          score: r.score || undefined,
+          grade: (r.grade as Grade) || undefined,
+          remarks: r.remarks || undefined,
+        })),
       });
 
       toast({
@@ -223,7 +225,7 @@ const CreateExamResults = () => {
       });
 
       navigate(`/institute/${instituteId}/class/${classId}/subject/${subjectId}/exams`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating results:', error);
       toast({
         title: "Error",
@@ -288,11 +290,11 @@ const CreateExamResults = () => {
         </div>
 
       {students.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">No students found for this class and subject.</p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Users}
+          title="No Students Found"
+          description="No students found for this class and subject."
+        />
       ) : (
         <>
           <div className="space-y-4">

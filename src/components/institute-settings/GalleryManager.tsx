@@ -6,6 +6,7 @@ import { instituteSettingsApi, InstituteSettingsResponse } from '@/api/institute
 import { uploadWithSignedUrl } from '@/utils/signedUploadHelper';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { Plus, Trash2, Loader2, ImageIcon, Images } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 interface GalleryManagerProps {
   instituteId: string;
@@ -37,7 +38,7 @@ export const GalleryManager: React.FC<GalleryManagerProps> = ({
       onUpdate(updated);
       toast({ title: 'Added', description: 'Image added to gallery.' });
     } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'Failed to add image', variant: 'destructive' });
+      toast({ title: 'Error', description: getErrorMessage(error, 'Failed to add image'), variant: 'destructive' });
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -51,7 +52,7 @@ export const GalleryManager: React.FC<GalleryManagerProps> = ({
       onUpdate(updated);
       toast({ title: 'Removed', description: 'Image removed from gallery.' });
     } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'Failed to remove image', variant: 'destructive' });
+      toast({ title: 'Error', description: getErrorMessage(error, 'Failed to remove image'), variant: 'destructive' });
     } finally {
       setRemovingIndex(null);
     }

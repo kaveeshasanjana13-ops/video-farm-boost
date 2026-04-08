@@ -46,7 +46,7 @@ const OrganizationLectures = ({ organizationId, courseId }: OrganizationLectures
       const response = await organizationApi.getLectures(params);
       setLectures(response.data);
       setTotalPages(response.pagination.totalPages);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching lectures:', error);
       toast({
         title: "Error",

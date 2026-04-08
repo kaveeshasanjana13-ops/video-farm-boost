@@ -7,13 +7,14 @@ import { getImageUrl } from '@/utils/imageUrlHelper';
 import { DataCardView } from '@/components/ui/data-card-view';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useAuth, type UserRole } from '@/contexts/AuthContext';
-import { School, Users, BookOpen, Clock, RefreshCw, User, Search, Filter, Image, ChevronLeft, ChevronRight } from 'lucide-react';
+import { School, Users, BookOpen, Clock, RefreshCw, User, Search, Filter, Image, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { getBaseUrl } from '@/contexts/utils/auth.api';
 import { Input } from '@/components/ui/input';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useAppNavigation } from '@/hooks/useAppNavigation';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { cachedApiClient } from '@/api/cachedClient';
@@ -26,9 +27,17 @@ import { instituteClassesApi, type EnrollClassData } from '@/api/instituteClasse
 import ChildCurrentSelection from '@/components/ChildCurrentSelection';
 
 const enrollFormSchema = z.object({
-  classId: z.string().min(1, 'Class ID is required'),
+  classId: z.string().min(1, 'Class is required'),
   enrollmentCode: z.string().min(1, 'Enrollment code is required')
 });
+
+interface EnrollableClass {
+  id: string;
+  name: string;
+  code?: string;
+  grade?: number;
+}
+
 const resolveImageUrl = (val?: string) => {
   if (!val) return '';
   if (val.startsWith('http')) return val;
@@ -133,6 +142,7 @@ interface ClassCardData {
   isActive: boolean;
   imageUrl?: string;
   isVerified?: boolean; // For student enrolled classes - true means verified, false means pending
+  enrollmentStatus?: 'VERIFIED' | 'PENDING' | 'REJECTED'; // Explicit enrollment status for students
 }
 const ClassSelector = () => {
   const {
@@ -150,6 +160,7 @@ const ClassSelector = () => {
   } = useToast();
   const effectiveRole = useInstituteRole();
   const { navigateToPage } = useAppNavigation();
+  const { classLabel } = useInstituteLabels();
   const [classesData, setClassesData] = useState<ClassCardData[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<ClassCardData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -157,6 +168,8 @@ const ClassSelector = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
   const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollableClasses, setEnrollableClasses] = useState<EnrollableClass[]>([]);
+  const [loadingEnrollableClasses, setLoadingEnrollableClasses] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const enrollForm = useForm<z.infer<typeof enrollFormSchema>>({
     resolver: zodResolver(enrollFormSchema),
@@ -183,6 +196,23 @@ const ClassSelector = () => {
     window.addEventListener('sidebar:state', handler as any);
     return () => window.removeEventListener('sidebar:state', handler as any);
   }, []);
+
+  // Load enrollable classes when dialog opens
+  useEffect(() => {
+    if (enrollDialogOpen && currentInstituteId) {
+      setLoadingEnrollableClasses(true);
+      instituteClassesApi.getByInstitute(currentInstituteId, { limit: 500 })
+        .then(res => {
+          const classes = Array.isArray(res) ? res : res?.data || [];
+          setEnrollableClasses(classes.map(c => ({ id: c.id, name: c.name, code: c.code, grade: c.grade })));
+        })
+        .catch(err => {
+          console.error('Failed to load enrollable classes:', err);
+          setEnrollableClasses([]);
+        })
+        .finally(() => setLoadingEnrollableClasses(false));
+    }
+  }, [enrollDialogOpen, currentInstituteId]);
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -236,7 +266,7 @@ const ClassSelector = () => {
       });
       console.log('Raw API response:', result);
       processClassesData(result, effectiveRole, page);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load classes:', error);
 
       // Fallback: try alternative endpoint for admin users (not for students)
@@ -270,6 +300,7 @@ const ClassSelector = () => {
     }
   };
   const processClassesData = (result: any, userRole: UserRole, page: number) => {
+    // eslint-disable-next-line no-useless-assignment
     let classesArray: ClassData[] = [];
     let pagination = {
       total: 0,
@@ -294,28 +325,36 @@ const ClassSelector = () => {
         pagination.total = result.total || result.data.length;
         pagination.totalPages = result.totalPages || Math.ceil(pagination.total / (result.limit || 10));
       }
-      classesArray = studentClasses.map((item: StudentClassData): ClassData & { isVerified?: boolean } => ({
-        id: item.class.id,
-        name: item.class.name,
-        code: item.class.code,
-        description: `${item.class.name} - ${item.class.specialty}`,
-        specialty: item.class.specialty,
-        classType: item.class.classType,
-        academicYear: item.class.academicYear,
-        isActive: item.isActive,
-        capacity: 0,
-        // Not provided in student response
-        grade: item.class.grade,
-        instituteId: item.instituteId,
-        imageUrl: item.class.imageUrl,
-        // Now includes imageUrl from response
-        isVerified: item.isVerified, // Track verification status for students
-        _count: {
-          students: 0,
-          // Not provided in student response
-          subjects: 0 // Not provided in student response
+      classesArray = studentClasses.map((item: StudentClassData): ClassData & { isVerified?: boolean; enrollmentStatus?: string } => {
+        const raw = item as any;
+        let enrollmentStatus: 'VERIFIED' | 'PENDING' | 'REJECTED';
+        if (raw.status === 'REJECTED' || raw.enrollmentStatus === 'REJECTED') {
+          enrollmentStatus = 'REJECTED';
+        } else if (item.isVerified === false && raw.isActive === false) {
+          enrollmentStatus = 'REJECTED';
+        } else if (item.isVerified) {
+          enrollmentStatus = 'VERIFIED';
+        } else {
+          enrollmentStatus = 'PENDING';
         }
-      }));
+        return {
+          id: item.class.id,
+          name: item.class.name,
+          code: item.class.code,
+          description: `${item.class.name} - ${item.class.specialty}`,
+          specialty: item.class.specialty,
+          classType: item.class.classType,
+          academicYear: item.class.academicYear,
+          isActive: item.isActive,
+          capacity: 0,
+          grade: item.class.grade,
+          instituteId: item.instituteId,
+          imageUrl: item.class.imageUrl,
+          isVerified: item.isVerified,
+          enrollmentStatus,
+          _count: { students: 0, subjects: 0 },
+        };
+      });
     } else if (userRole === 'Teacher') {
       // Handle new teacher classes response with proper pagination
       let teacherClassAssignments: any[] = [];
@@ -405,7 +444,8 @@ const ClassSelector = () => {
       classType: classItem.classType || 'Regular',
       isActive: (classItem as any).isActive !== false,
       imageUrl: resolveImageUrl((classItem as any).imageUrl || (classItem as any).image || (classItem as any).logo || (classItem as any).coverImageUrl),
-      isVerified: (classItem as any).isVerified // Preserve verification status
+      isVerified: (classItem as any).isVerified,
+      enrollmentStatus: (classItem as any).enrollmentStatus as 'VERIFIED' | 'PENDING' | 'REJECTED' | undefined,
     }));
     console.log('Transformed classes:', transformedClasses);
     setClassesData(transformedClasses);
@@ -464,10 +504,11 @@ const ClassSelector = () => {
       specialty: classData.specialty || 'General'
     });
 
-    // When parent is viewing child's data, navigate to child's subject selection
+    // When parent is viewing child's data, navigate to child's subject selection.
+    // replace:true removes /select-class from the back stack — same reason as select-institute.
     if (isViewingAsParent && selectedChild) {
       console.log('Parent viewing child - navigating to child subject selection');
-      navigate(`/child/${selectedChild.id}/select-subject`);
+      navigate(`/child/${selectedChild.id}/select-subject`, { replace: true });
       return;
     }
 
@@ -481,9 +522,11 @@ const ClassSelector = () => {
       console.log(`${effectiveRole} detected - auto-navigating to select subject`);
       // IMPORTANT: navigate directly using IDs to avoid using stale selection state
       // (stale state caused /institute/:id/select-subject or /select-subject and then auto-clearing).
+      // replace:true removes /select-class from history — back returns to the page before the
+      // entire selection flow, not to this class-selection screen.
       const instituteId = currentInstituteId || selectedInstitute?.id;
       if (instituteId) {
-        navigate(`/institute/${instituteId}/class/${classData.id}/select-subject`);
+        navigate(`/institute/${instituteId}/class/${classData.id}/select-subject`, { replace: true });
       } else {
         navigate('/select-institute');
       }
@@ -524,8 +567,9 @@ const ClassSelector = () => {
         });
       }
       enrollForm.reset();
+      setEnrollableClasses([]);
       fetchClassesByRole(currentPage, pageSize, true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Enrollment error:', error);
       const errorMessage = error instanceof Error ? error.message : '';
       if (errorMessage.toLowerCase().includes('invalid') || errorMessage.toLowerCase().includes('code') || errorMessage.toLowerCase().includes('not found') || errorMessage.toLowerCase().includes('incorrect')) {
@@ -627,7 +671,7 @@ const ClassSelector = () => {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1.5 sm:gap-2 mb-2 sm:mb-4">
         <div className="flex-1">
           <h1 className="text-sm sm:text-base md:text-lg font-semibold text-foreground mb-0.5">
-            Select Class
+            Select {classLabel}
           </h1>
           <p className="text-[10px] sm:text-xs text-muted-foreground">
             Choose a class to manage lectures and attendance
@@ -780,15 +824,21 @@ const ClassSelector = () => {
         </div> : <div className="flex flex-col min-h-[calc(100vh-180px)]">
           {/* Unified Card View - Same size on all devices */}
           <div
-            className={`grid grid-cols-1 sm:grid-cols-2 ${sidebarCollapsed ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-x-3 gap-y-8 sm:gap-x-4 sm:gap-y-10 pt-3 md:pt-6 mb-8`}
+            className={`grid grid-cols-1 sm:grid-cols-2 ${sidebarCollapsed ? 'lg:grid-cols-4 md:grid-cols-3' : 'lg:grid-cols-3 md:grid-cols-2'} gap-x-3 gap-y-8 sm:gap-x-4 sm:gap-y-10 pt-3 md:pt-6 mb-8`}
           >
             {filteredClasses.map(classItem => (
               <div key={classItem.id} className="relative flex w-full flex-col rounded-lg bg-card bg-clip-border text-card-foreground shadow-sm hover:shadow-md transition-all duration-300 border-2 border-primary/30 hover:border-primary/60">
-                {/* Verification Status Banner for Students */}
+                {/* Enrollment Status Banner for Students */}
                 {effectiveRole === 'Student' && classItem.isVerified === false && (
-                  <div className="absolute top-0 left-0 right-0 z-10 bg-amber-500/90 text-white text-[10px] font-medium py-0.5 px-2 rounded-t-lg text-center">
-                    ⏳ Pending Verification
-                  </div>
+                  classItem.enrollmentStatus === 'REJECTED' ? (
+                    <div className="absolute top-0 left-0 right-0 z-10 bg-red-500/90 text-white text-[10px] font-medium py-0.5 px-2 rounded-t-lg text-center">
+                      ❌ Enrollment Rejected
+                    </div>
+                  ) : (
+                    <div className="absolute top-0 left-0 right-0 z-10 bg-amber-500/90 text-white text-[10px] font-medium py-0.5 px-2 rounded-t-lg text-center">
+                      ⏳ Pending Verification
+                    </div>
+                  )
                 )}
                 
                 {/* Class Image - Gradient Header */}
@@ -866,10 +916,17 @@ const ClassSelector = () => {
                   
                   {/* Show Select button only for verified classes (or non-student roles) */}
                   {classItem.isVerified === false ? (
-                    <div className="w-full select-none rounded-md bg-amber-100 dark:bg-amber-900/30 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700">
-                      <Clock className="h-3 w-3 inline-block mr-1" />
-                      Pending
-                    </div>
+                    classItem.enrollmentStatus === 'REJECTED' ? (
+                      <div className="w-full select-none rounded-md bg-red-100 dark:bg-red-900/30 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700">
+                        <XCircle className="h-3 w-3 inline-block mr-1" />
+                        Rejected
+                      </div>
+                    ) : (
+                      <div className="w-full select-none rounded-md bg-amber-100 dark:bg-amber-900/30 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700">
+                        <Clock className="h-3 w-3 inline-block mr-1" />
+                        Pending
+                      </div>
+                    )
                   ) : (
                     <button 
                       onClick={(e) => {
@@ -878,7 +935,7 @@ const ClassSelector = () => {
                       }}
                       className="w-full select-none rounded-md bg-primary py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:shadow-md hover:shadow-primary/30 active:opacity-90"
                     >
-                      Select Class
+                      Select {classLabel}
                     </button>
                   )}
                 </div>
@@ -950,9 +1007,26 @@ const ClassSelector = () => {
               <FormField control={enrollForm.control} name="classId" render={({
               field
             }) => <FormItem>
-                    <FormLabel>Class ID</FormLabel>
+                    <FormLabel>Class</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter class ID" {...field} />
+                      <Select value={field.value} onValueChange={field.onChange} disabled={loadingEnrollableClasses}>
+                        <SelectTrigger className="text-sm">
+                          <SelectValue placeholder={loadingEnrollableClasses ? "Loading classes..." : "Select a class to enroll"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {enrollableClasses.length === 0 ? (
+                            <SelectItem value="_empty" disabled className="text-xs text-muted-foreground">
+                              {loadingEnrollableClasses ? "Loading..." : "No classes available"}
+                            </SelectItem>
+                          ) : (
+                            enrollableClasses.map(cls => (
+                              <SelectItem key={cls.id} value={cls.id} className="text-sm">
+                                {cls.name} {cls.code ? `(${cls.code})` : ''} {cls.grade ? `• Grade ${cls.grade}` : ''}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
                     </FormControl>
                     <FormMessage />
                   </FormItem>} />

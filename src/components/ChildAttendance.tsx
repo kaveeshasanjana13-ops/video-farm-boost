@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -17,8 +20,19 @@ import { useToast } from '@/hooks/use-toast';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { childAttendanceApi, type ChildAttendanceRecord, type ChildAttendanceResponse } from '@/api/childAttendance.api';
 import { useApiRequest } from '@/hooks/useApiRequest';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { AttendanceStatus, ATTENDANCE_STATUS_CONFIG, ATTENDANCE_CHART_COLORS, normalizeAttendanceSummary } from '@/types/attendance.types';
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+
+const CA_COL_DEFS: ColumnDef[] = [
+  { key: 'datetime', header: 'Date & Time', locked: true, defaultWidth: 200, minWidth: 120 },
+  { key: 'status', header: 'Status', locked: true, defaultWidth: 100, minWidth: 80 },
+  { key: 'institute', header: 'Institute', defaultVisible: false, defaultWidth: 160, minWidth: 100 },
+  { key: 'classSubject', header: 'Class & Subject', defaultVisible: true, defaultWidth: 180, minWidth: 120 },
+  { key: 'location', header: 'Location', defaultVisible: true, defaultWidth: 160, minWidth: 100 },
+  { key: 'markedBy', header: 'Marked By', defaultVisible: true, defaultWidth: 140, minWidth: 80 },
+  { key: 'method', header: 'Method', defaultVisible: true, defaultWidth: 120, minWidth: 80 },
+];
 
 const ChildAttendance = () => {
   const { selectedChild, user } = useAuth();
@@ -64,7 +78,7 @@ const ChildAttendance = () => {
         title: response.success ? "Attendance Loaded" : "Partial Load",
         description: response.message || `Loaded ${response.data?.length || 0} attendance records`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading child attendance:', error);
       toast({
         title: "Error",
@@ -230,13 +244,70 @@ const ChildAttendance = () => {
     return iconMap[normalizedStatus] || <User className="h-4 w-4" />;
   };
 
+  const renderCACell = (colId: string, record: ChildAttendanceRecord) => {
+    switch (colId) {
+      case 'datetime':
+        return (
+          <div className="flex flex-col">
+            <span className="font-medium">{formatDate(record.markedAt)}</span>
+            <span className="text-sm text-muted-foreground">{formatTime(record.markedAt)}</span>
+          </div>
+        );
+      case 'status':
+        return (
+          <Badge className={getStatusColor(record.status)}>
+            <div className="flex items-center gap-1">
+              {getStatusIcon(record.status)}
+              {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+            </div>
+          </Badge>
+        );
+      case 'institute':
+        return <span className="font-medium">{record.instituteName}</span>;
+      case 'classSubject':
+        return (
+          <div className="flex flex-col">
+            <span className="font-medium">{record.className}</span>
+            <span className="text-sm text-muted-foreground">{record.subjectName}</span>
+          </div>
+        );
+      case 'location':
+        return (
+          <div className="flex items-center gap-1 text-sm">
+            <MapPin className="h-3 w-3 text-muted-foreground" />
+            <span className="max-w-[150px] truncate" title={record.address}>
+              {record.address}
+            </span>
+          </div>
+        );
+      case 'markedBy':
+        return <span className="text-sm">{record.markedBy}</span>;
+      case 'method':
+        return (
+          <Badge variant="outline" className="text-xs">
+            {record.markingMethod}
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const { getWidth: getCAColWidth, totalWidth: totalCATableWidth, setHoveredCol: setCAHoveredCol, ResizeHandle: CAResizeHandle } = useResizableColumns(
+    ['datetime', 'status', 'institute', 'classSubject', 'location', 'markedBy', 'method'],
+    { datetime: 200, status: 100, institute: 160, classSubject: 180, location: 160, markedBy: 140, method: 120 }
+  );
+
+  const { colState: caColState, visibleColumns: caVisColDefs, toggleColumn: toggleCACol, resetColumns: resetCACols } = useColumnConfig(CA_COL_DEFS, 'child-attendance');
+  const caVisibleKeys = useMemo(() => new Set(caVisColDefs.map(c => c.key)), [caVisColDefs]);
 
   if (!selectedChild) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto p-4 sm:p-6">
         <Card>
-          <CardContent className="p-8 text-center">
+          <CardContent className="p-6 sm:p-8 text-center">
             <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">No Child Selected</h3>
             <p className="text-muted-foreground">
@@ -249,11 +320,11 @@ const ChildAttendance = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 min-h-screen flex flex-col space-y-6">
+    <div className="container mx-auto p-4 sm:p-6 min-h-screen flex flex-col space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Child Attendance</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Child Attendance</h1>
           <p className="text-muted-foreground">
             Viewing attendance for: <span className="font-semibold">{(selectedChild as any).name}</span>
           </p>
@@ -474,7 +545,10 @@ const ChildAttendance = () => {
           {/* Attendance Records Table */}
           <Card className="flex-1 min-h-0 flex flex-col">
             <CardHeader>
-              <CardTitle>Attendance Records</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>Attendance Records</CardTitle>
+                <ColumnConfigurator allColumns={CA_COL_DEFS} colState={caColState} onToggle={toggleCACol} onReset={resetCACols} />
+              </div>
               {attendanceData?.pagination && (
                 <p className="text-sm text-muted-foreground">
                   Page {attendanceData.pagination.currentPage} of {attendanceData.pagination.totalPages} 
@@ -491,16 +565,20 @@ const ChildAttendance = () => {
               ) : attendanceData?.data && attendanceData.data.length > 0 ? (
                 <Paper sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <TableContainer sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                    <Table stickyHeader aria-label="attendance table">
+                    <Table stickyHeader aria-label="attendance table" sx={{ tableLayout: 'fixed', minWidth: caVisColDefs.reduce((sum, col) => sum + getCAColWidth(col.key), 0) }}>
                       <TableHead>
                         <TableRow>
-                          <TableCell>Date & Time</TableCell>
-                          <TableCell>Status</TableCell>
-                          <TableCell>Institute</TableCell>
-                          <TableCell>Class & Subject</TableCell>
-                          <TableCell>Location</TableCell>
-                          <TableCell>Marked By</TableCell>
-                          <TableCell>Method</TableCell>
+                          {caVisColDefs.map((col) => (
+                            <TableCell
+                              key={col.key}
+                              onMouseEnter={() => setCAHoveredCol(col.key)}
+                              onMouseLeave={() => setCAHoveredCol(null)}
+                              style={{ position: 'relative', width: getCAColWidth(col.key), userSelect: 'none' }}
+                            >
+                              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col.header}</div>
+                              <CAResizeHandle colId={col.key} />
+                            </TableCell>
+                          ))}
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -508,43 +586,9 @@ const ChildAttendance = () => {
                           .slice(currentPage * limit, currentPage * limit + limit)
                           .map((record) => (
                           <TableRow hover role="checkbox" tabIndex={-1} key={record.attendanceId}>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{formatDate(record.markedAt)}</span>
-                                <span className="text-sm text-muted-foreground">{formatTime(record.markedAt)}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={getStatusColor(record.status)}>
-                                <div className="flex items-center gap-1">
-                                  {getStatusIcon(record.status)}
-                                  {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
-                                </div>
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <span className="font-medium">{record.instituteName}</span>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{record.className}</span>
-                                <span className="text-sm text-muted-foreground">{record.subjectName}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1 text-sm">
-                                <MapPin className="h-3 w-3 text-muted-foreground" />
-                                <span className="max-w-[150px] truncate" title={record.address}>
-                                  {record.address}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-sm">{record.markedBy}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs">
-                                {record.markingMethod}
-                              </Badge>
-                            </TableCell>
+                            {caVisColDefs.map(col => (
+                              <TableCell key={col.key}>{renderCACell(col.key, record)}</TableCell>
+                            ))}
                           </TableRow>
                         ))}
                       </TableBody>
@@ -566,13 +610,11 @@ const ChildAttendance = () => {
                   />
                 </Paper>
               ) : (
-                <div className="text-center py-8">
-                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Attendance Records</h3>
-                  <p className="text-muted-foreground">
-                    No attendance records found for the selected date range.
-                  </p>
-                </div>
+                <EmptyState
+                  icon={Calendar}
+                  title="No Attendance Records"
+                  description="No attendance records found for the selected date range."
+                />
               )}
             </CardContent>
           </Card>

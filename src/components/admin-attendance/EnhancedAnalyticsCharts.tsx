@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import adminAttendanceApi, { AdminAttendanceRecord } from '@/api/adminAttendance.api';
 import type { DailySummaryResult } from '@/api/adminAttendance.api';
-import { apiClient } from '@/api/client';
+import { cachedApiClient } from '@/api/cachedClient';
 import { normalizeAttendanceSummary } from '@/types/attendance.types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,7 +49,7 @@ const EnhancedAnalyticsCharts: React.FC = () => {
     try {
       const [rangeResult, classRes] = await Promise.allSettled([
         adminAttendanceApi.getInstituteAttendanceRangeWithSummary(currentInstituteId, startDate, endDate, { ttl: 300 }),
-        apiClient.get(`/institutes/${currentInstituteId}/classes`),
+        cachedApiClient.get(`/institutes/${currentInstituteId}/classes`, undefined, { ttl: 60 }),
       ]);
       
       const result = rangeResult.status === 'fulfilled' ? rangeResult.value : { records: [], summary: normalizeAttendanceSummary(undefined) };

@@ -50,7 +50,7 @@ const TeacherProfile = ({ instituteId, classId, subjectId }: TeacherProfileProps
       );
       
       setTeacher(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching teacher:', error);
       toast({
         title: "Error",

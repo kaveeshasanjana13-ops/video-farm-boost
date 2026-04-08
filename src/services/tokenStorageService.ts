@@ -3,9 +3,10 @@
  * 
  * WEB:
  * - Access token: IN-MEMORY ONLY (never localStorage — XSS protection)
- * - Refresh token: HTTP-only cookie (server-managed)
+ * - Refresh token: sessionStorage + localStorage (survives reload, new tabs, browser restart)
+ * - User data & token expiry: sessionStorage + localStorage
  * - Multi-tab sync via BroadcastChannel
- * - Session restored on page load via cookie-based /v2/auth/refresh
+ * - Session restored on page load via /v2/auth/refresh with stored refresh token
  * 
  * MOBILE (Capacitor):
  * - All tokens: Secure Storage (Keychain on iOS, EncryptedSharedPreferences on Android)
@@ -145,6 +146,7 @@ export const tokenStorageService = {
     if (isNativePlatform()) {
       await secureStorage.set(KEYS.ACCESS_TOKEN, token);
     }
+    // Web: in-memory only — no localStorage to protect against XSS token theft
 
     broadcastTokenUpdate();
   },
@@ -171,7 +173,9 @@ export const tokenStorageService = {
       }
     }
 
-    // Web: no fallback — memory-only. If null, caller should refresh via cookie.
+    // Web: in-memory only; a missing token after page reload will trigger /v2/auth/refresh
+    // which restores the session via the HttpOnly cookie.
+
     return null;
   },
 
@@ -180,6 +184,7 @@ export const tokenStorageService = {
     if (isNativePlatform()) {
       await secureStorage.remove(KEYS.ACCESS_TOKEN);
     }
+    // Web: only in-memory; nothing to remove from storage
   },
 
   // ============= REFRESH TOKEN =============
@@ -189,8 +194,14 @@ export const tokenStorageService = {
     if (isNativePlatform()) {
       await secureStorage.set(KEYS.REFRESH_TOKEN, token);
     } else {
-      // Always store refresh token on web — httpOnly cookies don't work cross-origin
-      localStorage.setItem(KEYS.REFRESH_TOKEN, token);
+      // Web: Always write to sessionStorage (tab-scoped, survives reload).
+      try { sessionStorage.setItem(KEYS.REFRESH_TOKEN, token); } catch {}
+      // ALWAYS persist to localStorage so the session survives page reloads,
+      // new tabs, and browser restarts. The refresh_token is a JWT with
+      // built-in expiry — time-limited even in localStorage.
+      // The httpOnly cookie is the primary mechanism for same-origin,
+      // but localStorage covers subdomains and cross-origin scenarios.
+      try { localStorage.setItem(KEYS.REFRESH_TOKEN, token); } catch {}
     }
   },
 
@@ -201,12 +212,15 @@ export const tokenStorageService = {
       memoryStore.refreshToken = value;
       return value;
     }
-    const stored = localStorage.getItem(KEYS.REFRESH_TOKEN);
-    if (stored) {
-      memoryStore.refreshToken = stored;
-      return stored;
+    // Web: try sessionStorage first (same tab), then localStorage (rememberMe)
+    try {
+      const value = sessionStorage.getItem(KEYS.REFRESH_TOKEN)
+        || localStorage.getItem(KEYS.REFRESH_TOKEN);
+      if (value) memoryStore.refreshToken = value;
+      return value;
+    } catch {
+      return null;
     }
-    return null;
   },
 
   async removeRefreshToken(): Promise<void> {
@@ -214,7 +228,8 @@ export const tokenStorageService = {
     if (isNativePlatform()) {
       await secureStorage.remove(KEYS.REFRESH_TOKEN);
     } else {
-      localStorage.removeItem(KEYS.REFRESH_TOKEN);
+      try { sessionStorage.removeItem(KEYS.REFRESH_TOKEN); } catch {}
+      try { localStorage.removeItem(KEYS.REFRESH_TOKEN); } catch {}
     }
   },
 
@@ -225,7 +240,9 @@ export const tokenStorageService = {
     if (isNativePlatform()) {
       await secureStorage.set(KEYS.USER_DATA, dataString);
     } else {
-      localStorage.setItem(KEYS.USER_DATA, dataString);
+      // Persist to both storages so session restoration works after reload and new tabs
+      try { sessionStorage.setItem(KEYS.USER_DATA, dataString); } catch {}
+      try { localStorage.setItem(KEYS.USER_DATA, dataString); } catch {}
     }
   },
 
@@ -234,7 +251,10 @@ export const tokenStorageService = {
     if (isNativePlatform()) {
       dataString = await secureStorage.get(KEYS.USER_DATA);
     } else {
-      dataString = localStorage.getItem(KEYS.USER_DATA);
+      try {
+        dataString = sessionStorage.getItem(KEYS.USER_DATA)
+          || localStorage.getItem(KEYS.USER_DATA);
+      } catch {}
     }
     if (!dataString) return null;
     try {
@@ -248,7 +268,8 @@ export const tokenStorageService = {
     if (isNativePlatform()) {
       await secureStorage.remove(KEYS.USER_DATA);
     } else {
-      localStorage.removeItem(KEYS.USER_DATA);
+      try { sessionStorage.removeItem(KEYS.USER_DATA); } catch {}
+      try { localStorage.removeItem(KEYS.USER_DATA); } catch {}
     }
   },
 
@@ -259,6 +280,10 @@ export const tokenStorageService = {
     const value = expiryTimestamp.toString();
     if (isNativePlatform()) {
       await secureStorage.set(KEYS.TOKEN_EXPIRY, value);
+    } else {
+      // Persist to both storages so auto-refresh can schedule accurately after page reload
+      try { sessionStorage.setItem(KEYS.TOKEN_EXPIRY, value); } catch {}
+      try { localStorage.setItem(KEYS.TOKEN_EXPIRY, value); } catch {}
     }
     broadcastTokenUpdate();
   },
@@ -271,6 +296,15 @@ export const tokenStorageService = {
         memoryStore.expiresAt = parseInt(value, 10);
         return memoryStore.expiresAt;
       }
+    } else {
+      try {
+        const value = sessionStorage.getItem(KEYS.TOKEN_EXPIRY)
+          || localStorage.getItem(KEYS.TOKEN_EXPIRY);
+        if (value) {
+          memoryStore.expiresAt = parseInt(value, 10);
+          return memoryStore.expiresAt;
+        }
+      } catch {}
     }
     return null;
   },
@@ -324,14 +358,24 @@ export const tokenStorageService = {
         secureStorage.remove(KEYS.REMEMBER_ME),
       ]);
     } else {
-      localStorage.removeItem(KEYS.USER_DATA);
-      localStorage.removeItem(KEYS.REFRESH_TOKEN);
-      localStorage.removeItem(KEYS.REMEMBER_ME);
-      localStorage.removeItem('token');
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('org_access_token');
-      localStorage.removeItem(KEYS.ACCESS_TOKEN);
-      localStorage.removeItem(KEYS.TOKEN_EXPIRY);
+      // sessionStorage (tab-scoped)
+      try {
+        sessionStorage.removeItem(KEYS.USER_DATA);
+        sessionStorage.removeItem(KEYS.REFRESH_TOKEN);
+        sessionStorage.removeItem(KEYS.TOKEN_EXPIRY);
+        sessionStorage.removeItem('org_access_token');
+      } catch {}
+      // localStorage (legacy keys — clean up in case old data exists)
+      try {
+        localStorage.removeItem(KEYS.REMEMBER_ME);
+        localStorage.removeItem('token');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('org_access_token');
+        localStorage.removeItem(KEYS.ACCESS_TOKEN);
+        localStorage.removeItem(KEYS.TOKEN_EXPIRY);
+        localStorage.removeItem(KEYS.USER_DATA);
+        localStorage.removeItem(KEYS.REFRESH_TOKEN);
+      } catch {}
     }
 
     broadcastLogout();
@@ -347,7 +391,14 @@ export const tokenStorageService = {
   hasAnyAuthHint(): boolean {
     if (memoryStore.accessToken) return true;
     if (!isNativePlatform()) {
-      return !!localStorage.getItem(KEYS.USER_DATA);
+      // Check sessionStorage (same tab) and localStorage (rememberMe / new window)
+      try {
+        return !!sessionStorage.getItem(KEYS.USER_DATA)
+          || !!sessionStorage.getItem(KEYS.REFRESH_TOKEN)
+          || !!localStorage.getItem(KEYS.REFRESH_TOKEN);
+      } catch {
+        return false;
+      }
     }
     return false;
   },

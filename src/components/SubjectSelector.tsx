@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DataCardView } from '@/components/ui/data-card-view';
 import { useAuth, type UserRole } from '@/contexts/AuthContext';
+import type { SubjectVerificationStatus } from '@/contexts/types/auth.types';
 import { useNavigate } from 'react-router-dom';
 import { getImageUrl } from '@/utils/imageUrlHelper';
-import { BookOpen, Clock, CheckCircle, RefreshCw, User, School, ChevronLeft, ChevronRight, LogIn, Loader2 } from 'lucide-react';
+import { BookOpen, Clock, CheckCircle, RefreshCw, User, School, ChevronLeft, ChevronRight, LogIn, Loader2, XCircle, CreditCard, Gift, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getBaseUrl } from '@/contexts/utils/auth.api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -18,8 +19,11 @@ import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
 import { useAppNavigation } from '@/hooks/useAppNavigation';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ChildCurrentSelection from '@/components/ChildCurrentSelection';
+import EnrollmentPaymentDialog from '@/components/enrollment/EnrollmentPaymentDialog';
+import { enrollmentApi } from '@/api/enrollment.api';
 interface Subject {
   id: string;
   name: string;
@@ -97,6 +101,17 @@ const SubjectSelector = () => {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [pendingSubjects, setPendingSubjects] = useState<Set<string>>(new Set());
   const [enrolledSubjects, setEnrolledSubjects] = useState<Set<string>>(new Set());
+  const [rejectedSubjects, setRejectedSubjects] = useState<Set<string>>(new Set());
+  const [pendingPaymentSubjects, setPendingPaymentSubjects] = useState<Set<string>>(new Set());
+  const [paymentRejectedSubjects, setPaymentRejectedSubjects] = useState<Set<string>>(new Set());
+  const [subjectPaymentIds, setSubjectPaymentIds] = useState<Record<string, string>>({});
+  const [subjectFeeAmounts, setSubjectFeeAmounts] = useState<Record<string, number>>({});
+
+  // Payment dialog state
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentSubject, setPaymentSubject] = useState<SubjectCardData | null>(null);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [freeCardClaimingFor, setFreeCardClaimingFor] = useState<string | null>(null);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -113,20 +128,7 @@ const SubjectSelector = () => {
     window.addEventListener('sidebar:state', handler as any);
     return () => window.removeEventListener('sidebar:state', handler as any);
   }, []);
-  const getAuthToken = () => {
-    const token = localStorage.getItem('access_token') || localStorage.getItem('token') || localStorage.getItem('authToken');
-    return token;
-  };
-  const getApiHeaders = () => {
-    const token = getAuthToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    return headers;
-  };
+
   const fetchSubjectsByRole = async (page: number = 1, limit: number = 10, forceRefresh = false) => {
     setIsLoading(true);
     console.log('Loading subjects data for role:', instituteRole);
@@ -164,8 +166,9 @@ const SubjectSelector = () => {
         endpoint,
         params,
         {
-          ttl: CACHE_TTL.SUBJECTS,
+          ttl: CACHE_TTL.SUBJECTS * 5, // 5x longer cache to enforce local caching
           forceRefresh,
+          useStaleWhileRevalidate: forceRefresh, // Only revalidate in background if forcing a refresh
           userId: user?.id,
           role: instituteRole,
           instituteId: currentInstituteId,
@@ -246,23 +249,69 @@ const SubjectSelector = () => {
             const enrolledResult = await enhancedCachedClient.get(
               `/institute-class-subject-students/${currentInstituteId}/student-subjects/class/${currentClassId}/student/${studentUserId}`,
               { page: '1', limit: '100' },
-              { ttl: CACHE_TTL.SUBJECTS, forceRefresh, userId: user?.id, role: instituteRole, instituteId: currentInstituteId, classId: currentClassId }
+              { 
+                ttl: CACHE_TTL.SUBJECTS * 5, // 5x longer cache to enforce local caching
+                forceRefresh, 
+                useStaleWhileRevalidate: forceRefresh, // Only revalidate in background if forcing a refresh
+                userId: user?.id, 
+                role: instituteRole, 
+                instituteId: currentInstituteId, 
+                classId: currentClassId 
+              }
             );
             const enrolledData = enrolledResult?.data || (Array.isArray(enrolledResult) ? enrolledResult : []);
+            console.log('[SubjectSelector] raw enrollment response:', enrolledResult);
+            console.log('[SubjectSelector] enrollment items:', enrolledData);
             const verifiedIds = new Set<string>();
             const pendingIds = new Set<string>();
+            const rejectedIds = new Set<string>();
+            const pendingPaymentIds = new Set<string>();
+            const paymentRejectedIds = new Set<string>();
+            const paymentIdMap: Record<string, string> = {};
+            const feeAmountMap: Record<string, number> = {};
             enrolledData.forEach((item: any) => {
-              const subId = item.subjectId || item.subject?.id;
-              if (subId) {
-                if (item.isVerified === false) {
-                  pendingIds.add(subId);
-                } else {
-                  verifiedIds.add(subId);
-                }
+              const subId = String(item.subjectId ?? item.subject_id ?? item.subject?.id ?? '');
+              if (!subId) return;
+              // verificationStatus from API is lowercase: "verified" | "pending" | "rejected" | "pending_payment" | "payment_rejected" | "enrolled_free_card"
+              const vs = (item.verificationStatus ?? item.verification_status ?? item.status ?? '').toString().toLowerCase();
+              // isVerified boolean fallback for older API responses
+              const isVerifiedBool = item.isVerified === true || item.isVerified === 1 || item.isVerified === '1'
+                || item.ics_is_verified === true || item.is_verified === true || item.verified === true;
+              const isRejectedBool = item.isRejected === true;
+              console.log(`[SubjectSelector] item subId=${subId} vs="${vs}" isVerifiedBool=${isVerifiedBool} enrollmentMethod=${item.enrollmentMethod}`);
+              
+              // Store payment info if available
+              if (item.enrollmentPaymentId || item.enrollment_payment_id) {
+                paymentIdMap[subId] = String(item.enrollmentPaymentId ?? item.enrollment_payment_id);
+              }
+              if (item.feeAmount || item.fee_amount || item.enrollmentFeeAmount) {
+                feeAmountMap[subId] = Number(item.feeAmount ?? item.fee_amount ?? item.enrollmentFeeAmount);
+              }
+              
+              if (vs === 'pending_payment') {
+                pendingPaymentIds.add(subId);
+              } else if (vs === 'payment_rejected') {
+                paymentRejectedIds.add(subId);
+              } else if (vs === 'rejected' || isRejectedBool) {
+                rejectedIds.add(subId);
+              } else if (vs === 'verified' || vs === 'enrolled_free_card' || isVerifiedBool || item.enrollmentMethod === 'teacher_assigned') {
+                // verified or enrolled_free_card: explicit status, or isVerified=true, or teacher-assigned (always auto-verified)
+                verifiedIds.add(subId);
+              } else if (vs === 'pending') {
+                pendingIds.add(subId);
+              } else {
+                // verificationStatus missing entirely — treat as verified (they are enrolled, just old data)
+                verifiedIds.add(subId);
               }
             });
+            console.log('[SubjectSelector] verifiedIds:', [...verifiedIds], 'pendingIds:', [...pendingIds], 'rejectedIds:', [...rejectedIds], 'pendingPayment:', [...pendingPaymentIds], 'paymentRejected:', [...paymentRejectedIds]);
             setEnrolledSubjects(verifiedIds);
             setPendingSubjects(pendingIds);
+            setRejectedSubjects(rejectedIds);
+            setPendingPaymentSubjects(pendingPaymentIds);
+            setPaymentRejectedSubjects(paymentRejectedIds);
+            setSubjectPaymentIds(paymentIdMap);
+            setSubjectFeeAmounts(feeAmountMap);
           } catch (enrollErr) {
             console.error('Failed to fetch student enrollment status:', enrollErr);
           } finally {
@@ -295,7 +344,7 @@ const SubjectSelector = () => {
         title: "Subjects Loaded",
         description: `Successfully loaded ${subjects.length} subjects.`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load subjects:', error);
       toast({
         title: "Load Failed",
@@ -316,8 +365,8 @@ const SubjectSelector = () => {
     }
   }, [currentInstituteId, selectedClass?.id]);
 
-  const handleSelectSubject = (subject: SubjectCardData) => {
-    console.log('Selecting subject:', subject);
+  const handleSelectSubject = (subject: SubjectCardData, verificationStatus?: SubjectVerificationStatus) => {
+    console.log('Selecting subject:', subject, 'verificationStatus:', verificationStatus);
     setSelectedSubject({
       id: subject.id,
       name: subject.name,
@@ -329,7 +378,8 @@ const SubjectSelector = () => {
       subjectType: subject.subjectType,
       basketCategory: subject.basketCategory,
       instituteType: subject.instituteType,
-      imgUrl: subject.imgUrl
+      imgUrl: subject.imgUrl,
+      verificationStatus: verificationStatus ?? 'verified',
     });
     
     toast({
@@ -340,17 +390,20 @@ const SubjectSelector = () => {
     // When parent is viewing child's data, navigate to child's dashboard
     if (isViewingAsParent && selectedChild) {
       console.log('Parent viewing child - navigating to child dashboard');
-      navigate(`/child/${selectedChild.id}/dashboard`);
+      // replace:true removes /select-subject from the back stack.
+      navigate(`/child/${selectedChild.id}/dashboard`, { replace: true });
       return;
     }
     
     // Auto-navigate to dashboard after selection.
+    // replace:true removes /select-subject from history so back returns to the page the
+    // user was on BEFORE the entire select-institute → select-class → select-subject flow.
     // IMPORTANT: navigate directly using IDs to avoid stale selection state causing URL to miss /subject/:id.
     const instituteId = currentInstituteId || selectedInstitute?.id;
     const classId = currentClassId || selectedClass?.id;
 
     if (instituteId && classId) {
-      navigate(`/institute/${instituteId}/class/${classId}/subject/${subject.id}/dashboard`);
+      navigate(`/institute/${instituteId}/class/${classId}/subject/${subject.id}/dashboard`, { replace: true });
     } else {
       navigateToPage('dashboard');
     }
@@ -376,36 +429,50 @@ const SubjectSelector = () => {
     if (!enrollSubject || !currentInstituteId || !currentClassId) return;
     setIsEnrolling(true);
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`${getBaseUrl()}/institute-class-subject-students/self-enroll`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          instituteId: currentInstituteId,
-          classId: currentClassId,
-          subjectId: enrollSubject.id,
-          enrollmentKey
-        })
-      });
+      const enrollPayload: Record<string, any> = {
+        instituteId: currentInstituteId,
+        classId: currentClassId,
+        subjectId: enrollSubject.id,
+        enrollmentKey
+      };
+      // Parent enrolling on behalf of child — pass child's ID
+      if (isViewingAsParent && selectedChild) {
+        enrollPayload.targetStudentId = selectedChild.id;
+      }
+      const result = await enhancedCachedClient.post('/institute-class-subject-students/self-enroll', enrollPayload);
       
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.message || 'Failed to enroll');
+      const verificationStatus = result.verificationStatus || '';
+      
+      if (verificationStatus === 'pending_payment' && result.paymentRequired) {
+        // Payment required - show payment dialog
+        setPendingPaymentSubjects(prev => new Set(prev).add(enrollSubject.id));
+        if (result.enrollmentPaymentId) {
+          setSubjectPaymentIds(prev => ({ ...prev, [enrollSubject.id]: result.enrollmentPaymentId }));
+        }
+        if (result.feeAmount) {
+          setSubjectFeeAmounts(prev => ({ ...prev, [enrollSubject.id]: result.feeAmount }));
+        }
+        setEnrollDialogOpen(false);
+        
+        // Open payment dialog automatically
+        setPaymentSubject(enrollSubject);
+        setPaymentId(result.enrollmentPaymentId || null);
+        setPaymentDialogOpen(true);
+        
+        toast({
+          title: "Enrollment Submitted - Payment Required",
+          description: `Please upload your payment slip (Rs. ${result.feeAmount?.toLocaleString() || '0'}).`
+        });
+      } else {
+        setPendingSubjects(prev => new Set(prev).add(enrollSubject.id));
+        setEnrollDialogOpen(false);
+        toast({
+          title: "Enrollment Submitted",
+          description: result.message || "Awaiting verification by teacher or admin."
+        });
       }
       
-      const result = await response.json();
-      setPendingSubjects(prev => new Set(prev).add(enrollSubject.id));
-      setEnrollDialogOpen(false);
-      toast({
-        title: "Enrollment Submitted",
-        description: result.message || "Awaiting verification by teacher or admin."
-      });
-      
       // CRITICAL: Immediately refetch subjects to update enrollment status
-      // This ensures the UI (select subject button, enroll button) updates instantly
       fetchSubjectsByRole(currentPage, pageSize, true);
     } catch (error: any) {
       console.error('Enrollment error:', error);
@@ -416,6 +483,44 @@ const SubjectSelector = () => {
       });
     } finally {
       setIsEnrolling(false);
+    }
+  };
+
+  const handlePayNowClick = (subject: SubjectCardData) => {
+    const pid = subjectPaymentIds[subject.id];
+    setPaymentSubject(subject);
+    setPaymentId(pid || null);
+    setPaymentDialogOpen(true);
+  };
+
+  const handleClaimFreeCard = async (subject: SubjectCardData) => {
+    if (!currentInstituteId || !currentClassId) return;
+    setFreeCardClaimingFor(subject.id);
+    try {
+      await enrollmentApi.claimFreeCard(currentInstituteId, currentClassId, subject.id, {
+        userId: isViewingAsParent && selectedChild ? selectedChild.id : user?.id,
+        targetStudentId: isViewingAsParent && selectedChild ? selectedChild.id : undefined
+      });
+      // Free card students are auto-enrolled (enrolled_free_card) — move to enrolled subjects
+      setPendingPaymentSubjects(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(subject.id);
+        return newSet;
+      });
+      setEnrolledSubjects(prev => new Set(prev).add(subject.id));
+      toast({
+        title: "Free Card Enrolled",
+        description: "You are enrolled as a free card student. No payment required."
+      });
+      fetchSubjectsByRole(currentPage, pageSize, true);
+    } catch (error: any) {
+      toast({
+        title: "Claim Failed",
+        description: error.message || "Failed to claim free card status",
+        variant: "destructive"
+      });
+    } finally {
+      setFreeCardClaimingFor(null);
     }
   };
 
@@ -435,8 +540,7 @@ const SubjectSelector = () => {
       </div>;
   }
   const isTuitionInstitute = selectedInstitute?.type === 'tuition_institute';
-  const subjectLabel = isTuitionInstitute ? 'Sub Class' : 'Subject';
-  const subjectLabelPlural = isTuitionInstitute ? 'Sub Classes' : 'Subject';
+  const { subjectLabel, subjectsLabel: subjectLabelPlural } = useInstituteLabels();
 
   return <div className="space-y-2 sm:space-y-4 p-1 sm:p-2 md:p-0">
       {/* Show Current Child Selection for Parent flow */}
@@ -474,7 +578,7 @@ const SubjectSelector = () => {
           </p>
         </div> : <div className="flex flex-col min-h-[calc(100vh-180px)]">
           {/* Unified Card View - Same size on all devices */}
-          <div className={`grid grid-cols-1 sm:grid-cols-2 ${sidebarCollapsed ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-x-3 gap-y-8 sm:gap-x-4 sm:gap-y-10 pt-3 md:pt-6 mb-8`}>
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${sidebarCollapsed ? 'lg:grid-cols-4 md:grid-cols-3' : 'lg:grid-cols-3 md:grid-cols-2'} gap-x-3 gap-y-8 sm:gap-x-4 sm:gap-y-10 pt-3 md:pt-6 mb-8`}>
             {subjectsData.map(subject => {
               const showMore = expandedSubjectId === subject.id;
               
@@ -559,19 +663,107 @@ const SubjectSelector = () => {
                         <div className="w-full flex justify-center py-2">
                           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                         </div>
-                      ) : enrolledSubjects.has(subject.id) ? (
+                      ) : enrolledSubjects.has(String(subject.id)) ? (
                         <button 
-                          onClick={() => handleSelectSubject(subject)}
+                          onClick={() => handleSelectSubject(subject, 'verified')}
                           className="w-full select-none rounded-md bg-primary py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:shadow-md hover:shadow-primary/30 active:opacity-90"
                         >
                           Select {subjectLabel}
                         </button>
-                      ) : pendingSubjects.has(subject.id) ? (
-                        <div className="w-full text-center py-2">
-                          <Badge variant="outline" className="text-amber-600 border-amber-300">
-                            <Clock className="h-3 w-3 mr-1" />
-                            Pending Verification
-                          </Badge>
+                      ) : pendingPaymentSubjects.has(String(subject.id)) ? (
+                        <div className="w-full space-y-1.5">
+                          <div className="w-full text-center py-1">
+                            <Badge variant="outline" className="text-orange-600 border-orange-300">
+                              <CreditCard className="h-3 w-3 mr-1" />
+                              Payment Required
+                            </Badge>
+                            {subjectFeeAmounts[subject.id] && (
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                Rs. {subjectFeeAmounts[subject.id]?.toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handlePayNowClick(subject)}
+                            className="w-full select-none rounded-md bg-green-600 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-white shadow-sm transition-all hover:bg-green-700 active:opacity-90"
+                          >
+                            <CreditCard className="h-3 w-3 inline mr-1" />
+                            Pay Now
+                          </button>
+                          <button
+                            onClick={() => handleClaimFreeCard(subject)}
+                            disabled={freeCardClaimingFor === subject.id}
+                            className="w-full select-none rounded-md border border-purple-400 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-purple-600 shadow-sm transition-all hover:bg-purple-50 dark:hover:bg-purple-950/20 active:opacity-90 disabled:opacity-50"
+                          >
+                            {freeCardClaimingFor === subject.id ? (
+                              <><Loader2 className="h-3 w-3 inline mr-1 animate-spin" />Claiming...</>
+                            ) : (
+                              <><Gift className="h-3 w-3 inline mr-1" />I am a Free Card Student</>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleSelectSubject(subject, 'pending_payment')}
+                            className="w-full select-none rounded-md border border-blue-400 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-blue-600 shadow-sm transition-all hover:bg-blue-50 dark:hover:bg-blue-950/20 active:opacity-90"
+                          >
+                            <Eye className="h-3 w-3 inline mr-1" />
+                            View Free Recordings & Pay
+                          </button>
+                        </div>
+                      ) : paymentRejectedSubjects.has(String(subject.id)) ? (
+                        <div className="w-full space-y-1.5">
+                          <div className="w-full text-center py-1">
+                            <Badge variant="outline" className="text-red-600 border-red-300">
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Payment Rejected
+                            </Badge>
+                          </div>
+                          <button
+                            onClick={() => handlePayNowClick(subject)}
+                            className="w-full select-none rounded-md bg-orange-600 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-white shadow-sm transition-all hover:bg-orange-700 active:opacity-90"
+                          >
+                            <CreditCard className="h-3 w-3 inline mr-1" />
+                            Resubmit Payment
+                          </button>
+                          <button
+                            onClick={() => handleSelectSubject(subject, 'payment_rejected')}
+                            className="w-full select-none rounded-md border border-blue-400 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-blue-600 shadow-sm transition-all hover:bg-blue-50 dark:hover:bg-blue-950/20 active:opacity-90"
+                          >
+                            <Eye className="h-3 w-3 inline mr-1" />
+                            View Free Recordings & Pay
+                          </button>
+                        </div>
+                      ) : pendingSubjects.has(String(subject.id)) ? (
+                        <div className="w-full space-y-1.5">
+                          <div className="w-full text-center py-1">
+                            <Badge variant="outline" className="text-amber-600 border-amber-300">
+                              <Clock className="h-3 w-3 mr-1" />
+                              Pending Verification
+                            </Badge>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Payment submitted - awaiting admin approval</p>
+                          </div>
+                          <button
+                            onClick={() => handleSelectSubject(subject, 'pending')}
+                            className="w-full select-none rounded-md border border-blue-400 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-blue-600 shadow-sm transition-all hover:bg-blue-50 dark:hover:bg-blue-950/20 active:opacity-90"
+                          >
+                            <Eye className="h-3 w-3 inline mr-1" />
+                            View Free Recordings & Status
+                          </button>
+                        </div>
+                      ) : rejectedSubjects.has(String(subject.id)) ? (
+                        <div className="w-full space-y-1.5">
+                          <div className="w-full text-center py-1">
+                            <Badge variant="outline" className="text-red-600 border-red-300">
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Enrollment Rejected
+                            </Badge>
+                          </div>
+                          <button
+                            onClick={() => handleEnrollClick(subject)}
+                            className="w-full select-none rounded-md border border-red-400 py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-red-600 shadow-sm transition-all hover:bg-red-50 dark:hover:bg-red-950/20 active:opacity-90"
+                          >
+                            <LogIn className="h-3 w-3 inline mr-1" />
+                            Enroll Again
+                          </button>
                         </div>
                       ) : (
                         <button
@@ -584,7 +776,7 @@ const SubjectSelector = () => {
                       )
                     ) : (
                       <button 
-                        onClick={() => handleSelectSubject(subject)}
+                        onClick={() => handleSelectSubject(subject, 'verified')}
                         className="w-full select-none rounded-md bg-primary py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:shadow-md hover:shadow-primary/30 active:opacity-90"
                       >
                         Select {subjectLabel}
@@ -684,6 +876,28 @@ const SubjectSelector = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Enrollment Payment Dialog */}
+      {paymentDialogOpen && paymentSubject && paymentId && (
+        <EnrollmentPaymentDialog
+          open={paymentDialogOpen}
+          onOpenChange={setPaymentDialogOpen}
+          paymentId={paymentId}
+          subjectName={paymentSubject.name}
+          feeAmount={subjectFeeAmounts[paymentSubject.id] || 0}
+          onSuccess={() => {
+            setPaymentDialogOpen(false);
+            // Move from pending_payment to pending (awaiting admin verification)
+            setPendingPaymentSubjects(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(paymentSubject.id);
+              return newSet;
+            });
+            setPendingSubjects(prev => new Set(prev).add(paymentSubject.id));
+            fetchSubjectsByRole(currentPage, pageSize, true);
+          }}
+        />
+      )}
     </div>;
 };
 export default SubjectSelector;

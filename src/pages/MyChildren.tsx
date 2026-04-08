@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import PageContainer from '@/components/layout/PageContainer';
 import AppLayout from '@/components/layout/AppLayout';
 import { getImageUrl } from '@/utils/imageUrlHelper';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const MyChildren = () => {
   const [childrenData, setChildrenData] = useState<ParentChildrenResponse | null>(null);
@@ -19,14 +20,14 @@ const MyChildren = () => {
   const { toast } = useToast();
   const { user, setSelectedChild } = useAuth();
 
-  // Auto-load children on mount
+  // Auto-load children on mount — use cache on first load
   useEffect(() => {
     if (user?.id && !childrenData) {
-      handleLoadChildren();
+      handleLoadChildren(false);
     }
   }, [user?.id]);
 
-  const handleLoadChildren = async () => {
+  const handleLoadChildren = async (forceRefresh = false) => {
     if (!user?.id) {
       toast({
         title: 'Error',
@@ -38,9 +39,13 @@ const MyChildren = () => {
     
     setLoading(true);
     try {
-      const data = await parentsApi.getChildren(user.id);
+      const data = await (await import('@/api/enhancedCachedClient')).enhancedCachedClient.get<any>(
+        `/parents/${user.id}/children`,
+        {},
+        { ttl: 60, forceRefresh, userId: user.id, role: 'Parent' }
+      );
       setChildrenData(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading children:', error);
       toast({
         title: 'Error',
@@ -107,7 +112,7 @@ const MyChildren = () => {
               </p>
             </div>
             <Button 
-              onClick={handleLoadChildren} 
+              onClick={() => handleLoadChildren(true)} 
               disabled={loading}
               variant="outline"
               size="sm"
@@ -152,21 +157,11 @@ const MyChildren = () => {
 
           {/* Empty State */}
           {!loading && childrenData?.children.length === 0 && (
-            <Card className="border-dashed border-2">
-              <CardContent className="pt-12 pb-12">
-                <div className="text-center space-y-4">
-                  <div className="w-20 h-20 mx-auto rounded-full bg-muted flex items-center justify-center">
-                    <Users className="w-10 h-10 text-muted-foreground" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-semibold">No Children Found</h3>
-                    <p className="text-muted-foreground max-w-sm mx-auto">
-                      No children are linked to your account yet
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={Users}
+              title="No Children Found"
+              description="No children are linked to your account yet."
+            />
           )}
 
           {/* Children Grid */}

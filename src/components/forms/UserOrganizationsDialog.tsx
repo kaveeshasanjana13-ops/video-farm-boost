@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Building2, Calendar, Shield, AlertCircle } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 interface Organization {
   organizationId: string;
@@ -60,7 +61,7 @@ export default function UserOrganizationsDialog({
       console.error('Error fetching organizations:', error);
       toast({
         title: 'Error',
-        description: error?.message || 'Failed to load organizations',
+        description: getErrorMessage(error, 'Failed to load organizations'),
         variant: 'destructive',
         duration: 2000,
       });
@@ -94,11 +95,16 @@ export default function UserOrganizationsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            Organizations - {userName}
+      <DialogContent className="w-[95vw] max-w-3xl max-h-[88vh] overflow-y-auto">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-primary/10">
+              <Building2 className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="font-bold text-base leading-tight">Organizations</p>
+              <p className="text-xs text-muted-foreground font-normal">{userName}</p>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
@@ -117,57 +123,62 @@ export default function UserOrganizationsDialog({
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Organization Enrollments</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Total</span>
+                    <span className="text-lg font-bold text-primary">{organizations.length}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Verified</span>
+                    <span className="text-lg font-bold text-green-700 dark:text-green-300">{organizations.filter((item) => item.status.toLowerCase() === 'verified').length}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Roles</span>
+                    <span className="text-lg font-bold">{new Set(organizations.map((item) => item.role)).size}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
               {organizations.map((enrollment, index) => (
                 <div
                   key={index}
-                  className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                  className="rounded-xl border bg-muted/20 p-3.5 space-y-3"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        <h3 className="font-semibold text-lg">
-                          {enrollment.organization.name}
-                        </h3>
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-2 items-center text-sm">
-                        <div className="flex items-center gap-1">
-                          <Shield className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-muted-foreground">Role:</span>
-                          <Badge variant={getRoleBadgeVariant(enrollment.role)}>
-                            {enrollment.role}
-                          </Badge>
-                        </div>
-                        
-                        <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground">Status:</span>
-                          <Badge variant={getStatusBadgeVariant(enrollment.status)}>
-                            {enrollment.status}
-                          </Badge>
-                        </div>
-                      </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-base leading-tight">{enrollment.organization.name}</p>
+                      <p className="text-xs font-mono text-muted-foreground mt-0.5 break-all">{enrollment.organization.organizationId}</p>
+                    </div>
+                    <Badge variant={getStatusBadgeVariant(enrollment.status)}>{enrollment.status}</Badge>
+                  </div>
 
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Calendar className="h-3 w-3" />
-                        <span>Enrolled:</span>
-                        <span>
-                          {new Date(enrollment.enrolledDate).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric',
-                          })}
-                        </span>
-                      </div>
-
-                      <div className="text-xs text-muted-foreground">
-                        Organization ID: {enrollment.organization.organizationId}
-                      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Shield className="h-2.5 w-2.5" />Role</span>
+                      <span className="mt-0.5"><Badge variant={getRoleBadgeVariant(enrollment.role)}>{enrollment.role}</Badge></span>
+                    </div>
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Organization</span>
+                      <span className="text-xs font-medium">{enrollment.organization.name}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />Enrolled</span>
+                      <span className="text-xs font-medium">
+                        {new Date(enrollment.enrolledDate).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
                     </div>
                   </div>
                 </div>
               ))}
+              </div>
             </div>
           )}
         </div>

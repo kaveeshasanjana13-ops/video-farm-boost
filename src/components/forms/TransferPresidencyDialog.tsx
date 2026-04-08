@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Crown, AlertTriangle } from 'lucide-react';
 import { organizationSpecificApi } from '@/api/organization.api';
 import { useToast } from '@/hooks/use-toast';
+import { getErrorMessage } from '@/api/apiError';
 
 interface Member {
   userId: string;
@@ -67,11 +68,11 @@ const TransferPresidencyDialog = ({
       onSuccess();
       onOpenChange(false);
       setSelectedUserId('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error transferring presidency:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to transfer presidency",
+        description: getErrorMessage(error, 'Failed to transfer presidency'),
         variant: "destructive",
       });
     } finally {

@@ -126,7 +126,7 @@ const Grading = () => {
         title: "Data Refreshed",
         description: "All grading data has been refreshed successfully."
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error refreshing grading data:', error);
       toast({
         title: "Refresh Failed",

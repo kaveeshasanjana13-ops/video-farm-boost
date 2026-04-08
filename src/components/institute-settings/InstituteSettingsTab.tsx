@@ -15,6 +15,7 @@ import {
   Eye, Target, Palette, Save, Loader2, RefreshCw
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { getErrorMessage } from '@/api/apiError';
 
 const InstituteSettingsTab = () => {
   const { selectedInstitute, currentInstituteId } = useAuth();
@@ -58,7 +59,7 @@ const InstituteSettingsTab = () => {
       });
       setHasChanges(false);
     } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'Failed to load settings', variant: 'destructive' });
+      toast({ title: 'Error', description: getErrorMessage(error, 'Failed to load settings'), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -82,7 +83,7 @@ const InstituteSettingsTab = () => {
       setHasChanges(false);
       toast({ title: 'Settings saved', description: 'Institute settings updated successfully.' });
     } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'Failed to save settings', variant: 'destructive' });
+      toast({ title: 'Error', description: getErrorMessage(error, 'Failed to save settings'), variant: 'destructive' });
     } finally {
       setSaving(false);
     }

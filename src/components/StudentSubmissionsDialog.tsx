@@ -155,7 +155,7 @@ const StudentSubmissionsDialog = ({
         title: "Success",
         description: `Loaded ${result.data.length} payment submissions`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load submissions:', error);
       toast({
         title: "Error",
@@ -215,7 +215,7 @@ const StudentSubmissionsDialog = ({
     link.download = filename;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
   };
 
   const renderSubmissionCard = (submission: PaymentSubmission) => (

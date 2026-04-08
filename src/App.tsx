@@ -1,14 +1,18 @@
 import React, { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
-import { ErrorToaster, Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster as Sonner } from "@/components/ui/sonner";
 import { NotificationToast } from "@/components/notifications/NotificationToast";
+import GoogleTranslateInit from "@/components/LanguageSwitcher";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { createTheme, ThemeProvider as MuiThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import { App as CapacitorApp } from '@capacitor/app';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 // StatusBar imported dynamically to avoid browser module resolution errors
+
+// Native plugin for Android system navigation bar — registered in MainActivity.java
+const NavigationBar = registerPlugin<{ setColor(opts: { color: string; darkButtons: boolean }): Promise<void> }>('NavigationBar');
 import { useCapacitorConnection } from "@/hooks/useCapacitorConnection";
 import CapacitorConnectionError from "@/components/CapacitorConnectionError";
 import AppLoadingScreen from "@/components/AppLoadingScreen";
@@ -20,6 +24,7 @@ import InstituteMarkAttendance from "@/pages/InstituteMarkAttendance";
 import NotFound from "./pages/NotFound";
 import Payments from "./pages/Payments";
 import CreatePayment from "./pages/CreatePayment";
+import CreateInstituteUserPage from "./pages/CreateInstituteUserPage";
 import PaymentSubmissions from "./pages/PaymentSubmissions";
 import MySubmissions from "./pages/MySubmissions";
 import InstitutePayments from "./pages/InstitutePayments";
@@ -27,10 +32,13 @@ import SubjectPayments from "./pages/SubjectPayments";
 import SubjectSubmissions from "./pages/SubjectSubmissions";
 import SubjectPaymentSubmissions from "./pages/SubjectPaymentSubmissions";
 import PaymentSubmissionsPage from "./pages/PaymentSubmissionsPage";
+import PaymentSubmissionsPhysical from "./pages/PaymentSubmissionsPhysical";
+import PaymentSubmissionsPhysicalInstitute from "./pages/PaymentSubmissionsPhysicalInstitute";
 import HomeworkSubmissions from "./pages/HomeworkSubmissions";
 import HomeworkSubmissionDetails from "./pages/HomeworkSubmissionDetails";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { ThemeProvider } from "@/contexts/ThemeContext";
+import { TenantProvider } from "@/contexts/TenantContext";
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import UpdateHomework from "@/pages/UpdateHomework";
 import UpdateLecture from "@/pages/UpdateLecture";
 import CardDemo from "@/pages/CardDemo";
@@ -53,6 +61,8 @@ import ActiveSessionsPage from "@/pages/ActiveSessions";
 import ActivateAccount from "@/pages/ActivateAccount";
 import CreateAccount from "@/pages/CreateAccount";
 import RegisterInstitute from "@/pages/RegisterInstitute";
+import ReuploadProfileImagePage from "@/pages/ReuploadProfileImagePage";
+import AttendanceViewPage from "@/pages/AttendanceViewPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -65,29 +75,110 @@ const queryClient = new QueryClient({
   },
 });
 
-// MUI Theme with Inter font
-const muiTheme = createTheme({
-  typography: {
-    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
-    fontSize: 14
-  },
-  components: {
-    MuiTableCell: {
-      styleOverrides: {
-        root: {
-          fontFamily: "'Inter', system-ui, -apple-system, sans-serif"
-        }
-      }
+// Keeps the native Android status bar AND navigation bar in sync with the app theme
+function StatusBarManager() {
+  const { resolvedTheme } = useTheme();
+  useEffect(() => {
+    const isDark = resolvedTheme === 'dark';
+    const bgColor = isDark ? '#14171f' : '#f9fafb';
+
+    // Update the <meta name="theme-color"> for browsers / PWA
+    const meta = document.getElementById('theme-color-meta');
+    if (meta) meta.setAttribute('content', bgColor);
+
+    // Keep root and body background in sync (avoids visible white/black strips)
+    document.documentElement.style.backgroundColor = bgColor;
+    document.body.style.backgroundColor = bgColor;
+
+    if (!Capacitor.isNativePlatform()) return;
+    import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
+      const barStyle = isDark ? Style.Dark : Style.Light;
+      // Status bar (top)
+      StatusBar.setBackgroundColor({ color: bgColor }).catch(() => {});
+      StatusBar.setStyle({ style: barStyle }).catch(() => {});
+    }).catch(() => {});
+    // Navigation bar (bottom system bar) — uses our custom native plugin
+    NavigationBar.setColor({ color: bgColor, darkButtons: !isDark }).catch(() => {});
+  }, [resolvedTheme]);
+  return null;
+}
+
+// Dynamic MUI theme — follows the app's dark/light mode via ThemeContext
+function DynamicMuiTheme({ children }: { children: React.ReactNode }) {
+  const { resolvedTheme } = useTheme();
+  const muiTheme = React.useMemo(() => createTheme({
+    palette: {
+      mode: resolvedTheme as 'light' | 'dark',
+      ...(resolvedTheme === 'dark' ? {
+        background: { default: '#14171f', paper: '#1a2336' },
+        text:       { primary: '#e8edf2', secondary: '#8699aa' },
+        divider:    '#2a3649',
+        primary:    { main: '#5b9cf6', contrastText: '#ffffff' },
+        action:     { hover: 'rgba(91,156,246,0.08)', selected: 'rgba(91,156,246,0.12)' },
+      } : {
+        background: { default: '#f5f7fa', paper: '#ffffff' },
+        primary:    { main: '#1a63e8', contrastText: '#ffffff' },
+      }),
     },
-    MuiTablePagination: {
-      styleOverrides: {
-        root: {
-          fontFamily: "'Inter', system-ui, -apple-system, sans-serif"
-        }
-      }
-    }
-  }
-});
+    typography: {
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+      fontSize: 14,
+    },
+    components: {
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+            borderColor: resolvedTheme === 'dark' ? '#2a3649' : undefined,
+          },
+          head: {
+            fontWeight: 600,
+            backgroundColor: resolvedTheme === 'dark' ? '#1a2336' : '#f1f5f9',
+            color: resolvedTheme === 'dark' ? '#c5d0db' : undefined,
+          },
+        },
+      },
+      MuiTableRow: {
+        styleOverrides: {
+          root: {
+            '&:hover': {
+              backgroundColor: resolvedTheme === 'dark' ? 'rgba(91,156,246,0.07)' : 'rgba(26,99,232,0.04)',
+            },
+            '&:nth-of-type(even)': {
+              backgroundColor: resolvedTheme === 'dark' ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+            },
+          },
+        },
+      },
+      MuiTableContainer: {
+        styleOverrides: {
+          root: {
+            backgroundColor: resolvedTheme === 'dark' ? '#1a2336' : '#ffffff',
+            borderRadius: 12,
+          },
+        },
+      },
+      MuiTablePagination: {
+        styleOverrides: {
+          root: { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: { backgroundImage: 'none' },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: { fontFamily: "'Inter', system-ui, -apple-system, sans-serif" },
+        },
+      },
+    },
+  }), [resolvedTheme]);
+
+  return <MuiThemeProvider theme={muiTheme}><CssBaseline />{children}</MuiThemeProvider>;
+}
+
 
 const App = () => {
   const { isOnline, isLoading, retry } = useCapacitorConnection();
@@ -95,29 +186,6 @@ const App = () => {
   useEffect(() => {
     // Theme is now managed by ThemeContext — no forced light mode
     
-    // Configure native platform features
-    if (Capacitor.isNativePlatform()) {
-      // Configure Status Bar (dynamic import to avoid browser errors)
-      import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
-        StatusBar.setStyle({ style: Style.Light }).catch((err: any) => {
-          console.warn('StatusBar.setStyle not available:', err);
-        });
-        StatusBar.setBackgroundColor({ color: '#0039B3' }).catch((err: any) => {
-          console.warn('StatusBar.setBackgroundColor not available:', err);
-        });
-      }).catch((err) => {
-        console.warn('StatusBar module not available:', err);
-      });
-      
-      // Hide splash screen after app is ready
-      import('@capacitor/splash-screen').then(({ SplashScreen }) => {
-        setTimeout(() => {
-          SplashScreen.hide();
-        }, 500);
-      }).catch((err) => {
-        console.warn('SplashScreen module not available:', err);
-      });
-    }
   }, []);
 
   // Handle Android back button - MUST be before any conditional return (Rules of Hooks)
@@ -146,6 +214,47 @@ const App = () => {
     }
   }, []);
 
+  // ─── Stale WebView recovery ─────────────────────────────────────────────────
+  // On Android, after a long background session the OS can kill the WebView
+  // process while keeping the native Activity alive. When the user reopens the
+  // app the WebView reattaches but its JavaScript context is gone → white screen.
+  // We track how long the app was backgrounded and force a reload if the
+  // threshold is exceeded so the WebView boots cleanly.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    // 30 minutes — beyond this the WebView is very likely to have lost JS state
+    const STALE_THRESHOLD_MS = 30 * 60 * 1000;
+    let backgroundedAt: number | null = null;
+    let handle: { remove: () => void } | null = null;
+
+    CapacitorApp.addListener('appStateChange', (state) => {
+      if (!state.isActive) {
+        // App going to background — record the time
+        backgroundedAt = Date.now();
+      } else {
+        // App coming to foreground
+        if (backgroundedAt !== null) {
+          const elapsed = Date.now() - backgroundedAt;
+          backgroundedAt = null;
+          if (elapsed > STALE_THRESHOLD_MS) {
+            // WebView may be in a broken state — reload cleanly
+            window.location.reload();
+            return;
+          }
+        }
+        // Short resume — check if the root div is empty (white screen guard)
+        const root = document.getElementById('root');
+        if (root && root.childElementCount === 0) {
+          window.location.reload();
+        }
+      }
+    }).then((h) => { handle = h; });
+
+    return () => { handle?.remove(); };
+  }, []);
+  // ────────────────────────────────────────────────────────────────────────────
+
   // Show connection error page only when definitively offline (not during loading)
   // IMPORTANT: This must be AFTER all hooks to comply with Rules of Hooks
   if (Capacitor.isNativePlatform() && !isLoading && !isOnline) {
@@ -154,16 +263,17 @@ const App = () => {
 
   return (
     <ErrorBoundary>
-      <MuiThemeProvider theme={muiTheme}>
-        <CssBaseline />
-        <ThemeProvider>
+      <ThemeProvider>
+      <StatusBarManager />
+      <DynamicMuiTheme>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
+            <TenantProvider>
             <AuthProvider>
               <Toaster />
               <Sonner />
-              <ErrorToaster />
               <NotificationToast />
+              <GoogleTranslateInit />
               <UpdateNotification />
               <NotificationNavigator />
               <Routes>
@@ -191,6 +301,12 @@ const App = () => {
                 {/* Register Institute Routes */}
                 <Route path="/register/institute" element={<RegisterInstitute />} />
 
+                {/* Public re-upload page — opened from rejection email link */}
+                <Route path="/profile/image/upload" element={<ReuploadProfileImagePage />} />
+
+                {/* Attendance deep-link — opened from push notification */}
+                <Route path="/attendance/view" element={<ProtectedRoute><AttendanceViewPage /></ProtectedRoute>} />
+
                 {/* Hierarchical Routes with Context */}
                 <Route path="/institute/:instituteId/*" element={<Index />} />
                 <Route path="/organization/:organizationId/*" element={<Index />} />
@@ -206,6 +322,7 @@ const App = () => {
                 <Route path="/organizations" element={<Index />} />
                 <Route path="/qr-attendance" element={<Index />} />
                 <Route path="/rfid-attendance" element={<Index />} />
+                <Route path="/close-attendance" element={<Index />} />
                 <Route path="/sms-history" element={<Index />} />
                 <Route path="/enrollment-management" element={<Index />} />
                 <Route path="/students" element={<Index />} />
@@ -237,6 +354,8 @@ const App = () => {
                 <Route path="/institute-profile" element={<Index />} />
                 <Route path="/institute-users" element={<Index />} />
                 <Route path="/institute-payments" element={<Index />} />
+                <Route path="/institute-billing" element={<Index />} />
+                <Route path="/institute-settings" element={<Index />} />
                 <Route path="/institute-subjects" element={<Index />} />
                 <Route path="/institute-organizations" element={<Index />} />
                 <Route path="/institute-mark-attendance" element={<Index />} />
@@ -267,14 +386,18 @@ const App = () => {
                 <Route path="/parent-attendance" element={<Index />} />
                 <Route path="/class-calendar" element={<Index />} />
                 <Route path="/device-management" element={<Index />} />
+                <Route path="/feedback" element={<Index />} />
 
                 {/* Dedicated Page Routes (must be protected) */}
                 <Route path="/my-children" element={<ProtectedRoute><MyChildren /></ProtectedRoute>} />
                 <Route path="/transport" element={<ProtectedRoute><Transport /></ProtectedRoute>} />
                 <Route path="/system-payment" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
                 <Route path="/system-payments/create" element={<ProtectedRoute><CreatePayment /></ProtectedRoute>} />
+                <Route path="/institute-users/:instituteId/create" element={<ProtectedRoute><CreateInstituteUserPage /></ProtectedRoute>} />
                 <Route path="/payment-submissions/:paymentId" element={<ProtectedRoute><PaymentSubmissions /></ProtectedRoute>} />
                 <Route path="/payment-submissions" element={<ProtectedRoute><PaymentSubmissionsPage /></ProtectedRoute>} />
+                <Route path="/payment-submissions-pysical" element={<ProtectedRoute><PaymentSubmissionsPhysical /></ProtectedRoute>} />
+                <Route path="/payment-submissions-pysical/:paymentId" element={<ProtectedRoute><PaymentSubmissionsPhysicalInstitute /></ProtectedRoute>} />
                 <Route path="/my-submissions" element={<ProtectedRoute><MySubmissions /></ProtectedRoute>} />
                 <Route path="/card-demo" element={<ProtectedRoute><CardDemo /></ProtectedRoute>} />
                 <Route path="/id-cards" element={<ProtectedRoute><CardManagement /></ProtectedRoute>} />
@@ -284,10 +407,11 @@ const App = () => {
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </AuthProvider>
+            </TenantProvider>
           </BrowserRouter>
         </QueryClientProvider>
-        </ThemeProvider>
-      </MuiThemeProvider>
+      </DynamicMuiTheme>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 };

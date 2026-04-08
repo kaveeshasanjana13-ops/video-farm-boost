@@ -10,8 +10,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { OrganizationCreateData } from '@/api/organization.api';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 import OrganizationImageUpload from '@/components/OrganizationImageUpload';
+import { getErrorMessage } from '@/api/apiError';
 
 const organizationSchema = z.object({
   name: z.string().min(2, 'Organization name must be at least 2 characters').max(100, 'Name must be less than 100 characters'),
@@ -64,7 +65,7 @@ const CreateOrganizationForm = ({ onSuccess, onCancel, instituteId, instituteNam
     setIsLoading(true);
     
     try {
-      const token = localStorage.getItem('access_token');
+      const headers = await getApiHeadersAsync();
       
       const requestBody = {
         name: data.name,
@@ -79,10 +80,7 @@ const CreateOrganizationForm = ({ onSuccess, onCancel, instituteId, instituteNam
       
       const response = await fetch(`${getBaseUrl()}/organizations`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify(requestBody)
       });
       
@@ -101,7 +99,7 @@ const CreateOrganizationForm = ({ onSuccess, onCancel, instituteId, instituteNam
       if (onSuccess) {
         onSuccess(organization);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating organization:', error);
       
       let errorMessage = "Failed to create organization";

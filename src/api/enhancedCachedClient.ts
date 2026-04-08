@@ -5,6 +5,7 @@
 
 import { secureCache } from '@/utils/secureCache';
 import { getBaseUrl, getBaseUrl2, getApiHeadersAsync, refreshAccessToken, getCredentialsMode, getOrgAccessTokenAsync, removeOrgAccessTokenAsync, isNativePlatform, tokenStorageService } from '@/contexts/utils/auth.api';
+import { parseApiError, ApiError } from '@/api/apiError';
 
 export interface EnhancedCacheOptions {
   ttl?: number; // Time to live in minutes
@@ -27,9 +28,11 @@ class EnhancedCachedApiClient {
   private isRefreshing = false;
   private refreshPromise: Promise<void> | null = null;
   
-  // Global rate limit tracking - stops ALL requests when rate limited
+  // Per-endpoint rate limit tracking - only the specific endpoint is blocked, not all requests
+  private rateLimitedEndpoints = new Map<string, number>();
+  // Legacy global rate limit (kept for backwards compat, rarely used)
   private rateLimitedUntil: number = 0;
-  private readonly RATE_LIMIT_BACKOFF = 60000; // 60 seconds default backoff
+  private readonly RATE_LIMIT_BACKOFF = 30000; // 30 seconds per-endpoint backoff
   private backgroundRevalidationPaused: boolean = false;
   
   // Global force refresh flag - when set, ALL next GET requests bypass cache
@@ -41,14 +44,22 @@ class EnhancedCachedApiClient {
   }
 
   /**
-   * Check if we're globally rate limited
+   * Check if we're rate limited for a specific endpoint (or globally)
    */
-  private isRateLimited(): boolean {
-    if (Date.now() < this.rateLimitedUntil) {
-      return true;
+  private isRateLimited(endpoint?: string): boolean {
+    const now = Date.now();
+    // Per-endpoint check first
+    if (endpoint) {
+      const endpointLimit = this.rateLimitedEndpoints.get(endpoint);
+      if (endpointLimit) {
+        if (now < endpointLimit) return true;
+        this.rateLimitedEndpoints.delete(endpoint);
+      }
+      return false;
     }
-    // Clear the rate limit flag when expired
-    if (this.rateLimitedUntil > 0 && Date.now() >= this.rateLimitedUntil) {
+    // Global check (fallback)
+    if (now < this.rateLimitedUntil) return true;
+    if (this.rateLimitedUntil > 0) {
       this.rateLimitedUntil = 0;
       this.backgroundRevalidationPaused = false;
     }
@@ -56,13 +67,18 @@ class EnhancedCachedApiClient {
   }
 
   /**
-   * Set global rate limit (called when 429 error received)
+   * Set rate limit for a specific endpoint (preferred) or globally
    */
-  private setRateLimited(retryAfterSeconds?: number): void {
-    const backoffMs = (retryAfterSeconds || 60) * 1000;
-    this.rateLimitedUntil = Date.now() + backoffMs;
-    this.backgroundRevalidationPaused = true;
-    console.warn(`🛑 Rate limited! Pausing ALL requests for ${backoffMs / 1000}s`);
+  private setRateLimited(retryAfterSeconds?: number, endpoint?: string): void {
+    const backoffMs = Math.min((retryAfterSeconds || 30) * 1000, 60000);
+    if (endpoint) {
+      this.rateLimitedEndpoints.set(endpoint, Date.now() + backoffMs);
+      console.warn(`🛑 Rate limited endpoint: ${endpoint} for ${backoffMs / 1000}s`);
+    } else {
+      this.rateLimitedUntil = Date.now() + backoffMs;
+      this.backgroundRevalidationPaused = true;
+      console.warn(`🛑 Global rate limit for ${backoffMs / 1000}s`);
+    }
   }
 
   /**
@@ -91,7 +107,7 @@ class EnhancedCachedApiClient {
         if (options?.userId) {
           await secureCache.clearUserCache(options.userId);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ Token refresh failed:', error);
         
         // Clear all auth data using platform-aware storage
@@ -190,8 +206,8 @@ class EnhancedCachedApiClient {
   ): Promise<T> {
     const { 
       forceRefresh: optionForceRefresh = false, 
-      ttl = 30, 
-      useStaleWhileRevalidate = true 
+      ttl = 150, // Changed from 30 to 150 (5x longer) to enforce local caching by default
+      useStaleWhileRevalidate = false // Disabled by default, relies on user 'Refresh' action or cache expiration
     } = options;
     
     // Check global force refresh flag
@@ -199,9 +215,9 @@ class EnhancedCachedApiClient {
 
     const requestKey = this.generateRequestKey(endpoint, params);
     
-    // Check global rate limit FIRST - return cached data if available
-    if (this.isRateLimited()) {
-      console.log('🛑 Rate limited - checking cache for:', endpoint);
+    // Check per-endpoint rate limit FIRST - only this endpoint is blocked, other endpoints still work
+    if (this.isRateLimited(endpoint)) {
+      console.log('🛑 Rate limited (endpoint) - checking cache for:', endpoint);
       try {
         const cachedData = await secureCache.getCache<T>(endpoint, params, {
           context: this.extractContext(options),
@@ -215,7 +231,7 @@ class EnhancedCachedApiClient {
       } catch (e) {
         // No cache available
       }
-      throw new Error('Rate limited - please wait before making more requests');
+      throw new Error('Too many requests. Please wait a moment and try again.');
     }
     
     // Try to get from cache first (unless forcing refresh)
@@ -234,7 +250,7 @@ class EnhancedCachedApiClient {
           }
           return cachedData;
         }
-      } catch (error) {
+      } catch (error: any) {
         console.warn('⚠️ Cache retrieval failed:', error);
       }
     }
@@ -260,7 +276,7 @@ class EnhancedCachedApiClient {
         if (staleCached !== null) {
           return staleCached;
         }
-      } catch (error) {
+      } catch (error: any) {
         console.warn('⚠️ No cached data available during cooldown');
       }
 
@@ -286,6 +302,8 @@ class EnhancedCachedApiClient {
     return requestPromise;
   }
 
+  private activeRevalidations = new Set<string>();
+
   /**
    * Background revalidation for stale-while-revalidate
    */
@@ -295,15 +313,18 @@ class EnhancedCachedApiClient {
     options: EnhancedCacheOptions,
     ttl: number
   ): Promise<void> {
-    // Skip background revalidation if rate limited or paused
-    if (this.backgroundRevalidationPaused || this.isRateLimited()) {
-      console.log('⏸️ Background revalidation skipped (rate limited):', endpoint);
+    const revalKey = this.generateRequestKey(endpoint, params);
+    
+    // Skip if already revalidating this endpoint, rate limited, or paused
+    if (this.activeRevalidations.has(revalKey) || this.backgroundRevalidationPaused || this.isRateLimited()) {
       return;
     }
     
+    this.activeRevalidations.add(revalKey);
+    
     try {
       // Wait a bit to avoid immediate re-fetch
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       // Double-check rate limit after delay
       if (this.backgroundRevalidationPaused || this.isRateLimited()) {
@@ -314,7 +335,8 @@ class EnhancedCachedApiClient {
       console.log('🔄 Background revalidation complete:', endpoint);
     } catch (error: any) {
       console.warn('⚠️ Background revalidation failed:', error?.message || error);
-      // Don't propagate error - this is background work
+    } finally {
+      this.activeRevalidations.delete(revalKey);
     }
   }
 
@@ -366,7 +388,6 @@ class EnhancedCachedApiClient {
         
         // Handle 429 - Rate Limited
         if (response.status === 429) {
-          // Extract retry-after from response or use default
           let retryAfter = 60;
           try {
             const errorJson = JSON.parse(errorText);
@@ -376,8 +397,8 @@ class EnhancedCachedApiClient {
             }
           } catch {}
           
-          this.setRateLimited(retryAfter);
-          throw new Error('Too many requests. Please try again later.');
+          this.setRateLimited(retryAfter, endpoint);
+          throw parseApiError(429, errorText, url.toString());
         }
         
         // Handle 401 - Try to refresh token
@@ -385,17 +406,17 @@ class EnhancedCachedApiClient {
           const refreshed = await this.handle401Error(options);
           
           if (refreshed) {
-            // Retry the request with new token
             console.log('🔁 Retrying request with new token...');
             const retryHeaders = await this.getHeaders();
             const retryResponse = await fetch(url.toString(), {
               method: 'GET',
               headers: retryHeaders,
-              credentials // Platform-aware: 'include' for web, 'omit' for mobile
+              credentials
             });
             
             if (!retryResponse.ok) {
-              throw new Error(`HTTP ${retryResponse.status}: ${retryResponse.statusText}`);
+              const retryErrorText = await retryResponse.text().catch(() => '');
+              throw parseApiError(retryResponse.status, retryErrorText, url.toString());
             }
             
             const retryContentType = retryResponse.headers.get('Content-Type');
@@ -403,7 +424,6 @@ class EnhancedCachedApiClient {
               ? await retryResponse.json()
               : {} as T;
             
-            // Cache the successful retry
             await secureCache.setCache(endpoint, retryData, params, {
               ttl,
               context: this.extractContext(options)
@@ -413,24 +433,10 @@ class EnhancedCachedApiClient {
             return retryData;
           }
           
-          // If we get here, user is being redirected to login
-          throw new Error('Authentication failed');
+          throw parseApiError(401, errorText, url.toString());
         }
         
-        // Parse error message from JSON response
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.message) {
-            errorMessage = Array.isArray(errorJson.message) 
-              ? errorJson.message.join(', ') 
-              : errorJson.message;
-          }
-        } catch {
-          // Keep default error message if JSON parsing fails
-        }
-        
-        throw new Error(errorMessage);
+        throw parseApiError(response.status, errorText, url.toString());
       }
 
       const contentType = response.headers.get('Content-Type');
@@ -448,15 +454,20 @@ class EnhancedCachedApiClient {
           ttl,
           context: this.extractContext(options)
         });
-      } catch (error) {
+      } catch (error: any) {
         console.warn('⚠️ Failed to cache response:', error);
       }
 
       console.log('✅ API request successful:', endpoint);
       return data;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ API request failed:', endpoint, error);
+      // Wrap raw network errors (TypeError: Failed to fetch) with friendly messages
+      if (error instanceof ApiError) throw error;
+      if (error instanceof TypeError || error?.message?.match(/^(Failed to fetch|NetworkError|Load failed|fetch failed)/i)) {
+        throw new Error('Unable to connect to the server. Please check your internet connection and try again.', { cause: error });
+      }
       throw error;
     }
   }
@@ -489,12 +500,10 @@ class EnhancedCachedApiClient {
       const errorText = await response.text().catch(() => '');
       console.error(`❌ POST Error ${response.status}:`, errorText);
       
-      // Handle 401 - Try to refresh token
       if (response.status === 401) {
         const refreshed = await this.handle401Error(options);
         
         if (refreshed) {
-          // Retry the request with new token
           console.log('🔁 Retrying POST request with new token...');
           const retryHeaders = await this.getHeaders();
           const retryResponse = await fetch(url, {
@@ -505,7 +514,8 @@ class EnhancedCachedApiClient {
           });
           
           if (!retryResponse.ok) {
-            throw new Error(`HTTP ${retryResponse.status}: ${retryResponse.statusText}`);
+            const retryErrorText = await retryResponse.text().catch(() => '');
+            throw parseApiError(retryResponse.status, retryErrorText, url);
           }
           
           const retryContentType = retryResponse.headers.get('Content-Type');
@@ -518,23 +528,10 @@ class EnhancedCachedApiClient {
           return retryResult;
         }
         
-        throw new Error('Authentication failed');
+        throw parseApiError(401, errorText, url);
       }
       
-      // Parse error message from JSON response
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.message) {
-          errorMessage = Array.isArray(errorJson.message) 
-            ? errorJson.message.join(', ') 
-            : errorJson.message;
-        }
-      } catch {
-        // Keep default error message if JSON parsing fails
-      }
-      
-      throw new Error(errorMessage);
+      throw parseApiError(response.status, errorText, url);
     }
 
     const contentType = response.headers.get('Content-Type');
@@ -577,7 +574,6 @@ class EnhancedCachedApiClient {
       const errorText = await response.text().catch(() => '');
       console.error(`❌ PUT Error ${response.status}:`, errorText);
       
-      // Handle 401 - Try to refresh token
       if (response.status === 401) {
         const refreshed = await this.handle401Error(options);
         
@@ -592,7 +588,8 @@ class EnhancedCachedApiClient {
           });
           
           if (!retryResponse.ok) {
-            throw new Error(`HTTP ${retryResponse.status}: ${retryResponse.statusText}`);
+            const retryErrorText = await retryResponse.text().catch(() => '');
+            throw parseApiError(retryResponse.status, retryErrorText, url);
           }
           
           const retryContentType = retryResponse.headers.get('Content-Type');
@@ -605,23 +602,10 @@ class EnhancedCachedApiClient {
           return retryResult;
         }
         
-        throw new Error('Authentication failed');
+        throw parseApiError(401, errorText, url);
       }
       
-      // Parse error message from JSON response
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.message) {
-          errorMessage = Array.isArray(errorJson.message) 
-            ? errorJson.message.join(', ') 
-            : errorJson.message;
-        }
-      } catch {
-        // Keep default error message if JSON parsing fails
-      }
-      
-      throw new Error(errorMessage);
+      throw parseApiError(response.status, errorText, url);
     }
 
     const contentType = response.headers.get('Content-Type');
@@ -664,7 +648,6 @@ class EnhancedCachedApiClient {
       const errorText = await response.text().catch(() => '');
       console.error(`❌ PATCH Error ${response.status}:`, errorText);
       
-      // Handle 401 - Try to refresh token
       if (response.status === 401) {
         const refreshed = await this.handle401Error(options);
         
@@ -679,7 +662,8 @@ class EnhancedCachedApiClient {
           });
           
           if (!retryResponse.ok) {
-            throw new Error(`HTTP ${retryResponse.status}: ${retryResponse.statusText}`);
+            const retryErrorText = await retryResponse.text().catch(() => '');
+            throw parseApiError(retryResponse.status, retryErrorText, url);
           }
           
           const retryContentType = retryResponse.headers.get('Content-Type');
@@ -692,23 +676,10 @@ class EnhancedCachedApiClient {
           return retryResult;
         }
         
-        throw new Error('Authentication failed');
+        throw parseApiError(401, errorText, url);
       }
       
-      // Parse error message from JSON response
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.message) {
-          errorMessage = Array.isArray(errorJson.message) 
-            ? errorJson.message.join(', ') 
-            : errorJson.message;
-        }
-      } catch {
-        // Keep default error message if JSON parsing fails
-      }
-      
-      throw new Error(errorMessage);
+      throw parseApiError(response.status, errorText, url);
     }
 
     const contentType = response.headers.get('Content-Type');
@@ -750,7 +721,6 @@ class EnhancedCachedApiClient {
       const errorText = await response.text().catch(() => '');
       console.error(`❌ DELETE Error ${response.status}:`, errorText);
       
-      // Handle 401 - Try to refresh token
       if (response.status === 401) {
         const refreshed = await this.handle401Error(options);
         
@@ -764,7 +734,8 @@ class EnhancedCachedApiClient {
           });
           
           if (!retryResponse.ok) {
-            throw new Error(`HTTP ${retryResponse.status}: ${retryResponse.statusText}`);
+            const retryErrorText = await retryResponse.text().catch(() => '');
+            throw parseApiError(retryResponse.status, retryErrorText, url);
           }
           
           const retryContentType = retryResponse.headers.get('Content-Type');
@@ -777,23 +748,10 @@ class EnhancedCachedApiClient {
           return retryResult;
         }
         
-        throw new Error('Authentication failed');
+        throw parseApiError(401, errorText, url);
       }
       
-      // Parse error message from JSON response
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      try {
-        const errorJson = JSON.parse(errorText);
-        if (errorJson.message) {
-          errorMessage = Array.isArray(errorJson.message) 
-            ? errorJson.message.join(', ') 
-            : errorJson.message;
-        }
-      } catch {
-        // Keep default error message if JSON parsing fails
-      }
-      
-      throw new Error(errorMessage);
+      throw parseApiError(response.status, errorText, url);
     }
 
     const contentType = response.headers.get('Content-Type');
@@ -815,7 +773,7 @@ class EnhancedCachedApiClient {
     try {
       const cached = await secureCache.getCache(endpoint, params, { context, forceRefresh: false });
       return cached !== null;
-    } catch (error) {
+    } catch (error: any) {
       return false;
     }
   }
@@ -826,7 +784,7 @@ class EnhancedCachedApiClient {
   async getCachedOnly<T = any>(endpoint: string, params?: Record<string, any>, context?: any): Promise<T | null> {
     try {
       return await secureCache.getCache<T>(endpoint, params, { context, forceRefresh: false });
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ Cache-only retrieval failed:', error);
       return null;
     }
@@ -843,7 +801,7 @@ class EnhancedCachedApiClient {
     try {
       await this.get<T>(endpoint, params, { ...options, forceRefresh: false });
       console.log('📥 Preloaded:', endpoint);
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ Preload failed:', endpoint, error);
     }
   }

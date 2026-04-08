@@ -26,7 +26,9 @@ const StudentHomeworkSubmissions = () => {
     user,
     selectedInstitute,
     selectedClass,
-    selectedSubject
+    selectedSubject,
+    isViewingAsParent,
+    selectedChild
   } = useAuth();
 
   // Use pagination hook with default limit of 50
@@ -52,18 +54,19 @@ const StudentHomeworkSubmissions = () => {
     try {
       setLoading(true);
       const apiParams = getApiParams();
+      const effectiveStudentId = isViewingAsParent && selectedChild ? selectedChild.id : user.id;
       const params = {
         page: apiParams.page,
         limit: apiParams.limit,
         sortBy,
         sortOrder,
-        userId: user.id,
+        userId: effectiveStudentId,
         role: 'Student'
       };
-      const response = await homeworkSubmissionsApi.getStudentSubmissions(selectedInstitute.id, selectedClass.id, selectedSubject.id, user.id, params);
+      const response = await homeworkSubmissionsApi.getStudentSubmissions(selectedInstitute.id, selectedClass.id, selectedSubject.id, effectiveStudentId, params);
       setSubmissions(response.data);
       actions.setTotalCount(response.meta.total);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching student submissions:', error);
       toast({
         title: "Error",
@@ -76,7 +79,7 @@ const StudentHomeworkSubmissions = () => {
   };
   useEffect(() => {
     fetchSubmissions();
-  }, [pagination.page, pagination.limit, sortBy, sortOrder, selectedInstitute, selectedClass, selectedSubject, user?.id]);
+  }, [pagination.page, pagination.limit, sortBy, sortOrder, selectedInstitute, selectedClass, selectedSubject, user?.id, isViewingAsParent, selectedChild?.id]);
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     actions.setPage(0);
@@ -95,7 +98,7 @@ const StudentHomeworkSubmissions = () => {
     link.target = '_blank';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
   };
   const filteredSubmissions = submissions.filter(submission => searchTerm === '' || submission.homework?.title.toLowerCase().includes(searchTerm.toLowerCase()) || submission.homework?.description.toLowerCase().includes(searchTerm.toLowerCase()));
 

@@ -13,10 +13,23 @@ import { cn } from '@/lib/utils';
 import { toast as sonnerToast } from 'sonner';
 import { getSignedUrl, uploadToSignedUrl, detectFolder } from '@/utils/imageUploadHelper';
 import PassportImageCropUpload from '@/components/common/PassportImageCropUpload';
+import { getErrorMessage } from '@/api/apiError';
+import { parentsApi, type InstituteParent } from '@/api/parents.api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CreateComprehensiveUserFormProps {
   onSubmit: (data: any) => void;
   onCancel: () => void;
+}
+
+interface ParentLinkFieldProps {
+  label: string;
+  selectedParentId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (id: string) => void;
+  options: InstituteParent[];
+  loading: boolean;
 }
 
 type UserType = 'USER' | 'USER_WITHOUT_PARENT' | 'USER_WITHOUT_STUDENT';
@@ -249,8 +262,10 @@ const CreateComprehensiveUserForm = ({
   onSubmit,
   onCancel
 }: CreateComprehensiveUserFormProps) => {
+  const { currentInstituteId } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [userType, setUserType] = useState<UserType>('USER');
   const [profileImageUrl, setProfileImageUrl] = useState<string>('');
   const [idFile, setIdFile] = useState<File | null>(null);
@@ -268,6 +283,7 @@ const CreateComprehensiveUserForm = ({
     nic: '',
     birthCertificateNo: '',
     addressLine1: '',
+    addressLine2: '',
     city: '',
     district: '',
     province: '',
@@ -299,8 +315,15 @@ const CreateComprehensiveUserForm = ({
     workPhone: '',
     educationLevel: ''
   });
+  const [availableParents, setAvailableParents] = useState<InstituteParent[]>([]);
+  const [isLoadingParents, setIsLoadingParents] = useState(false);
+  const [fatherOpen, setFatherOpen] = useState(false);
+  const [motherOpen, setMotherOpen] = useState(false);
+  const [guardianOpen, setGuardianOpen] = useState(false);
 
   const handleInputChange = (field: string, value: any) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -320,8 +343,82 @@ const CreateComprehensiveUserForm = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!currentInstituteId) {
+      setAvailableParents([]);
+      return;
+    }
+
+    const loadParents = async () => {
+      setIsLoadingParents(true);
+      try {
+        const response = await parentsApi.getInstituteParents(currentInstituteId, {
+          page: 1,
+          limit: 500,
+        });
+        const parents = Array.isArray(response?.data) ? response.data : [];
+        setAvailableParents(parents);
+      } catch {
+        setAvailableParents([]);
+      } finally {
+        setIsLoadingParents(false);
+      }
+    };
+
+    loadParents();
+  }, [currentInstituteId]);
+
+  const resolveSelectedParent = (id: string) =>
+    availableParents.find((parent) => String(parent.id) === String(id));
+
+  const handleParentLinkSelect = (
+    relation: 'father' | 'mother' | 'guardian',
+    parentId: string
+  ) => {
+    const selectedParent = resolveSelectedParent(parentId);
+    if (!selectedParent) return;
+
+    if (relation === 'father') {
+      setStudentData((prev) => ({
+        ...prev,
+        fatherId: String(selectedParent.id),
+        fatherPhoneNumber: selectedParent.phoneNumber || prev.fatherPhoneNumber,
+      }));
+      setFatherOpen(false);
+      return;
+    }
+
+    if (relation === 'mother') {
+      setStudentData((prev) => ({
+        ...prev,
+        motherId: String(selectedParent.id),
+        motherPhoneNumber: selectedParent.phoneNumber || prev.motherPhoneNumber,
+      }));
+      setMotherOpen(false);
+      return;
+    }
+
+    setStudentData((prev) => ({
+      ...prev,
+      guardianId: String(selectedParent.id),
+      guardianPhoneNumber: selectedParent.phoneNumber || prev.guardianPhoneNumber,
+    }));
+    setGuardianOpen(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+        const errors: Record<string, string> = {};
+    if (!formData.nameWithInitials) errors.nameWithInitials = 'Name With Initials is required';
+    if (!formData.firstName) errors.firstName = 'First Name is required';
+    if (!formData.lastName) errors.lastName = 'Last Name is required';
+
+    if (!formData.dateOfBirth) errors.dateOfBirth = 'Date Of Birth is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
     setIsLoading(true);
     try {
       let idDocumentRelativePath = '';
@@ -352,6 +449,7 @@ const CreateComprehensiveUserForm = ({
       if (formData.nic) payload.nic = formData.nic;
       if (formData.birthCertificateNo) payload.birthCertificateNo = formData.birthCertificateNo;
       if (formData.addressLine1) payload.addressLine1 = formData.addressLine1;
+      if (formData.addressLine2) payload.addressLine2 = formData.addressLine2;
       if (formData.city) payload.city = formData.city;
       if (formData.district) payload.district = formData.district;
       if (formData.province) payload.province = formData.province;
@@ -395,7 +493,7 @@ const CreateComprehensiveUserForm = ({
       console.error('Error creating user:', error);
       toast({
         title: "Error",
-        description: error?.message || 'Failed to create user',
+        description: getErrorMessage(error, 'Failed to create user'),
         variant: "destructive"
       });
     } finally {
@@ -424,6 +522,59 @@ const CreateComprehensiveUserForm = ({
     value,
     label: value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())
   })), []);
+
+  const ParentLinkField = ({
+    label,
+    selectedParentId,
+    open,
+    onOpenChange,
+    onSelect,
+    options,
+    loading,
+  }: ParentLinkFieldProps) => {
+    const selectedParent = options.find((option) => String(option.id) === String(selectedParentId));
+    const selectedName = selectedParent?.name || 'Select parent user';
+
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-sm">{label} (Link Existing Parent)</Label>
+        <Popover open={open} onOpenChange={onOpenChange}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="w-full h-10 sm:h-9 justify-between font-normal text-left">
+              <span className="truncate">{loading ? 'Loading parents...' : selectedName}</span>
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-popover z-50" align="start">
+            <Command>
+              <CommandInput placeholder="Search parent name/phone..." />
+              <CommandList className="max-h-[220px]">
+                <CommandEmpty>{loading ? 'Loading parents...' : 'No parent found.'}</CommandEmpty>
+                <CommandGroup>
+                  {options.map((parent) => (
+                    <CommandItem
+                      key={parent.id}
+                      value={`${parent.name} ${parent.phoneNumber || ''} ${parent.userIdByInstitute || ''}`}
+                      onSelect={() => onSelect(String(parent.id))}
+                    >
+                      <Check className={cn('mr-2 h-4 w-4', String(selectedParentId) === String(parent.id) ? 'opacity-100' : 'opacity-0')} />
+                      <div className="flex flex-col">
+                        <span>{parent.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {parent.phoneNumber || 'No phone'}
+                          {parent.userIdByInstitute ? ` • ${parent.userIdByInstitute}` : ''}
+                        </span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+      </div>
+    );
+  };
 
   return (
     <Dialog open={true} onOpenChange={() => onCancel()}>
@@ -484,7 +635,7 @@ const CreateComprehensiveUserForm = ({
               <PassportImageCropUpload
                 currentImageUrl={profileImageUrl || null}
                 onImageUpdate={(url) => setProfileImageUrl(url)}
-                folder="user-profile-images"
+                folder="profile-images"
                 label=""
                 showCamera={true}
               />
@@ -502,8 +653,10 @@ const CreateComprehensiveUserForm = ({
                     onChange={e => handleInputChange('nameWithInitials', e.target.value)}
                     placeholder="e.g., J. Doe"
                     required
-                    className="h-10 sm:h-9"
+                    className={`h-10 sm:h-9${fieldErrors.nameWithInitials ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.nameWithInitials && <p className="text-xs text-red-500 mt-1">{fieldErrors.nameWithInitials}</p>}
                 </div>
 
                 <div className="space-y-1.5">
@@ -513,8 +666,10 @@ const CreateComprehensiveUserForm = ({
                     onChange={e => handleInputChange('firstName', e.target.value)}
                     placeholder="Enter first name"
                     required
-                    className="h-10 sm:h-9"
+                    className={`h-10 sm:h-9${fieldErrors.firstName ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.firstName && <p className="text-xs text-red-500 mt-1">{fieldErrors.firstName}</p>}
                 </div>
 
                 <div className="space-y-1.5">
@@ -524,31 +679,35 @@ const CreateComprehensiveUserForm = ({
                     onChange={e => handleInputChange('lastName', e.target.value)}
                     placeholder="Enter last name"
                     required
-                    className="h-10 sm:h-9"
+                    className={`h-10 sm:h-9${fieldErrors.lastName ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.lastName && <p className="text-xs text-red-500 mt-1">{fieldErrors.lastName}</p>}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-sm">Email *</Label>
+                  <Label className="text-sm">Email</Label>
                   <Input
                     type="email"
                     value={formData.email}
                     onChange={e => handleInputChange('email', e.target.value)}
-                    placeholder="email@example.com"
-                    required
-                    className="h-10 sm:h-9"
+                    placeholder="Optional - for user login"
+                    className={`h-10 sm:h-9${fieldErrors.email ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-sm">Phone Number *</Label>
+                  <Label className="text-sm">Phone Number</Label>
                   <Input
                     value={formData.phoneNumber}
                     onChange={e => handleInputChange('phoneNumber', e.target.value)}
-                    placeholder="+94XXXXXXXXX"
-                    required
-                    className="h-10 sm:h-9"
+                    placeholder="Optional"
+                    className={`h-10 sm:h-9${fieldErrors.phoneNumber ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.phoneNumber && <p className="text-xs text-red-500 mt-1">{fieldErrors.phoneNumber}</p>}
                 </div>
 
                 <div className="space-y-1.5">
@@ -572,8 +731,10 @@ const CreateComprehensiveUserForm = ({
                     value={formData.dateOfBirth}
                     onChange={e => handleInputChange('dateOfBirth', e.target.value)}
                     required
-                    className="h-10 sm:h-9"
+                    className={`h-10 sm:h-9${fieldErrors.dateOfBirth ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   />
+
+                  {fieldErrors.dateOfBirth && <p className="text-xs text-red-500 mt-1">{fieldErrors.dateOfBirth}</p>}
                 </div>
 
                 <div className="space-y-1.5">
@@ -609,6 +770,16 @@ const CreateComprehensiveUserForm = ({
                     value={formData.addressLine1}
                     onChange={e => handleInputChange('addressLine1', e.target.value)}
                     placeholder="Street address, area, landmark"
+                    className="h-10 sm:h-9"
+                  />
+                </div>
+
+                <div className="col-span-1 sm:col-span-2 space-y-1.5">
+                  <Label className="text-sm">Address Line 2</Label>
+                  <Input
+                    value={formData.addressLine2}
+                    onChange={e => handleInputChange('addressLine2', e.target.value)}
+                    placeholder="Apartment, floor, unit, or additional details"
                     className="h-10 sm:h-9"
                   />
                 </div>
@@ -759,6 +930,36 @@ const CreateComprehensiveUserForm = ({
                       className="h-10 sm:h-9"
                     />
                   </div>
+
+                  <ParentLinkField
+                    label="Father"
+                    selectedParentId={studentData.fatherId}
+                    open={fatherOpen}
+                    onOpenChange={setFatherOpen}
+                    onSelect={(id) => handleParentLinkSelect('father', id)}
+                    options={availableParents}
+                    loading={isLoadingParents}
+                  />
+
+                  <ParentLinkField
+                    label="Mother"
+                    selectedParentId={studentData.motherId}
+                    open={motherOpen}
+                    onOpenChange={setMotherOpen}
+                    onSelect={(id) => handleParentLinkSelect('mother', id)}
+                    options={availableParents}
+                    loading={isLoadingParents}
+                  />
+
+                  <ParentLinkField
+                    label="Guardian"
+                    selectedParentId={studentData.guardianId}
+                    open={guardianOpen}
+                    onOpenChange={setGuardianOpen}
+                    onSelect={(id) => handleParentLinkSelect('guardian', id)}
+                    options={availableParents}
+                    loading={isLoadingParents}
+                  />
 
                   <div className="space-y-1.5">
                     <Label className="text-sm">Father's Phone</Label>

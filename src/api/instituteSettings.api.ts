@@ -1,4 +1,6 @@
 import { apiClient } from './client';
+import { enhancedCachedClient } from './enhancedCachedClient';
+import { CACHE_TTL } from '@/config/cacheTTL';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -88,7 +90,7 @@ export interface UpdateInstituteSettingsDto {
 class InstituteSettingsApi {
   /** Full settings for admin page */
   async getSettings(instituteId: string): Promise<InstituteSettingsResponse> {
-    return apiClient.get<InstituteSettingsResponse>(`/institutes/${instituteId}/settings`);
+    return enhancedCachedClient.get<InstituteSettingsResponse>(`/institutes/${instituteId}/settings`, undefined, { ttl: CACHE_TTL.SETTINGS });
   }
 
   /** Partial update */
@@ -98,7 +100,7 @@ class InstituteSettingsApi {
 
   /** Lightweight profile for all members */
   async getProfile(instituteId: string): Promise<InstituteProfileResponse> {
-    return apiClient.get<InstituteProfileResponse>(`/institutes/${instituteId}/profile`);
+    return enhancedCachedClient.get<InstituteProfileResponse>(`/institutes/${instituteId}/profile`, undefined, { ttl: CACHE_TTL.SETTINGS });
   }
 
   // ── Image management ───────────────────────────────────────────

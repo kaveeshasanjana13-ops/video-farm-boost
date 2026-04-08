@@ -9,7 +9,8 @@
  */
 
 import { attendanceApiClient } from './attendanceClient';
-import { getAttendanceUrl, getApiHeaders, getBaseUrl } from '@/contexts/utils/auth.api';
+import { getAttendanceUrl, getApiHeadersAsync, getBaseUrl } from '@/contexts/utils/auth.api';
+import { parseApiError } from '@/api/apiError';
 import { attendanceDuplicateChecker } from '@/utils/attendanceDuplicateCheck';
 import type {
   AttendanceStatus,
@@ -44,16 +45,17 @@ async function postAttendance<T>(endpoint: string, body: any): Promise<T> {
   }
   const url = `${baseUrl.replace(/\/$/, '')}${endpoint}`;
 
+  const headers = await getApiHeadersAsync();
   const response = await fetch(url, {
     method: 'POST',
-    headers: { ...getApiHeaders(), 'Content-Type': 'application/json' },
+    headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     credentials: 'include',
   });
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
-    throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+    throw parseApiError(response.status, errorText, url);
   }
   return response.json();
 }
@@ -503,11 +505,48 @@ const cardUserApi = {
 // UNIFIED EXPORT
 // ═══════════════════════════════════════════════════════════
 
+/** Attendance record returned by GET /api/attendance/view?id=<attendanceId> */
+export interface AttendanceViewRecord {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  studentImageUrl: string | null;
+  instituteId: string;
+  instituteName: string | null;
+  classId: string | null;
+  className: string | null;
+  subjectId: string | null;
+  subjectName: string | null;
+  date: string;
+  /** 0=Absent 1=Present 2=Late 3=Left 4=Left Early 5=Left Lately */
+  status: number;
+  /** Unix ms timestamp of the marking event */
+  timestamp: number | null;
+  location: string | null;
+  remarks: string | null;
+  markingMethod: string | null;
+  userType: string | null;
+  calendarDayId: string | null;
+  eventId: string | null;
+}
+
 export const attendanceApi = {
   mark: markAttendanceApi,
   query: queryAttendanceApi,
   calendar: calendarAttendanceApi,
   cardUser: cardUserApi,
+
+  // ─── NOTIFICATION DEEP-LINK VIEW ──────────────
+  /**
+   * GET /api/attendance/view?id=<attendanceId>
+   * Resolves the opaque attendanceId from a push notification into full details.
+   * No extra role check — JWT only.
+   */
+  async getAttendanceView(attendanceId: string): Promise<AttendanceViewRecord> {
+    return attendanceApiClient.get<AttendanceViewRecord>(
+      `/api/attendance/view?id=${encodeURIComponent(attendanceId)}`
+    );
+  },
 };
 
 export default attendanceApi;

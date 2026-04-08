@@ -1,5 +1,6 @@
 import { apiCache } from '@/utils/apiCache';
-import { getAttendanceUrl, getApiHeaders, refreshAccessToken } from '@/contexts/utils/auth.api';
+import { getAttendanceUrl, getApiHeadersAsync, refreshAccessToken } from '@/contexts/utils/auth.api';
+import { parseApiError } from '@/api/apiError';
 
 export interface CachedRequestOptions {
   ttl?: number;
@@ -36,15 +37,11 @@ class AttendanceApiClient {
     this.isRefreshing = true;
     this.refreshPromise = (async () => {
       try {
-        console.log('🔄 401 Error (Attendance) - Attempting token refresh...');
         await refreshAccessToken();
-        console.log('✅ Token refreshed successfully');
-      } catch (error) {
-        console.error('❌ Token refresh failed:', error);
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user_data');
-        console.log('🚪 Redirecting to login page...');
-        window.location.href = '/login';
+      } catch (error: any) {
+        // Dispatch the same event that the main ApiClient uses, so AuthContext
+        // handles a clean, complete logout (server revocation + all storage cleared).
+        window.dispatchEvent(new CustomEvent('auth:refresh-failed'));
         throw error;
       } finally {
         this.isRefreshing = false;
@@ -76,8 +73,8 @@ class AttendanceApiClient {
     this.requestCooldown.set(requestKey, Date.now());
   }
 
-  private getHeaders(): Record<string, string> {
-    return getApiHeaders();
+  private async getHeaders(): Promise<Record<string, string>> {
+    return getApiHeadersAsync();
   }
 
   async get<T = any>(
@@ -95,8 +92,7 @@ class AttendanceApiClient {
     
     // Check cooldown period to prevent spam
     if (this.isInCooldown(requestKey) && !forceRefresh) {
-      console.log('Attendance request is in cooldown period, skipping:', requestKey);
-      throw new Error('Request in cooldown period');
+      throw new Error('Please wait a moment before trying again.');
     }
 
     // Try to get from cache first (unless forcing refresh)
@@ -107,7 +103,7 @@ class AttendanceApiClient {
           console.log('Cache hit for attendance:', endpoint);
           return cachedData;
         }
-      } catch (error) {
+      } catch (error: any) {
         console.warn('Attendance cache retrieval failed:', error);
       }
     }
@@ -152,7 +148,7 @@ class AttendanceApiClient {
     this.baseUrl = getAttendanceUrl();
     
     if (!this.baseUrl) {
-      throw new Error('Attendance backend URL not configured. Please set the attendance backend URL in Settings.');
+      throw new Error('Attendance service is not configured. Please check your settings.');
     }
     
     const url = new URL(`${this.baseUrl}${endpoint}`);
@@ -170,7 +166,7 @@ class AttendanceApiClient {
     try {
       const response = await fetch(url.toString(), {
         method: 'GET',
-        headers: this.getHeaders(),
+        headers: await this.getHeaders(),
         credentials: 'include' // CRITICAL: Send httpOnly refresh token cookie
       });
 
@@ -184,62 +180,54 @@ class AttendanceApiClient {
         
         // Check if it's an ngrok warning page
         if (htmlContent.includes('ngrok') && htmlContent.includes('You are about to visit')) {
-          throw new Error('Ngrok tunnel is showing a browser warning. Please visit the ngrok URL in a browser first to accept the warning, or configure ngrok to skip browser warnings.');
+          throw new Error('The attendance server is not reachable. Please try again or check your connection.');
         }
         
-        throw new Error('API returned HTML instead of JSON. This might be a server configuration issue.');
+        throw new Error('Unexpected response from the server. Please try again later.');
       }
 
       if (!response.ok) {
-        let errorText = '';
-        try {
-          if (contentType.includes('application/json')) {
-            const errorData = await response.json();
-            errorText = errorData.message || JSON.stringify(errorData);
-          } else {
-            errorText = await response.text();
-          }
-        } catch {
-          errorText = `HTTP ${response.status}: ${response.statusText}`;
-        }
-        
+        const errorText = await response.text().catch(() => '');
+
         console.error(`Attendance API Error ${response.status}:`, errorText);
-        
+
         // Handle 401 - Try to refresh token
         if (response.status === 401) {
           const refreshed = await this.handle401Error();
-          
+
           if (refreshed) {
             console.log('🔁 Retrying attendance request with new token...');
+            const retryHeaders = await this.getHeaders();
             const retryResponse = await fetch(url.toString(), {
               method: 'GET',
-              headers: this.getHeaders(),
+              headers: retryHeaders,
               credentials: 'include' // CRITICAL: Send httpOnly refresh token cookie
             });
-            
+
             if (!retryResponse.ok) {
-              throw new Error(`HTTP ${retryResponse.status}: ${retryResponse.statusText}`);
+              const retryErrorText = await retryResponse.text().catch(() => '');
+              throw parseApiError(retryResponse.status, retryErrorText, url.toString());
             }
-            
+
             const retryContentType = retryResponse.headers.get('Content-Type') || '';
             let retryData: T;
-            
+
             if (retryContentType.includes('application/json')) {
               retryData = await retryResponse.json();
             } else {
               retryData = {} as T;
             }
-            
+
             const requestKey = this.generateRequestKey(endpoint, params);
             await apiCache.setCache(requestKey, retryData, params, ttl);
             console.log('✅ Retry successful after token refresh');
             return retryData;
           }
-          
-          throw new Error('Authentication failed');
+
+          throw parseApiError(401, errorText, url.toString());
         }
-        
-        throw new Error(errorText || `HTTP ${response.status}: ${response.statusText}`);
+
+        throw parseApiError(response.status, errorText, url.toString());
       }
 
       let data: T;
@@ -249,7 +237,7 @@ class AttendanceApiClient {
           data = await response.json();
         } catch (jsonError) {
           console.error('Failed to parse JSON response:', jsonError);
-          throw new Error('Invalid JSON response from server');
+          throw new Error('Unexpected response from the server. Please try again later.', { cause: jsonError });
         }
       } else {
         // If not JSON, try to parse anyway but provide fallback
@@ -264,14 +252,14 @@ class AttendanceApiClient {
       try {
         const requestKey = this.generateRequestKey(endpoint, params);
         await apiCache.setCache(requestKey, data, params, ttl);
-      } catch (error) {
+      } catch (error: any) {
         console.warn('Failed to cache attendance response:', error);
       }
 
       console.log('Attendance API request successful for:', endpoint);
       return data;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Attendance API request failed for:', endpoint, error);
       throw error;
     }
@@ -312,17 +300,18 @@ class AttendanceApiClient {
     this.baseUrl = getAttendanceUrl();
     
     if (!this.baseUrl) {
-      throw new Error('Attendance backend URL not configured. Please set the attendance backend URL in Settings.');
+      throw new Error('Attendance service is not configured. Please check your settings.');
     }
     
     const url = `${this.baseUrl}${endpoint}`;
     console.log(`Making attendance ${method} request to:`, url);
 
     try {
+      const headers = await this.getHeaders();
       const response = await fetch(url, {
         method,
         headers: {
-          ...this.getHeaders(),
+          ...headers,
           'Content-Type': 'application/json'
         },
         body: body ? JSON.stringify(body) : undefined,
@@ -334,57 +323,49 @@ class AttendanceApiClient {
       const contentType = response.headers.get('Content-Type') || '';
       
       if (!response.ok) {
-        let errorText = '';
-        try {
-          if (contentType.includes('application/json')) {
-            const errorData = await response.json();
-            errorText = errorData.message || JSON.stringify(errorData);
-          } else {
-            errorText = await response.text();
-          }
-        } catch {
-          errorText = `HTTP ${response.status}: ${response.statusText}`;
-        }
-        
+        const errorText = await response.text().catch(() => '');
+
         console.error(`Attendance ${method} Error ${response.status}:`, errorText);
-        
+
         // Handle 401 - Try to refresh token
         if (response.status === 401) {
           const refreshed = await this.handle401Error();
-          
+
           if (refreshed) {
             console.log(`🔁 Retrying attendance ${method} with new token...`);
+            const retryHeaders = await this.getHeaders();
             const retryResponse = await fetch(url, {
               method,
               headers: {
-                ...this.getHeaders(),
+                ...retryHeaders,
                 'Content-Type': 'application/json'
               },
               body: body ? JSON.stringify(body) : undefined,
               credentials: 'include'
             });
-            
+
             if (!retryResponse.ok) {
-              throw new Error(`HTTP ${retryResponse.status}: ${retryResponse.statusText}`);
+              const retryErrorText = await retryResponse.text().catch(() => '');
+              throw parseApiError(retryResponse.status, retryErrorText, url);
             }
-            
+
             const retryContentType = retryResponse.headers.get('Content-Type') || '';
             let retryData: T;
-            
+
             if (retryContentType.includes('application/json')) {
               retryData = await retryResponse.json();
             } else {
               retryData = {} as T;
             }
-            
+
             console.log(`✅ ${method} retry successful after token refresh`);
             return retryData;
           }
-          
-          throw new Error('Authentication failed');
+
+          throw parseApiError(401, errorText, url);
         }
-        
-        throw new Error(errorText || `HTTP ${response.status}: ${response.statusText}`);
+
+        throw parseApiError(response.status, errorText, url);
       }
 
       let data: T;
@@ -394,7 +375,7 @@ class AttendanceApiClient {
           data = await response.json();
         } catch (jsonError) {
           console.error('Failed to parse JSON response:', jsonError);
-          throw new Error('Invalid JSON response from server');
+          throw new Error('Unexpected response from the server. Please try again later.', { cause: jsonError });
         }
       } else {
         data = {} as T;
@@ -403,7 +384,7 @@ class AttendanceApiClient {
       console.log(`Attendance ${method} request successful for:`, endpoint);
       return data;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Attendance ${method} request failed for:`, endpoint, error);
       throw error;
     }

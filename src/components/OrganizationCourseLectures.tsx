@@ -67,7 +67,7 @@ const OrganizationCourseLectures = ({ course, onBack, organization }: Organizati
       
       setLectures(response.data);
       setTotalPages(response.pagination.totalPages);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching lectures:', error);
       toast({
         title: "Error",
@@ -96,7 +96,7 @@ const OrganizationCourseLectures = ({ course, onBack, organization }: Organizati
         return 'Invalid date';
       }
       return format(date, 'MMM dd, yyyy HH:mm');
-    } catch (error) {
+    } catch (error: any) {
       return 'Invalid date';
     }
   };
@@ -112,7 +112,7 @@ const OrganizationCourseLectures = ({ course, onBack, organization }: Organizati
       const hours = Math.floor(durationMs / (1000 * 60 * 60));
       const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
       return `${hours}h ${minutes}m`;
-    } catch (error) {
+    } catch (error: any) {
       return 'Duration unavailable';
     }
   };

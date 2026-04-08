@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import MUITable from '@/components/ui/mui-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,17 +7,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { getImageUrl } from '@/utils/imageUrlHelper';
-import { RefreshCw, Filter, Eye, Edit, Trash2, Plus, BookOpen, AlertCircle, Power, PowerOff, Link2 } from 'lucide-react';
+import { RefreshCw, Filter, Eye, Edit, Trash2, Plus, BookOpen, AlertCircle, Power, PowerOff, Link2, ChevronDown, ChevronUp, ChevronsDownUp, ChevronsUpDown, LayoutGrid, Table2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { subjectsApi, Subject, CreateSubjectDto, UpdateSubjectDto, SUBJECT_TYPE_OPTIONS, BASKET_CATEGORY_OPTIONS, requiresBasketCategory } from '@/api/subjects.api';
+
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 import SubjectImageUpload from '@/components/SubjectImageUpload';
 import AssignSubjectToClassForm from '@/components/forms/AssignSubjectToClassForm';
+import { useViewMode } from '@/hooks/useViewMode';
 
 /**
  * Institute Subjects Management Page
@@ -36,9 +40,13 @@ const InstituteSubjects = () => {
   } = useAuth();
   const { toast } = useToast();
   const userRole = useInstituteRole();
+  const { subjectLabel: itemLabel, subjectsLabel, isTuition: isTuitionInstitute } = useInstituteLabels();
+  const pageTitle = `Institute ${subjectsLabel}`;
   
   // Data states
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [activeSubjectsData, setActiveSubjectsData] = useState<Subject[]>([]);
+  const [inactiveSubjectsData, setInactiveSubjectsData] = useState<Subject[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
   // Filter states
@@ -58,6 +66,7 @@ const InstituteSubjects = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createImageUrl, setCreateImageUrl] = useState('');
+  const createImageUploadRef = useRef<(() => Promise<string | null>) | null>(null);
   const [createForm, setCreateForm] = useState<CreateSubjectDto>({
     code: '',
     name: '',
@@ -110,21 +119,39 @@ const InstituteSubjects = () => {
   const canDelete = isSuperAdmin;
   const canDeactivate = isInstituteAdmin || isSuperAdmin;
   const canAssignSubjects = isInstituteAdmin || isTeacher;
-
-  // Fetch subjects
+  const { viewMode, setViewMode } = useViewMode();
+  const [expandedSubjectId, setExpandedSubjectId] = useState<string | null>(null);
+  const CARD_INITIAL_SHOW = 6;
+  const [showAllCards, setShowAllCards] = useState(false);
   const fetchSubjects = async (forceRefresh = false) => {
     if (!currentInstituteId) return;
-    
+
     setIsLoading(true);
     try {
-      const response = await subjectsApi.getAll(
+      // Fetch active subjects
+      const activeResponse = await subjectsApi.getAll(
         currentInstituteId,
-        { userId: user?.id, role: userRole || 'User' },
+        { userId: user?.id, role: userRole || 'User', isActive: true },
         forceRefresh
       );
-      
-      const subjectsData = Array.isArray(response) ? response : (response as any)?.data || [];
-      setSubjects(subjectsData);
+      const activeData = Array.isArray(activeResponse) ? activeResponse : (activeResponse as any)?.data || [];
+
+      // Also fetch inactive subjects so "All" and "Inactive" filters work
+      const inactiveResponse = await subjectsApi.getAll(
+        currentInstituteId,
+        { userId: user?.id, role: userRole || 'User', isActive: false },
+        forceRefresh
+      );
+      const inactiveData = Array.isArray(inactiveResponse) ? inactiveResponse : (inactiveResponse as any)?.data || [];
+
+      // Store each group separately so filters use the right API results
+      setActiveSubjectsData(activeData);
+      setInactiveSubjectsData(inactiveData);
+
+      // Merge both, deduplicate by id (used for 'all' filter and stats)
+      const allMap = new Map<string, Subject>();
+      [...activeData, ...inactiveData].forEach((s: Subject) => allMap.set(s.id, s));
+      setSubjects(Array.from(allMap.values()));
     } catch (error: any) {
       console.error('Error fetching subjects:', error);
       toast({
@@ -151,19 +178,22 @@ const InstituteSubjects = () => {
   // Get unique categories
   const categories = [...new Set(subjects.map(s => s.category).filter(Boolean))];
 
+  // Select the correct dataset based on filter so we trust the API, not client-side isActive
+  const baseSubjects = statusFilter === 'inactive'
+    ? inactiveSubjectsData
+    : statusFilter === 'active'
+      ? activeSubjectsData
+      : subjects; // 'all' uses merged set
+
   // Filter subjects
-  const filteredSubjects = subjects.filter(s => {
+  const filteredSubjects = baseSubjects.filter(s => {
     const matchesSearch = !searchTerm || 
       s.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.code?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = statusFilter === 'all' || 
-      (statusFilter === 'active' && s.isActive) ||
-      (statusFilter === 'inactive' && !s.isActive);
-    
     const matchesCategory = categoryFilter === 'all' || s.category === categoryFilter;
     
-    return matchesSearch && matchesStatus && matchesCategory;
+    return matchesSearch && matchesCategory;
   });
 
   // View subject
@@ -204,10 +234,18 @@ const InstituteSubjects = () => {
 
     try {
       setIsCreating(true);
+
+      // Upload pending image only on form submission
+      let finalImageUrl = createImageUrl;
+      if (createImageUrl === '__pending__' && createImageUploadRef.current) {
+        const uploadedUrl = await createImageUploadRef.current();
+        finalImageUrl = uploadedUrl || '';
+      }
+
       await subjectsApi.create({
         ...createForm,
         instituteId: currentInstituteId,
-        imgUrl: createImageUrl || undefined
+        imgUrl: (finalImageUrl && finalImageUrl !== '__pending__') ? finalImageUrl : undefined
       });
       
       toast({
@@ -316,7 +354,7 @@ const InstituteSubjects = () => {
     }
   };
 
-  // Deactivate subject
+  // Deactivate / Activate subject (toggle)
   const handleDeactivateClick = (subject: Subject) => {
     setSubjectToDeactivate(subject);
     setShowDeactivateConfirm(true);
@@ -325,23 +363,29 @@ const InstituteSubjects = () => {
   const confirmDeactivateSubject = async () => {
     if (!subjectToDeactivate || !currentInstituteId || isDeactivating) return;
 
+    const isCurrentlyActive = subjectToDeactivate.isActive;
+
     try {
       setIsDeactivating(true);
-      await subjectsApi.deactivate(subjectToDeactivate.id, currentInstituteId);
-      
+      if (isCurrentlyActive) {
+        await subjectsApi.deactivate(subjectToDeactivate.id, currentInstituteId);
+      } else {
+        await subjectsApi.activate(subjectToDeactivate.id, currentInstituteId);
+      }
+
       toast({
-        title: "Subject Deactivated",
-        description: `${subjectToDeactivate.name} has been deactivated`
+        title: isCurrentlyActive ? "Subject Deactivated" : "Subject Activated",
+        description: `${subjectToDeactivate.name} has been ${isCurrentlyActive ? 'deactivated' : 'activated'}`
       });
-      
+
       setShowDeactivateConfirm(false);
       setSubjectToDeactivate(null);
       fetchSubjects(true);
     } catch (error: any) {
-      console.error('Error deactivating subject:', error);
+      console.error(`Error ${isCurrentlyActive ? 'deactivating' : 'activating'} subject:`, error);
       toast({
-        title: "Deactivate Failed",
-        description: error?.message || "Failed to deactivate subject",
+        title: isCurrentlyActive ? "Deactivate Failed" : "Activate Failed",
+        description: error?.message || `Failed to ${isCurrentlyActive ? 'deactivate' : 'activate'} subject`,
         variant: "destructive"
       });
     } finally {
@@ -464,6 +508,18 @@ const InstituteSubjects = () => {
               <PowerOff className="h-4 w-4" />
             </Button>
           )}
+
+          {canDeactivate && !row.isActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleDeactivateClick(row)}
+              className="text-green-600 hover:text-green-700"
+              title="Activate subject"
+            >
+              <Power className="h-4 w-4" />
+            </Button>
+          )}
           
           {canDelete && (
             <Button
@@ -505,12 +561,11 @@ const InstituteSubjects = () => {
       {/* Header */}
       <div className="flex flex-col gap-2 sm:gap-3">
         <div>
-          <h1 className="text-lg sm:text-xl md:text-2xl font-bold flex items-center gap-1.5 sm:gap-2">
-            <BookOpen className="h-5 w-5 sm:h-6 sm:w-6" />
-            Institute Subjects
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold">
+            {pageTitle}
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
-            Manage all subjects for {selectedInstitute?.name || 'this institute'}
+            Manage all {subjectsLabel.toLowerCase()} for {selectedInstitute?.name || 'this institute'}
           </p>
         </div>
         
@@ -550,6 +605,11 @@ const InstituteSubjects = () => {
             <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
           </Button>
+          {/* View Mode Toggle */}
+          <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+            <button onClick={() => setViewMode('card')} className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} title="Card View"><LayoutGrid className="h-4 w-4" /></button>
+            <button onClick={() => setViewMode('table')} className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} title="Table View"><Table2 className="h-4 w-4" /></button>
+          </div>
         </div>
       </div>
 
@@ -635,24 +695,147 @@ const InstituteSubjects = () => {
         </Card>
       </div>
 
-      {/* Subjects Table */}
+      {/* Subjects Table / Card View */}
       <div className="w-full overflow-x-auto">
-        <MUITable
-          title="Institute Subjects"
-          data={filteredSubjects}
-          columns={subjectsColumns.map(col => ({
-            id: col.key,
-            label: col.header,
-            minWidth: col.key === 'actions' ? 180 : col.key === 'name' ? 200 : 120,
-            format: col.format
-          }))}
-          page={0}
-          rowsPerPage={50}
-          totalCount={filteredSubjects.length}
-          onPageChange={() => {}}
-          onRowsPerPageChange={() => {}}
-          sectionType="subjects"
-        />
+        {viewMode === 'card' ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {(showAllCards ? filteredSubjects : filteredSubjects.slice(0, CARD_INITIAL_SHOW)).map(subject => {
+                const typeOption = SUBJECT_TYPE_OPTIONS.find(o => o.value === subject.subjectType);
+                const basketOption = BASKET_CATEGORY_OPTIONS.find(o => o.value === subject.basketCategory);
+                const hasLongDesc = (subject.description?.length || 0) > 120;
+                const isDescExpanded = expandedSubjectId === subject.id;
+
+                return (
+                  <Card key={subject.id} className="hover:shadow-lg hover:border-primary/30 transition-all duration-200 flex flex-col overflow-hidden">
+                    {/* Image banner with Gradient Overlay */}
+                    <div
+                      className="relative h-40 bg-gradient-to-r from-primary to-primary/80 overflow-hidden cursor-pointer rounded-t-lg"
+                      onClick={() => {
+                        if (subject.imgUrl) setPreviewImage({ url: resolveImageUrl(subject.imgUrl), title: `${subject.name} - Image` });
+                      }}
+                    >
+                      <img
+                        src={resolveImageUrl(subject.imgUrl)}
+                        alt={subject.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/placeholder.svg'; }}
+                      />
+                      <div className="absolute top-2 right-2">
+                        <Badge variant={subject.isActive ? 'default' : 'secondary'} className={`text-xs ${subject.isActive ? 'bg-green-600' : 'bg-gray-500'}`}>
+                          {subject.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Card body — always visible */}
+                    <div className="p-4 flex-1 flex flex-col gap-3">
+                      <div>
+                        <h3 className="font-semibold text-base truncate line-clamp-2">{subject.name}</h3>
+                        <p className="text-xs text-muted-foreground font-mono">{subject.code}</p>
+                      </div>
+
+                      {/* Badges row */}
+                      <div className="flex flex-wrap gap-1">
+                        {subject.category && <Badge variant="outline" className="text-[10px]">{subject.category}</Badge>}
+                        {subject.subjectType && (
+                          <Badge variant="secondary" className="text-[10px]">{typeOption?.label || subject.subjectType}</Badge>
+                        )}
+                        {subject.basketCategory && (
+                          <Badge variant="outline" className="text-[10px] border-purple-500 text-purple-700 dark:text-purple-300">{basketOption?.label || subject.basketCategory}</Badge>
+                        )}
+                      </div>
+
+                      {/* Info grid — always visible */}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                        <div className="text-muted-foreground">Credits: <span className="text-foreground font-medium">{subject.creditHours ?? 0}</span></div>
+                        <div className="text-muted-foreground">Type: <span className="text-foreground font-medium">{typeOption?.label || subject.subjectType || 'N/A'}</span></div>
+                      </div>
+
+                      {/* Description — with expand/collapse for long text */}
+                      {subject.description && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          <p className={!isDescExpanded && hasLongDesc ? 'line-clamp-2' : ''}>
+                            {subject.description}
+                          </p>
+                          {hasLongDesc && (
+                            <button
+                              className="text-primary text-[10px] font-medium mt-0.5 hover:underline"
+                              onClick={() => setExpandedSubjectId(isDescExpanded ? null : subject.id)}
+                            >
+                              {isDescExpanded ? 'Show less' : 'Show more'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                      {/* Action buttons */}
+                      <div className="px-4 py-3 border-t space-y-2 last:rounded-b-lg">
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" className="h-7 text-[10px] px-2 flex-1 border-primary/30" onClick={() => handleViewSubject(subject)}>
+                            <Eye className="h-3 w-3 mr-1" />View
+                          </Button>
+                          {canEdit && (
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] px-2 flex-1 text-blue-600 hover:text-blue-700 border-primary/30" onClick={() => handleOpenEdit(subject)}>
+                              <Edit className="h-3 w-3 mr-1" />Edit
+                            </Button>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          {canDeactivate && (
+                            <Button variant="outline" size="sm" className={`h-7 text-[10px] px-2 flex-1 border-primary/30 ${subject.isActive ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}`} onClick={() => handleDeactivateClick(subject)}>
+                              {subject.isActive ? <><PowerOff className="h-3 w-3 mr-1" />Deactivate</> : <><Power className="h-3 w-3 mr-1" />Activate</>}
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button variant="outline" size="sm" className="h-7 text-[10px] px-2 flex-1 text-destructive hover:text-destructive border-primary/30" onClick={() => handleDeleteClick(subject)}>
+                              <Trash2 className="h-3 w-3 mr-1" />Delete
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                );
+              })}
+            </div>
+
+            {/* Show More / Show Less toggle */}
+            {filteredSubjects.length > CARD_INITIAL_SHOW && (
+              <div className="flex justify-center mt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAllCards(!showAllCards)}
+                  className="gap-1.5"
+                >
+                  {showAllCards ? (
+                    <><ChevronsDownUp className="h-4 w-4" />Show Less ({CARD_INITIAL_SHOW} of {filteredSubjects.length})</>
+                  ) : (
+                    <><ChevronsUpDown className="h-4 w-4" />Show All ({filteredSubjects.length} subjects)</>
+                  )}
+                </Button>
+              </div>
+            )}
+          </>
+        ) : (
+          <MUITable
+            title={pageTitle}
+            data={filteredSubjects}
+            columns={subjectsColumns.map(col => ({
+              id: col.key,
+              label: col.header,
+              minWidth: col.key === 'actions' ? 180 : col.key === 'name' ? 200 : 120,
+              format: col.format
+            }))}
+            page={0}
+            rowsPerPage={50}
+            totalCount={filteredSubjects.length}
+            onPageChange={() => {}}
+            onRowsPerPageChange={() => {}}
+            sectionType="subjects"
+          />
+        )}
       </div>
 
       {/* Create Subject Dialog */}
@@ -673,6 +856,8 @@ const InstituteSubjects = () => {
                 value={createImageUrl}
                 onChange={(url) => setCreateImageUrl(url)}
                 onRemove={() => setCreateImageUrl('')}
+                uploadImmediately={false}
+                uploadRef={createImageUploadRef}
               />
               <p className="text-xs text-muted-foreground">
                 Recommended: 4:3 aspect ratio, max 5MB (JPG, PNG, WebP)
@@ -957,61 +1142,75 @@ const InstituteSubjects = () => {
 
       {/* View Subject Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Subject Details</DialogTitle>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[88vh] overflow-y-auto">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="flex items-center gap-3">
+              <div className="w-16 h-16 rounded-2xl overflow-hidden bg-muted border border-border/50 shrink-0">
+                <img
+                  src={resolveImageUrl(selectedSubject?.imgUrl)}
+                  alt={selectedSubject?.name || 'Subject image'}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/placeholder.svg'; }}
+                />
+              </div>
+              <div>
+                <p className="font-bold text-base leading-tight">{selectedSubject?.name || 'Subject Details'}</p>
+                <p className="text-xs font-mono text-muted-foreground mt-0.5">{selectedSubject?.code || 'No code'}</p>
+              </div>
+            </DialogTitle>
           </DialogHeader>
           {selectedSubject && (
-            <div className="space-y-4">
-              <div className="flex items-start gap-4">
-                <div className="w-24 h-24 rounded-lg overflow-hidden bg-muted">
-                  <img
-                    src={resolveImageUrl(selectedSubject.imgUrl)}
-                    alt={selectedSubject.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/placeholder.svg'; }}
-                  />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold">{selectedSubject.name}</h3>
-                  <p className="text-sm font-mono text-muted-foreground">{selectedSubject.code}</p>
-                  <Badge variant={selectedSubject.isActive ? 'default' : 'secondary'} className="mt-2">
-                    {selectedSubject.isActive ? 'Active' : 'Inactive'}
-                  </Badge>
+            <div className="space-y-5">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Overview</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Code</span>
+                    <span className="text-xs font-mono font-bold text-primary">{selectedSubject.code || 'N/A'}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Category</span>
+                    <span className="text-xs font-medium">{selectedSubject.category || 'N/A'}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Credit Hours</span>
+                    <span className="text-xs font-medium">{selectedSubject.creditHours || 'N/A'}</span>
+                  </div>
+                  <div className={`flex flex-col gap-0.5 p-2.5 rounded-xl border ${selectedSubject.isActive ? 'bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800' : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800'}`}>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide ${selectedSubject.isActive ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>Status</span>
+                    <span className={`text-xs font-semibold ${selectedSubject.isActive ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}>{selectedSubject.isActive ? 'Active' : 'Inactive'}</span>
+                  </div>
                 </div>
               </div>
-              
+
               {selectedSubject.description && (
-                <div className="pt-4 border-t">
-                  <label className="text-sm text-muted-foreground">Description</label>
-                  <p className="mt-1">{selectedSubject.description}</p>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Description</p>
+                  <div className="p-3.5 rounded-xl bg-muted/60 border border-border/50">
+                    <p className="text-sm leading-6">{selectedSubject.description}</p>
+                  </div>
                 </div>
               )}
-              
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-                <div>
-                  <label className="text-sm text-muted-foreground">Category</label>
-                  <p className="font-medium">{selectedSubject.category || 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">Credit Hours</label>
-                  <p className="font-medium">{selectedSubject.creditHours || 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">Subject Type</label>
-                  <p className="font-medium">
-                    {SUBJECT_TYPE_OPTIONS.find(o => o.value === selectedSubject.subjectType)?.label || selectedSubject.subjectType || 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">Basket Category</label>
-                  <p className="font-medium">
-                    {BASKET_CATEGORY_OPTIONS.find(o => o.value === selectedSubject.basketCategory)?.label || selectedSubject.basketCategory || 'N/A'}
-                  </p>
+
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Configuration</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Subject Type</span>
+                    <span className="text-xs font-medium">
+                      {SUBJECT_TYPE_OPTIONS.find(o => o.value === selectedSubject.subjectType)?.label || selectedSubject.subjectType || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Basket Category</span>
+                    <span className="text-xs font-medium">
+                      {BASKET_CATEGORY_OPTIONS.find(o => o.value === selectedSubject.basketCategory)?.label || selectedSubject.basketCategory || 'N/A'}
+                    </span>
+                  </div>
                 </div>
               </div>
-              
-              <div className="flex justify-end gap-2 pt-4 border-t">
+
+              <div className="flex justify-end gap-2 pt-1">
                 {canEdit && (
                   <Button
                     variant="outline"
@@ -1034,38 +1233,36 @@ const InstituteSubjects = () => {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => !isDeleting && setShowDeleteConfirm(open)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Subject</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to permanently delete <strong>{subjectToDelete?.name}</strong>?
-              <br /><br />
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDeleteSubject}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {isDeleting ? 'Deleting...' : 'Delete Subject'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={(open) => !isDeleting && setShowDeleteConfirm(open)}
+        itemName={subjectToDelete?.name || ''}
+        itemType="subject"
+        onConfirm={confirmDeleteSubject}
+        isDeleting={isDeleting}
+      />
 
-      {/* Deactivate Confirmation */}
+      {/* Deactivate / Activate Confirmation */}
       <AlertDialog open={showDeactivateConfirm} onOpenChange={(open) => !isDeactivating && setShowDeactivateConfirm(open)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Deactivate Subject</AlertDialogTitle>
+            <AlertDialogTitle>
+              {subjectToDeactivate?.isActive ? 'Deactivate Subject' : 'Activate Subject'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to deactivate <strong>{subjectToDeactivate?.name}</strong>?
-              <br /><br />
-              The subject will be hidden but can be reactivated later.
+              {subjectToDeactivate?.isActive ? (
+                <>
+                  Are you sure you want to deactivate <strong>{subjectToDeactivate?.name}</strong>?
+                  <br /><br />
+                  The subject will be hidden but can be reactivated later.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to activate <strong>{subjectToDeactivate?.name}</strong>?
+                  <br /><br />
+                  The subject will become visible and available for classes.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1073,9 +1270,12 @@ const InstituteSubjects = () => {
             <AlertDialogAction
               onClick={confirmDeactivateSubject}
               disabled={isDeactivating}
-              className="bg-orange-600 hover:bg-orange-700"
+              className={subjectToDeactivate?.isActive ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"}
             >
-              {isDeactivating ? 'Deactivating...' : 'Deactivate Subject'}
+              {isDeactivating
+                ? (subjectToDeactivate?.isActive ? 'Deactivating...' : 'Activating...')
+                : (subjectToDeactivate?.isActive ? 'Deactivate Subject' : 'Activate Subject')
+              }
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

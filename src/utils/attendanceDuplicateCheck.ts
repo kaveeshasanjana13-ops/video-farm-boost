@@ -44,7 +44,7 @@ class AttendanceDuplicateChecker {
           (record: AttendanceRecord) => now - record.timestamp < DUPLICATE_CHECK_WINDOW_MS
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load attendance records from storage:', error);
       this.records = [];
     }
@@ -56,7 +56,7 @@ class AttendanceDuplicateChecker {
   private saveToStorage(): void {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.records));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save attendance records to storage:', error);
     }
   }

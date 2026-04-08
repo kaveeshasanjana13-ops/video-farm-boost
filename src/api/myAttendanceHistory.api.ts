@@ -1,10 +1,13 @@
 import { enhancedCachedClient } from './enhancedCachedClient';
 
 export interface MyAttendanceRecord {
-  id: string;
+  id?: string;
   date: string;
   status: string;
   statusLabel: string;
+  studentId?: string;
+  studentName?: string;
+  studentImageUrl?: string;
   instituteId: string;
   instituteName: string;
   instituteShortName?: string;
@@ -12,8 +15,9 @@ export interface MyAttendanceRecord {
   classId?: string;
   className?: string;
   subjectId?: string;
+  subjectName?: string;
   markedAt: string;
-  markedBy: string;
+  markedBy?: string;
   timestamp: number;
 }
 
@@ -59,6 +63,8 @@ export interface MyAttendanceHistoryParams {
   status?: string;
   page?: number;
   limit?: number;
+  child?: boolean;
+  studentId?: string;
 }
 
 export const myAttendanceHistoryApi = {
@@ -71,10 +77,12 @@ export const myAttendanceHistoryApi = {
     if (params.endDate) queryParams.append('endDate', params.endDate);
     if (params.instituteId) queryParams.append('instituteId', params.instituteId);
     if (params.status) queryParams.append('status', params.status);
+    if (params.child !== undefined) queryParams.append('child', String(params.child));
+    if (params.studentId) queryParams.append('studentId', params.studentId);
     queryParams.append('page', (params.page || 1).toString());
     queryParams.append('limit', (params.limit || 50).toString());
 
-    const endpoint = `/attendance/my-history?${queryParams.toString()}`;
+    const endpoint = `/api/attendance/my-history?${queryParams.toString()}`;
 
     console.log('=== MY ATTENDANCE HISTORY API CALL ===');
     console.log('Endpoint:', endpoint);

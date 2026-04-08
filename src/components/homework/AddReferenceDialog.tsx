@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Upload, 
   Link as LinkIcon, 
   HardDrive,
+  Cloud,
   Video,
   Image,
   FileText,
@@ -10,7 +11,9 @@ import {
   Music,
   Loader2,
   X,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle,
+  Paperclip
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +45,13 @@ import {
   getMaxFileSize,
   detectReferenceType
 } from '@/api/homeworkReferences.api';
+import { checkDriveConnection, getDriveConnectUrl, getDriveAccessToken } from '@/services/driveService';
+import { useAuth } from '@/contexts/AuthContext';
+import { instituteDriveApi, InstituteDriveStatus } from '@/api/instituteDriveAccess.api';
+import { uploadToInstituteDrive } from '@/lib/instituteDriveUpload';
+import { getErrorMessage } from '@/api/apiError';
+
+type DriveDestination = 'institute' | 'personal';
 
 interface AddReferenceDialogProps {
   isOpen: boolean;
@@ -67,7 +77,9 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
   onSuccess,
 }) => {
   const { toast } = useToast();
+  const { selectedInstitute, selectedClass, selectedSubject } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const driveFileRef = useRef<HTMLInputElement>(null);
   
   const [activeTab, setActiveTab] = useState<'upload' | 'link' | 'drive'>('upload');
   const [isLoading, setIsLoading] = useState(false);
@@ -85,9 +97,53 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
   const [externalUrl, setExternalUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
   
-  // Google Drive
+  // Google Drive — personal
   const [driveFileId, setDriveFileId] = useState('');
   const [driveAccessToken, setDriveAccessToken] = useState('');
+  const [isDriveConnected, setIsDriveConnected] = useState<boolean | null>(null);
+  const [isDriveChecking, setIsDriveChecking] = useState(false);
+
+  // Google Drive — institute
+  const [driveDestination, setDriveDestination] = useState<DriveDestination>('institute');
+  const [instituteDriveStatus, setInstituteDriveStatus] = useState<InstituteDriveStatus | null>(null);
+  const [instituteDriveChecked, setInstituteDriveChecked] = useState(false);
+  const [driveUploading, setDriveUploading] = useState(false);
+  const [driveUploadProgress, setDriveUploadProgress] = useState('');
+
+  const checkDriveStatus = async () => {
+    setIsDriveChecking(true);
+    try {
+      const status = await checkDriveConnection();
+      setIsDriveConnected(status.isConnected);
+      if (status.isConnected) {
+        const tokenData = await getDriveAccessToken();
+        setDriveAccessToken(tokenData.accessToken);
+      }
+    } catch {
+      setIsDriveConnected(false);
+    } finally {
+      setIsDriveChecking(false);
+    }
+  };
+
+  const checkInstituteDriveStatus = async () => {
+    if (!selectedInstitute?.id) return;
+    try {
+      const status = await instituteDriveApi.getStatus(selectedInstitute.id);
+      setInstituteDriveStatus(status);
+      if (status.isConnected) setDriveDestination('institute');
+    } catch {
+      setInstituteDriveStatus(null);
+    } finally {
+      setInstituteDriveChecked(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'drive') return;
+    checkDriveStatus();
+    if (!instituteDriveChecked) checkInstituteDriveStatus();
+  }, [isOpen, activeTab]);
 
   const resetForm = () => {
     setTitle('');
@@ -100,6 +156,8 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
     setDriveAccessToken('');
     setUploadProgress(0);
     setActiveTab('upload');
+    setDriveUploading(false);
+    setDriveUploadProgress('');
   };
 
   const handleClose = () => {
@@ -157,13 +215,12 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
       });
 
       onSuccess(reference);
-      // Reset form but keep dialog open so user can add more references
-      resetForm();
+      handleClose();
     } catch (error: any) {
       console.error('Upload failed:', error);
       toast({
         title: 'Upload failed',
-        description: error.message || 'Failed to upload file',
+        description: getErrorMessage(error, 'Failed to upload file'),
         variant: 'destructive',
       });
     } finally {
@@ -199,13 +256,12 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
       });
 
       onSuccess(reference);
-      // Reset form but keep dialog open so user can add more references
-      resetForm();
+      handleClose();
     } catch (error: any) {
       console.error('Link creation failed:', error);
       toast({
         title: 'Failed to add link',
-        description: error.message || 'Failed to add link reference',
+        description: getErrorMessage(error, 'Failed to add link reference'),
         variant: 'destructive',
       });
     } finally {
@@ -215,11 +271,8 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
 
   const handleGoogleDriveAuth = async () => {
     try {
-      const popup = window.open(
-        'https://lmsapi.suraksha.lk/auth/google',
-        'Google OAuth',
-        'width=600,height=700,left=200,top=100'
-      );
+      const { authUrl } = await getDriveConnectUrl();
+      const popup = window.open(authUrl, 'Google OAuth', 'width=600,height=700,left=200,top=100');
 
       if (!popup) {
         toast({
@@ -230,35 +283,16 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
         return;
       }
 
-      const checkInterval = setInterval(() => {
-        try {
-          if (popup.location.href.includes('#access_token=')) {
-            const params = new URLSearchParams(popup.location.hash.substring(1));
-            const token = params.get('access_token');
-            
-            clearInterval(checkInterval);
-            popup.close();
-            
-            if (token) {
-              setDriveAccessToken(token);
-              toast({
-                title: 'Connected to Google Drive',
-                description: 'You can now add files from your Drive',
-              });
-            }
-          }
-        } catch (e) {
-          // Cross-origin - still authenticating
-        }
-
+      const interval = setInterval(() => {
         if (popup.closed) {
-          clearInterval(checkInterval);
+          clearInterval(interval);
+          checkDriveStatus();
         }
-      }, 500);
-    } catch (error) {
+      }, 1000);
+    } catch (error: any) {
       toast({
         title: 'Authentication failed',
-        description: 'Failed to connect to Google Drive',
+        description: getErrorMessage(error, 'Failed to connect to Google Drive'),
         variant: 'destructive',
       });
     }
@@ -291,17 +325,67 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
       });
 
       onSuccess(reference);
-      // Reset form but keep dialog open so user can add more references
-      resetForm();
+      handleClose();
     } catch (error: any) {
       console.error('Drive reference creation failed:', error);
       toast({
         title: 'Failed to add Drive file',
-        description: error.message || 'Failed to add Google Drive reference',
+        description: getErrorMessage(error, 'Failed to add Google Drive reference'),
         variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleInstituteDriveFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedInstitute?.id) return;
+    e.target.value = '';
+
+    const detectedType = detectReferenceType(file);
+    const fileTitle = title || file.name.replace(/\.[^/.]+$/, '');
+
+    setDriveUploading(true);
+    setDriveUploadProgress('Preparing…');
+    try {
+      const registered = await uploadToInstituteDrive({
+        file,
+        instituteId: selectedInstitute.id,
+        purpose: 'HOMEWORK_REFERENCE',
+        folderParams: {
+          subjectName: selectedSubject?.name,
+          className: selectedClass?.name,
+          grade: selectedClass?.grade ? Number(selectedClass.grade) : undefined,
+        },
+        referenceType: 'HOMEWORK_REFERENCE',
+        referenceId: homeworkId,
+        onProgress: (p) => setDriveUploadProgress(`Uploading ${p}%`),
+      });
+
+      // Create the homework reference from the uploaded file
+      const reference = await homeworkReferencesApi.createFromLink({
+        homeworkId,
+        title: fileTitle,
+        description,
+        referenceType: detectedType,
+        externalUrl: registered.driveWebViewLink || registered.viewUrl,
+        linkTitle: `Institute Drive: ${file.name}`,
+      });
+
+      toast({ title: 'Reference added', description: `"${fileTitle}" uploaded to Institute Drive` });
+      onSuccess(reference);
+      handleClose();
+    } catch (err: any) {
+      console.error('Institute Drive upload failed:', err);
+      toast({
+        title: 'Upload failed',
+        description: getErrorMessage(err, 'Failed to upload to Institute Drive'),
+        variant: 'destructive',
+      });
+    } finally {
+      setDriveUploading(false);
+      setDriveUploadProgress('');
     }
   };
 
@@ -469,38 +553,105 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
             </TabsContent>
 
             <TabsContent value="drive" className="mt-0 space-y-3">
-              {!driveAccessToken ? (
-                <div className="text-center py-4">
-                  <HardDrive className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Connect your Google Drive to add files
-                  </p>
-                  <Button onClick={handleGoogleDriveAuth}>
-                    <HardDrive className="h-4 w-4 mr-2" />
-                    Connect Google Drive
-                  </Button>
+              {/* Drive destination selector */}
+              {instituteDriveChecked && instituteDriveStatus?.isConnected && (
+                <div className="flex items-center bg-muted rounded-xl p-1 gap-1 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setDriveDestination('institute')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      driveDestination === 'institute' ? 'bg-blue-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <HardDrive className="h-3 w-3" /> Institute Drive
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDriveDestination('personal')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      driveDestination === 'personal' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Cloud className="h-3 w-3" /> Personal Drive
+                  </button>
                 </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <span className="text-sm text-green-700 dark:text-green-400">
-                      Connected to Google Drive
-                    </span>
+              )}
+
+              {/* Institute Drive section */}
+              {driveDestination === 'institute' && instituteDriveStatus?.isConnected ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-xl px-3 py-2 border border-blue-200 dark:border-blue-800">
+                    <HardDrive className="h-4 w-4 shrink-0" />
+                    <span>Institute Drive <strong>{instituteDriveStatus.googleEmail}</strong></span>
                   </div>
                   <div>
-                    <Label htmlFor="driveFileId">File ID *</Label>
-                    <Input
-                      id="driveFileId"
-                      value={driveFileId}
-                      onChange={(e) => setDriveFileId(e.target.value)}
-                      placeholder="Enter Google Drive file ID"
-                      className="mt-1"
+                    <input
+                      ref={driveFileRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*,.mp4,.mp3,.wav"
+                      className="hidden"
+                      onChange={handleInstituteDriveFileSelect}
+                      disabled={driveUploading}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      You can find this in the file's sharing URL
-                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => driveFileRef.current?.click()}
+                      disabled={driveUploading}
+                      className="gap-2"
+                    >
+                      {driveUploading ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" />{driveUploadProgress || 'Uploading…'}</>
+                      ) : (
+                        <><Paperclip className="h-4 w-4" />Upload to Institute Drive</>
+                      )}
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-1">File uploads directly to the institute's shared Google Drive</p>
                   </div>
+                </div>
+              ) : (
+                /* Personal Drive section */
+                <>
+                  {isDriveChecking ? (
+                    <div className="text-center py-4">
+                      <Loader2 className="h-8 w-8 mx-auto text-muted-foreground mb-3 animate-spin" />
+                      <p className="text-sm text-muted-foreground">Checking Google Drive connection...</p>
+                    </div>
+                  ) : isDriveConnected !== true ? (
+                    <div className="text-center py-4">
+                      <HardDrive className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Connect your Google Drive to add files
+                      </p>
+                      <Button onClick={handleGoogleDriveAuth}>
+                        <HardDrive className="h-4 w-4 mr-2" />
+                        Connect Google Drive
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                        <span className="text-sm text-green-700 dark:text-green-400">
+                          Connected to Google Drive
+                        </span>
+                      </div>
+                      <div>
+                        <Label htmlFor="driveFileId">File ID *</Label>
+                        <Input
+                          id="driveFileId"
+                          value={driveFileId}
+                          onChange={(e) => setDriveFileId(e.target.value)}
+                          placeholder="Enter Google Drive file ID"
+                          className="mt-1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          You can find this in the file's sharing URL
+                        </p>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </TabsContent>
@@ -513,7 +664,7 @@ const AddReferenceDialog: React.FC<AddReferenceDialogProps> = ({
           </Button>
           <Button 
             onClick={handleSubmit} 
-            disabled={isLoading || (activeTab === 'drive' && !driveAccessToken)}
+            disabled={isLoading || driveUploading || (activeTab === 'drive' && driveDestination === 'personal' && isDriveConnected !== true)}
           >
             {isLoading ? (
               <>

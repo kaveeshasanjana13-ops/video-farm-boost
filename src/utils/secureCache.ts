@@ -108,8 +108,10 @@ class SecureCacheManager {
     // When payments are modified
     ['POST:/institute-payments', ['/institute-payments', '/subject-payments']],
     ['PATCH:/institute-payments', ['/institute-payments', '/subject-payments']],
+    ['DELETE:/institute-payments', ['/institute-payments']],
     ['POST:/subject-payments', ['/subject-payments', '/institute-payments']],
     ['PATCH:/subject-payments', ['/subject-payments', '/institute-payments']],
+    ['DELETE:/institute-class-subject-payments', ['/subject-payments', '/institute-class-subject-payments']],
   ]);
 
   static getInstance(): SecureCacheManager {
@@ -131,7 +133,7 @@ class SecureCacheManager {
         console.log('✅ SecureCache: Using IndexedDB storage (recommended)');
         return;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ IndexedDB initialization failed:', error);
     }
 
@@ -141,7 +143,7 @@ class SecureCacheManager {
         console.log('✅ SecureCache: Using localStorage storage');
         return;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ localStorage not available:', error);
     }
 
@@ -282,7 +284,7 @@ class SecureCacheManager {
         storage: this.storageType,
         context: options.context 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to set cache:', error);
     }
   }
@@ -343,7 +345,7 @@ class SecureCacheManager {
         size: Array.isArray(entry.data) ? entry.data.length : 1 
       });
       return entry.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to get cache:', error);
       return null;
     }
@@ -387,7 +389,7 @@ class SecureCacheManager {
       }
       
       console.log(`🗑️ Cleared cache pattern: ${pattern}`, { context });
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to clear cache pattern:', error);
     }
   }
@@ -414,7 +416,7 @@ class SecureCacheManager {
       }
       
       console.log(`🗑️ Cache cleared: ${endpoint}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to clear cache:', error);
     }
   }
@@ -439,7 +441,7 @@ class SecureCacheManager {
           this.clearMemoryUserCache(userId);
           break;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to clear user cache:', error);
     }
   }
@@ -453,7 +455,7 @@ class SecureCacheManager {
     try {
       console.log(`🗑️ Clearing all cache for institute: ${instituteId}`);
       await this.clearCachePattern('', { instituteId });
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to clear institute cache:', error);
     }
   }
@@ -481,7 +483,7 @@ class SecureCacheManager {
       }
 
       console.log(`🗑️ Cleared all ${clearedCount} cache entries`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to clear all cache:', error);
     }
   }
@@ -528,7 +530,7 @@ class SecureCacheManager {
           }
           break;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to get cache stats:', error);
     }
 
@@ -704,7 +706,7 @@ class SecureCacheManager {
   private setLocalStorageCache(key: string, entry: SecureCacheEntry): void {
     try {
       localStorage.setItem(key, JSON.stringify(entry));
-    } catch (error) {
+    } catch (error: any) {
       console.warn('⚠️ localStorage quota exceeded, clearing old entries');
       this.clearOldLocalStorageEntries();
       try {
@@ -719,7 +721,7 @@ class SecureCacheManager {
     try {
       const cachedItem = localStorage.getItem(key);
       return cachedItem ? JSON.parse(cachedItem) : null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to parse localStorage cache:', error);
       return null;
     }

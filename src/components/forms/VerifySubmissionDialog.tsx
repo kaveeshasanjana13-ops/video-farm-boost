@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { institutePaymentsApi, VerifySubmissionRequest, PaymentSubmission } from '@/api/institutePayments.api';
 
@@ -19,6 +19,7 @@ interface VerifySubmissionDialogProps {
 const VerifySubmissionDialog = ({ open, onOpenChange, submission, instituteId, onSuccess }: VerifySubmissionDialogProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState<VerifySubmissionRequest>({
     status: 'VERIFIED',
     rejectionReason: '',
@@ -59,11 +60,11 @@ const VerifySubmissionDialog = ({ open, onOpenChange, submission, instituteId, o
         rejectionReason: '',
         notes: ''
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to verify submission:', error);
       toast({
-        title: "Error",
-        description: "Failed to verify payment submission",
+        title: "Verification Failed",
+        description: (error as any).message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -75,25 +76,55 @@ const VerifySubmissionDialog = ({ open, onOpenChange, submission, instituteId, o
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl mx-auto">
-        <DialogHeader>
-          <DialogTitle>Verify Payment Submission</DialogTitle>
+      <DialogContent className="w-[95vw] max-w-3xl max-h-[88vh] overflow-y-auto mx-auto">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-primary/10">
+              <FileText className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="font-bold text-base leading-tight">Verify Payment Submission</p>
+              <p className="text-xs text-muted-foreground font-normal">Review and approve or reject the submission</p>
+            </div>
+          </DialogTitle>
         </DialogHeader>
         
         {/* Submission Details */}
-        <div className="bg-muted p-4 rounded-lg mb-6">
-          <h3 className="font-semibold mb-2">Submission Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-            <p><strong>Submission ID:</strong> {submission.id}</p>
-            <p><strong>Amount:</strong> Rs {parseFloat((submission as any).paymentAmount || (submission as any).submittedAmount || '0').toLocaleString()}</p>
-            <p><strong>Student:</strong> {(submission as any).studentName || (submission as any).username || '-'}</p>
-            <p><strong>Transaction Ref:</strong> {(submission as any).transactionRef || (submission as any).transactionId || '-'}</p>
-            <p><strong>Payment Method:</strong> {(submission as any).paymentMethod || '-'}</p>
-            <p><strong>Payment Date:</strong> {new Date(submission.paymentDate).toLocaleDateString()}</p>
+        <div className="space-y-5 mb-6">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Submission Details</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Submission ID</span>
+                <span className="text-xs font-mono font-bold text-primary break-all">{submission.id}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Amount</span>
+                <span className="text-xs font-medium">Rs {parseFloat((submission as any).paymentAmount || (submission as any).submittedAmount || '0').toLocaleString()}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student</span>
+                <span className="text-xs font-medium">{(submission as any).studentName || (submission as any).username || '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50 col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Transaction Ref</span>
+                <span className="text-xs font-mono font-medium break-all">{(submission as any).transactionRef || (submission as any).transactionId || '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Payment Method</span>
+                <span className="text-xs font-medium">{(submission as any).paymentMethod || '-'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Payment Date</span>
+                <span className="text-xs font-medium">{new Date(submission.paymentDate).toLocaleDateString()}</span>
+              </div>
+            </div>
           </div>
+
           {((submission as any).remarks || (submission as any).notes) && (
-            <div className="mt-2">
-              <p className="text-sm"><strong>Remarks:</strong> {(submission as any).remarks || (submission as any).notes}</p>
+            <div className="p-3 rounded-xl bg-muted/60 border border-border/50">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Remarks</p>
+              <p className="text-sm">{(submission as any).remarks || (submission as any).notes}</p>
             </div>
           )}
         </div>
@@ -103,7 +134,9 @@ const VerifySubmissionDialog = ({ open, onOpenChange, submission, instituteId, o
             <Label htmlFor="status">Verification Decision *</Label>
             <Select 
               value={formData.status} 
-              onValueChange={(value: 'VERIFIED' | 'REJECTED') => setFormData(prev => ({ ...prev, status: value }))}
+              onValueChange={(value: 'VERIFIED' | 'REJECTED') => {
+                setFormData(prev => ({ ...prev, status: value }));
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -134,7 +167,10 @@ const VerifySubmissionDialog = ({ open, onOpenChange, submission, instituteId, o
                 onChange={(e) => setFormData(prev => ({ ...prev, rejectionReason: e.target.value }))}
                 placeholder="Please provide a reason for rejection..."
                 required
+              className={`${fieldErrors.rejectionReason ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
               />
+
+              {fieldErrors.rejectionReason && <p className="text-xs text-red-500 mt-1">{fieldErrors.rejectionReason}</p>}
             </div>
           )}
 

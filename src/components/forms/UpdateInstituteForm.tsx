@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { Loader2 } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 export interface InstituteUpdateData {
   name?: string;
@@ -75,7 +76,7 @@ const UpdateInstituteForm = ({ open, onOpenChange, instituteId, currentData, onS
       console.error('Failed to update institute:', error);
       toast({
         title: 'Error',
-        description: error?.message || 'Failed to update institute.',
+        description: getErrorMessage(error, 'Failed to update institute.'),
         variant: 'destructive',
       });
     } finally {

@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RefreshCw, FileText, Plus, Filter, Calendar, Clock, ExternalLink, BarChart3, Eye } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import CreateExamForm from '@/components/forms/CreateExamForm';
@@ -57,6 +58,7 @@ const TeacherExams = () => {
     selectedClass,
     selectedSubject
   } = useAuth();
+  const { subjectLabel } = useInstituteLabels();
   const effectiveRole = useInstituteRole();
   const {
     toast
@@ -257,10 +259,10 @@ const TeacherExams = () => {
         <div className="text-center py-12">
           <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <h2 className="text-2xl font-bold mb-4">
-            Select Subject
+            Select {subjectLabel}
           </h2>
           <p className="text-muted-foreground">
-            Please select an institute, class, and subject to view your exams.
+            Please select an institute, class, and {subjectLabel.toLowerCase()} to view your exams.
           </p>
         </div>
       </div>;

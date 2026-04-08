@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, FileText, CheckCircle, AlertCircle, Calendar, DollarSign, RefreshCw, ExternalLink, Eye, Search, Filter, X } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle, AlertCircle, Calendar, DollarSign, RefreshCw, ExternalLink, Eye, Search, Filter, X, ChevronDown, Shield } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import VerifySubmissionDialog from '@/components/forms/VerifySubmissionDialog';
 import { useTableData } from '@/hooks/useTableData';
+import { useViewMode } from '@/hooks/useViewMode';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -25,6 +26,9 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 interface Column {
   id: string;
   label: string;
@@ -51,6 +55,8 @@ const PaymentSubmissions = () => {
   } = useToast();
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [selectedSubmission, setSelectedSubmission] = useState<PaymentSubmission | SubjectPaymentSubmission | null>(null);
+  const { viewMode, setViewMode } = useViewMode();
+  const [expandedSubmissionId, setExpandedSubmissionId] = useState<string | null>(null);
   
   // Determine if this is a subject payment submission or institute payment submission
   const isSubjectPayment = selectedClass && selectedSubject;
@@ -170,6 +176,15 @@ const PaymentSubmissions = () => {
 
     return baseColumns;
   }, [isSubjectPayment]);
+
+  const psColDefs = useMemo<ColumnDef[]>(() =>
+    columns.map(c => ({ key: c.id, header: c.label, defaultWidth: c.minWidth || 150, minWidth: Math.floor((c.minWidth || 150) * 0.7) })),
+    [columns]
+  );
+  const psColIds = useMemo(() => psColDefs.map(c => c.key), [psColDefs]);
+  const psColDefaultWidths = useMemo(() => Object.fromEntries(psColDefs.map(c => [c.key, c.defaultWidth ?? 150])), [psColDefs]);
+  const { getWidth: getPsColWidth, setHoveredCol: setPsHoveredCol, ResizeHandle: PsResizeHandle } = useResizableColumns(psColIds, psColDefaultWidths);
+  const { colState: psColState, visibleColumns: psVisDefs, toggleColumn: togglePsCol, resetColumns: resetPsCols } = useColumnConfig(psColDefs, 'payment-submissions');
 
   // Use the table data hook for pagination and data management
   const {
@@ -294,11 +309,12 @@ const PaymentSubmissions = () => {
               <p className="text-muted-foreground text-xs sm:text-sm truncate">Payment ID: {paymentId}</p>
             </div>
           </div>
-          <div className="flex items-center justify-center w-full sm:w-auto">
+          <div className="flex items-center gap-2 justify-center w-full sm:w-auto">
             <Button onClick={() => refresh()} disabled={loading} size="sm" variant="outline" className="gap-2">
               <RefreshCw className={`h-3 w-3 sm:h-4 sm:w-4 ${loading ? 'animate-spin' : ''}`} />
               <span className="text-xs sm:text-sm">{loading ? 'Loading...' : 'Refresh'}</span>
             </Button>
+            <ColumnConfigurator allColumns={psColDefs} colState={psColState} onToggle={togglePsCol} onReset={resetPsCols} />
           </div>
         </div>
 
@@ -378,57 +394,107 @@ const PaymentSubmissions = () => {
                 <AlertCircle className="h-8 w-8 sm:h-12 sm:w-12 text-destructive mx-auto mb-3 sm:mb-4" />
                 <p className="text-destructive text-base sm:text-lg mb-1 sm:mb-2">Error loading submissions</p>
                 <p className="text-muted-foreground text-xs sm:text-sm">{error}</p>
-              </div> : <Paper sx={{
-            width: '100%',
-            overflow: 'hidden',
-            height: 'calc(100vh - 300px)'
-          }}>
-                <TableContainer sx={{
-              height: 'calc(100% - 56px)'
-            }}>
-                  <Table stickyHeader aria-label="payment submissions table" sx={{
-                    minWidth: { xs: 800, sm: 900 }
-                  }}>
+              </div> : viewMode === 'card' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {loading && filteredSubmissions.length === 0 ? (
+                  <div className="col-span-full text-center py-10"><RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3 text-muted-foreground" /><p className="text-muted-foreground">Loading submissions...</p></div>
+                ) : filteredSubmissions.length === 0 ? (
+                  <div className="col-span-full text-center py-10"><FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" /><p className="text-muted-foreground">No submissions found</p></div>
+                ) : filteredSubmissions.map((row) => {
+                  const rowId = String((row as any).id ?? Math.random());
+                  const isExpanded = expandedSubmissionId === rowId;
+                  const name = (row as any)[isSubjectPayment ? 'username' : 'studentName'] || 'Unknown';
+                  const amount = (row as any)[isSubjectPayment ? 'submittedAmount' : 'paymentAmount'];
+                  const txRef = (row as any)[isSubjectPayment ? 'transactionId' : 'transactionRef'];
+                  const notes = (row as any).notes || (row as any).remarks;
+                  const receiptUrl = (row as any).receiptUrl;
+                  return (
+                    <Card key={rowId} className="hover:shadow-md transition-shadow">
+                      <div className="p-4 flex items-start gap-3 cursor-pointer select-none" onClick={() => setExpandedSubmissionId(isExpanded ? null : rowId)}>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold truncate">{name}</p>
+                          <p className="text-xs text-muted-foreground">ID: {(row as any).id}</p>
+                        </div>
+                        <Badge className={getStatusColor((row as any).status)}>{(row as any).status}</Badge>
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                      </div>
+                      {isExpanded && (
+                        <div className="px-4 pb-4 border-t pt-3 space-y-2">
+                          {amount != null && <div className="text-lg font-bold text-primary">Rs {typeof amount === 'string' ? parseFloat(amount).toLocaleString() : Number(amount).toLocaleString()}</div>}
+                          {txRef && <p className="text-xs text-muted-foreground">Transaction: {txRef}</p>}
+                          {(row as any).paymentDate && <p className="text-xs text-muted-foreground">Date: {new Date((row as any).paymentDate).toLocaleDateString()}</p>}
+                          {(row as any).paymentMethod && <p className="text-xs text-muted-foreground">Method: {(row as any).paymentMethod}</p>}
+                          {notes && <p className="text-xs text-muted-foreground">Notes: {notes}</p>}
+                          <div className="flex gap-2 pt-1 border-t">
+                            {receiptUrl && (
+                              <Button variant="outline" size="sm" className="flex-1" onClick={() => window.open(getImageUrl(receiptUrl), '_blank')}>
+                                <Eye className="h-3.5 w-3.5 mr-1" />View Receipt
+                              </Button>
+                            )}
+                            {canVerifySubmissions && (row as any).status === 'PENDING' && (
+                              <Button size="sm" className="flex-1" onClick={() => handleVerifySubmission(row)}>
+                                <Shield className="h-3.5 w-3.5 mr-1" />Verify
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <Paper sx={{ width: '100%', height: 'calc(100vh - 300px)', display: 'flex', flexDirection: 'column' }}>
+                <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                  <Table stickyHeader aria-label="payment submissions table" sx={{ tableLayout: 'fixed', minWidth: psVisDefs.reduce((s, c) => s + getPsColWidth(c.key), 0) }}>
                     <TableHead>
                       <TableRow>
-                        {columns.map(column => <TableCell key={column.id} align={column.align} sx={{
-                      minWidth: column.minWidth,
-                      fontWeight: 600,
-                      bgcolor: 'rgba(0,0,0,0.04)',
-                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                      p: { xs: 1, sm: 2 }
-                    }}>
-                            {column.label}
-                          </TableCell>)}
+                        {psVisDefs.map(col => (
+                          <TableCell
+                            key={col.key}
+                            sx={{ position: 'relative', width: getPsColWidth(col.key), maxWidth: getPsColWidth(col.key), overflow: 'hidden', whiteSpace: 'nowrap', fontWeight: 600, bgcolor: 'rgba(0,0,0,0.04)' }}
+                            onMouseEnter={() => setPsHoveredCol(col.key)}
+                            onMouseLeave={() => setPsHoveredCol(null)}
+                          >
+                            <div style={{ paddingRight: 12 }}>{col.header}</div>
+                            <PsResizeHandle colId={col.key} />
+                          </TableCell>
+                        ))}
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {loading ? <TableRow>
-                          <TableCell colSpan={columns.length} align="center">
+                      {loading ? (
+                        <TableRow>
+                          <TableCell colSpan={psVisDefs.length} align="center">
                             <div className="py-8 sm:py-12 text-center">
                               <RefreshCw className="h-6 w-6 sm:h-8 sm:w-8 animate-spin mx-auto mb-3 sm:mb-4 text-muted-foreground" />
                               <p className="text-muted-foreground text-sm sm:text-base">Loading submissions...</p>
                             </div>
                           </TableCell>
-                        </TableRow> : filteredSubmissions.length === 0 ? <TableRow>
-                          <TableCell colSpan={columns.length} align="center">
+                        </TableRow>
+                      ) : filteredSubmissions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={psVisDefs.length} align="center">
                             <div className="py-8 sm:py-12 text-center px-4">
                               <FileText className="h-8 w-8 sm:h-12 sm:w-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
                               <p className="text-muted-foreground text-sm sm:text-lg mb-1 sm:mb-2">No submissions found</p>
                               <p className="text-muted-foreground text-xs sm:text-sm">No payment submissions have been made for this payment.</p>
                             </div>
                           </TableCell>
-                        </TableRow> : filteredSubmissions.map((row, index) => <TableRow hover role="checkbox" tabIndex={-1} key={row.id || index}>
-                            {columns.map(column => {
-                    const value = (row as any)[column.id as keyof typeof row];
-                    return <TableCell key={column.id} align={column.align} sx={{
-                              fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                              p: { xs: 1, sm: 2 }
-                            }}>
-                                {column.format ? column.format(value, row) : (value ?? '-')}
-                              </TableCell>;
-                  })}
-                          </TableRow>)}
+                        </TableRow>
+                      ) : filteredSubmissions.map((row, index) => (
+                        <TableRow hover role="checkbox" tabIndex={-1} key={(row as any).id || index}>
+                          {psVisDefs.map(col => {
+                            const colDef = columns.find(c => c.id === col.key);
+                            const value = (row as any)[col.key as keyof typeof row];
+                            return (
+                              <TableCell key={col.key} align={colDef?.align} style={{ width: getPsColWidth(col.key), maxWidth: getPsColWidth(col.key), overflow: 'hidden' }}>
+                                {colDef?.format ? colDef.format(value, row) : (value ?? '-')}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -452,7 +518,8 @@ const PaymentSubmissions = () => {
                     }
                   }}
                 />
-              </Paper>}
+              </Paper>
+            )}
           </CardContent>
         </Card>
 

@@ -1,5 +1,8 @@
 import * as React from 'react';
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -12,16 +15,37 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { RefreshCw, Users, MapPin, Calendar, Clock, ChevronLeft, ChevronRight, List, CalendarRange, PieChart, UserCheck, UserX, TrendingUp, BarChart3 } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getImageUrl } from '@/utils/imageUrlHelper';
+import { RefreshCw, ChevronLeft, ChevronRight, ChevronDown, Filter, LayoutGrid, Table2, List, CalendarDays, BarChart2 } from 'lucide-react';
+import { useViewMode } from '@/hooks/useViewMode';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import ScrollAnimationWrapper from '@/components/ScrollAnimationWrapper';
 import { useRefreshWithCooldown } from '@/hooks/useRefreshWithCooldown';
 import { useToast } from '@/hooks/use-toast';
 import { instituteStudentsApi, StudentAttendanceRecord, StudentAttendanceResponse } from '@/api/instituteStudents.api';
 import { childAttendanceApi, ChildAttendanceRecord } from '@/api/childAttendance.api';
 import AttendanceFilters, { AttendanceFilterParams } from '@/components/AttendanceFilters';
-import { getAttendanceStatusConfig, AttendanceStatus, ATTENDANCE_CHART_COLORS, normalizeAttendanceSummary } from '@/types/attendance.types';
-import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { getAttendanceStatusConfig, ATTENDANCE_CHART_COLORS, normalizeAttendanceSummary } from '@/types/attendance.types';
+import adminAttendanceApi, { MonthlyAttendanceCount, DailyAttendanceDayCount } from '@/api/adminAttendance.api';
+import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+
+const ATT_COL_DEFS: ColumnDef[] = [
+  { key: 'studentId', header: 'Student ID', defaultVisible: false, defaultWidth: 100, minWidth: 80 },
+  { key: 'studentName', header: 'Student Name', locked: true, defaultWidth: 220, minWidth: 120 },
+  { key: 'instituteName', header: 'Institute', defaultVisible: false, defaultWidth: 150, minWidth: 100 },
+  { key: 'className', header: 'Class', defaultVisible: true, defaultWidth: 120, minWidth: 80 },
+  { key: 'subjectName', header: 'Subject', defaultVisible: true, defaultWidth: 130, minWidth: 80 },
+  { key: 'timestamp', header: 'Time (SL)', locked: true, defaultWidth: 180, minWidth: 120 },
+  { key: 'status', header: 'Status', locked: true, defaultWidth: 100, minWidth: 80 },
+  { key: 'userType', header: 'User Type', defaultVisible: false, defaultWidth: 130, minWidth: 80 },
+  { key: 'location', header: 'Location', defaultVisible: false, defaultWidth: 200, minWidth: 120 },
+  { key: 'markingMethod', header: 'Method', defaultVisible: true, defaultWidth: 120, minWidth: 80 },
+  { key: 'eventId', header: 'Event ID', defaultVisible: false, defaultWidth: 100, minWidth: 70 },
+  { key: 'calendarDayId', header: 'Calendar Day', defaultVisible: false, defaultWidth: 110, minWidth: 80 },
+];
 
 interface AttendanceColumn {
   id: string;
@@ -41,7 +65,32 @@ const Attendance = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState('records');
-  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const { viewMode, setViewMode } = useViewMode();
+  const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
+  const [studentImagesMap, setStudentImagesMap] = useState<Map<string, string>>(new Map());
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+
+  const toggleCard = (index: number) => {
+    setExpandedCards(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  // Sri Lanka timezone (UTC+5:30) — used globally for all date calculations
+  const SL_TZ = 'Asia/Colombo';
+
+  /** Returns current date as a Date whose year/month/date match Sri Lanka's current date */
+  const getSLCurrentDate = (): Date => {
+    const slStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: SL_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+    return new Date(slStr + 'T00:00:00');
+  };
+
+  const [calendarMonth, setCalendarMonth] = useState<Date>(getSLCurrentDate);
   
   // Enhanced pagination state with default of 50 and available options [25, 50, 100]
   const [page, setPage] = useState(0);
@@ -49,24 +98,54 @@ const Attendance = () => {
   const [totalRecords, setTotalRecords] = useState(0);
   const rowsPerPageOptions = [25, 50, 100];
   
-  // Calculate default 5-day date range dynamically
+  // Calculate default 5-day date range dynamically using SL timezone
   const getDefaultDateRange = () => {
+    const fmt = (d: Date) => new Intl.DateTimeFormat('en-CA', {
+      timeZone: SL_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
     const today = new Date();
     const fiveDaysAgo = new Date(today);
-    fiveDaysAgo.setDate(today.getDate() - 4); // 5 days including today
-    return {
-      startDate: fiveDaysAgo.toISOString().split('T')[0],
-      endDate: today.toISOString().split('T')[0]
-    };
+    fiveDaysAgo.setDate(today.getDate() - 4);
+    return { startDate: fmt(fiveDaysAgo), endDate: fmt(today) };
   };
   
   const [filters, setFilters] = useState<AttendanceFilterParams>(() => getDefaultDateRange());
   const [attendanceSummary, setAttendanceSummary] = useState<any>(null);
 
+  // Monthly count from API
+  const [monthlyCount, setMonthlyCount] = useState<MonthlyAttendanceCount | null>(null);
+  const [monthlyCountLoading, setMonthlyCountLoading] = useState(false);
+  const monthlyCountCacheKey = React.useRef<string>('');
+
+  // Daily count (day-by-day) from API — used for Calendar tab
+  const [dailyCount, setDailyCount] = useState<DailyAttendanceDayCount[]>([]);
+  const [dailyCountLoading, setDailyCountLoading] = useState(false);
+  const dailyCountCacheKey = React.useRef<string>('');
+
   // Get institute role
   const userRoleAuth = useInstituteRole();
-  
-  // Check permissions and get view type based on role and context
+
+  // Format a Unix millisecond timestamp to local time string (Sri Lanka Time = UTC+5:30)
+  const formatTimestamp = (ts?: number): string => {
+    if (!ts) return '-';
+    return new Date(ts).toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      timeZone: 'Asia/Colombo',
+      hour12: true
+    });
+  };
+
+  const getInitials = (name?: string): string => {
+    if (!name) return 'ST';
+    return name
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join('');
+  };
+
   const getPermissionInfo = () => {
     const userRole = userRoleAuth;
     
@@ -133,11 +212,41 @@ const Attendance = () => {
   const getColumns = (): AttendanceColumn[] => {
     return [
       { id: 'studentId', label: 'Student ID', minWidth: 100 },
-      { id: 'studentName', label: 'Student Name', minWidth: 170 },
+      {
+        id: 'studentName',
+        label: 'Student Name',
+        minWidth: 220,
+        format: (value, record) => {
+          // ✅ NEW: Try to get image from map first, then from record
+          const studentId = (record as any)?.studentId;
+          const mappedImage = studentId ? studentImagesMap.get(studentId) : undefined;
+          const imageUrl = mappedImage || (record as any)?.studentImageUrl || (record as any)?.imageUrl || '';
+          const studentName = (value as string) || '-';
+          
+          if (mappedImage) {
+            console.log(`📸 Using mapped image for ${studentId}: ${mappedImage}`);
+          }
+          
+          return (
+            <div className="flex items-center gap-2 min-w-0">
+              <Avatar className="h-7 w-7 shrink-0">
+                <AvatarImage src={getImageUrl(imageUrl)} alt={studentName} />
+                <AvatarFallback className="text-[10px]">{getInitials(studentName)}</AvatarFallback>
+              </Avatar>
+              <span className="truncate">{studentName}</span>
+            </div>
+          );
+        }
+      },
       { id: 'instituteName', label: 'Institute', minWidth: 150 },
       { id: 'className', label: 'Class', minWidth: 120 },
       { id: 'subjectName', label: 'Subject', minWidth: 130 },
-      { id: 'date', label: 'Date', minWidth: 120, format: (value) => value ? new Date(value).toLocaleDateString() : '-' },
+      { 
+        id: 'timestamp', 
+        label: 'Time (SL)', 
+        minWidth: 180,
+        format: (value) => value ? formatTimestamp(value) : '-'
+      },
       { 
         id: 'status', 
         label: 'Status', 
@@ -151,8 +260,11 @@ const Attendance = () => {
           );
         }
       },
+      { id: 'userType', label: 'User Type', minWidth: 130 },
       { id: 'location', label: 'Location', minWidth: 200 },
-      { id: 'markingMethod', label: 'Method', minWidth: 120 }
+      { id: 'markingMethod', label: 'Method', minWidth: 120 },
+      { id: 'eventId', label: 'Event ID', minWidth: 100 },
+      { id: 'calendarDayId', label: 'Calendar Day', minWidth: 110 }
     ];
   };
 
@@ -175,91 +287,37 @@ const Attendance = () => {
     return days;
   }, [calendarMonth]);
 
-  // Daily attendance summary for calendar
-  const dailyAttendanceMap = useMemo(() => {
-    const map: Record<string, { present: number; absent: number; late: number; total: number }> = {};
-    if (studentAttendanceRecords) {
-      studentAttendanceRecords.forEach((record) => {
-        const dateKey = new Date(record.date).toISOString().split('T')[0];
-        if (!map[dateKey]) {
-          map[dateKey] = { present: 0, absent: 0, late: 0, total: 0 };
-        }
-        const status = record.status?.toLowerCase() as AttendanceStatus;
-        if (status === 'present') map[dateKey].present++;
-        else if (status === 'absent') map[dateKey].absent++;
-        else if (status === 'late') map[dateKey].late++;
-        map[dateKey].total++;
-      });
-    }
-    return map;
-  }, [studentAttendanceRecords]);
+  // Monthly stats derived from API
+  const monthlyStats = useMemo(() => {
+    if (!monthlyCount) return { present: 0, absent: 0, late: 0, left: 0, leftEarly: 0, leftLate: 0, total: 0, attendanceRate: 0 };
+    return {
+      present: monthlyCount.presentCount,
+      absent: monthlyCount.absentCount,
+      late: monthlyCount.lateCount,
+      left: monthlyCount.leftCount,
+      leftEarly: monthlyCount.leftEarlyCount,
+      leftLate: monthlyCount.leftLatelyCount,
+      total: monthlyCount.totalRecords,
+      attendanceRate: monthlyCount.attendanceRate,
+    };
+  }, [monthlyCount]);
 
-  const getDayStats = (day: number) => {
-    const year = calendarMonth.getFullYear();
-    const month = calendarMonth.getMonth();
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return dailyAttendanceMap[dateStr] || null;
-  };
-
-  // 5-day statistics for pie chart
-  const last5DaysStats = useMemo(() => {
-    const stats = { present: 0, absent: 0, late: 0 };
-    const today = new Date();
-    const last5Days: string[] = [];
-    
-    for (let i = 0; i < 5; i++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      last5Days.push(date.toISOString().split('T')[0]);
-    }
-    
-    if (studentAttendanceRecords) {
-      studentAttendanceRecords.forEach((record) => {
-        const dateKey = new Date(record.date).toISOString().split('T')[0];
-        if (last5Days.includes(dateKey)) {
-          const status = record.status?.toLowerCase() as AttendanceStatus;
-          if (status === 'present') stats.present++;
-          else if (status === 'absent') stats.absent++;
-          else if (status === 'late') stats.late++;
-        }
-      });
-    }
-    
-    return stats;
-  }, [studentAttendanceRecords]);
-
-  const pieChartData = useMemo(() => {
-    const total = last5DaysStats.present + last5DaysStats.absent + last5DaysStats.late;
+  const monthlyPieChartData = useMemo(() => {
+    const total = monthlyStats.total;
     if (total === 0) return [];
-    
-    return [
-      { name: 'Present', value: last5DaysStats.present, color: ATTENDANCE_CHART_COLORS.present, percentage: ((last5DaysStats.present / total) * 100).toFixed(1) },
-      { name: 'Absent', value: last5DaysStats.absent, color: ATTENDANCE_CHART_COLORS.absent, percentage: ((last5DaysStats.absent / total) * 100).toFixed(1) },
-      { name: 'Late', value: last5DaysStats.late, color: ATTENDANCE_CHART_COLORS.late, percentage: ((last5DaysStats.late / total) * 100).toFixed(1) },
+    const items = [
+      { name: 'Present', value: monthlyStats.present, color: ATTENDANCE_CHART_COLORS.present },
+      { name: 'Absent', value: monthlyStats.absent, color: ATTENDANCE_CHART_COLORS.absent },
+      { name: 'Late', value: monthlyStats.late, color: ATTENDANCE_CHART_COLORS.late },
+      { name: 'Left', value: monthlyStats.left, color: '#f97316' },
+      { name: 'Left Early', value: monthlyStats.leftEarly, color: '#a855f7' },
+      { name: 'Left Late', value: monthlyStats.leftLate, color: '#ec4899' },
     ].filter(item => item.value > 0);
-  }, [last5DaysStats]);
-
-  // Bar chart data for 5 days
-  const barChartData = useMemo(() => {
-    const today = new Date();
-    const data: { day: string; present: number; absent: number; late: number }[] = [];
-    
-    for (let i = 4; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateKey = date.toISOString().split('T')[0];
-      const dayStats = dailyAttendanceMap[dateKey] || { present: 0, absent: 0, late: 0 };
-      
-      data.push({
-        day: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-        present: dayStats.present,
-        absent: dayStats.absent,
-        late: dayStats.late
-      });
-    }
-    
-    return data;
-  }, [dailyAttendanceMap]);
+    return items.map(item => ({
+      ...item,
+      percentage: ((item.value / total) * 100).toFixed(1),
+    }));
+  }, [monthlyStats]);
 
   const navigateMonth = (direction: 'prev' | 'next') => {
     setCalendarMonth(prev => {
@@ -328,13 +386,30 @@ const Attendance = () => {
         setStudentAttendanceRecords(response.data);
         setTotalRecords(response.pagination.totalRecords);
         setAttendanceSummary(response.summary ? normalizeAttendanceSummary(response.summary) : null);
+        
+        // ✅ NEW: Extract student images from API response
+        if (response.data && Array.isArray(response.data)) {
+          const imagesMap = new Map<string, string>();
+          response.data.forEach((record: StudentAttendanceRecord) => {
+            if (record.studentId && record.studentImageUrl) {
+              imagesMap.set(record.studentId, record.studentImageUrl);
+            } else if (record.studentId && record.imageUrl) {
+              imagesMap.set(record.studentId, record.imageUrl);
+            }
+          });
+          if (imagesMap.size > 0) {
+            setStudentImagesMap(imagesMap);
+            console.log('✅ Extracted student images from API response:', imagesMap.size, 'images');
+          }
+        }
+        
         setDataLoaded(true);
         
         
       } else {
         throw new Error(response.message || 'Failed to load attendance data');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading attendance data:', error);
       toast({
         title: "Error",
@@ -347,10 +422,78 @@ const Attendance = () => {
   }, [currentInstituteId, currentClassId, currentSubjectId, viewType, hasPermission, page, rowsPerPage, filters, toast, user?.id, userRoleAuth]);
 
   useEffect(() => {
-    if (hasPermission) {
+    if (hasPermission && activeTab === 'records') {
       loadStudentAttendanceData();
     }
-  }, [loadStudentAttendanceData, hasPermission]);
+  }, [loadStudentAttendanceData, hasPermission, activeTab]);
+
+  // Load monthly attendance count from API
+  const loadMonthlyCount = useCallback(async (forceRefresh = false) => {
+    if (!hasPermission || !currentInstituteId) return;
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth() + 1;
+    const cacheKey = `${year}-${month}-${viewType}-${currentInstituteId}-${currentClassId ?? ''}-${currentSubjectId ?? ''}`;
+    if (!forceRefresh && monthlyCountCacheKey.current === cacheKey) return;
+    setMonthlyCountLoading(true);
+    try {
+      let res: MonthlyAttendanceCount;
+      if (viewType === 'subject' && currentClassId && currentSubjectId) {
+        res = await adminAttendanceApi.getSubjectMonthlyCount(currentInstituteId, currentClassId, currentSubjectId, { year, month });
+      } else if (viewType === 'class' && currentClassId) {
+        res = await adminAttendanceApi.getClassMonthlyCount(currentInstituteId, currentClassId, { year, month });
+      } else {
+        res = await adminAttendanceApi.getInstituteMonthlyCount(currentInstituteId, { year, month });
+      }
+      if (res.success) {
+        setMonthlyCount(res);
+        monthlyCountCacheKey.current = cacheKey;
+      }
+    } catch (e: any) {
+      console.error('Failed to load monthly count:', e);
+    } finally {
+      setMonthlyCountLoading(false);
+    }
+  }, [hasPermission, currentInstituteId, currentClassId, currentSubjectId, viewType, calendarMonth]);
+
+  useEffect(() => {
+    if (hasPermission && (activeTab === 'calendar' || activeTab === 'statistics')) {
+      loadMonthlyCount();
+    }
+  }, [loadMonthlyCount, hasPermission, activeTab]);
+
+  // Load day-by-day attendance count from API — used for Calendar tab
+  const loadDailyCount = useCallback(async (forceRefresh = false) => {
+    if (!hasPermission || !currentInstituteId) return;
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth() + 1;
+    const cacheKey = `${year}-${month}-${viewType}-${currentInstituteId}-${currentClassId ?? ''}-${currentSubjectId ?? ''}`;
+    if (!forceRefresh && dailyCountCacheKey.current === cacheKey) return;
+    setDailyCountLoading(true);
+    try {
+      let res;
+      if (viewType === 'subject' && currentClassId && currentSubjectId) {
+        res = await adminAttendanceApi.getSubjectDailyCount(currentInstituteId, currentClassId, currentSubjectId, { year, month });
+      } else if (viewType === 'class' && currentClassId) {
+        res = await adminAttendanceApi.getClassDailyCount(currentInstituteId, currentClassId, { year, month });
+      } else {
+        res = await adminAttendanceApi.getInstituteDailyCount(currentInstituteId, { year, month });
+      }
+      if (res.success) {
+        setDailyCount(res.days);
+        dailyCountCacheKey.current = cacheKey;
+      }
+    } catch (e: any) {
+      console.error('Failed to load daily count:', e);
+    } finally {
+      setDailyCountLoading(false);
+    }
+  }, [hasPermission, currentInstituteId, currentClassId, currentSubjectId, viewType, calendarMonth]);
+
+  useEffect(() => {
+    if (hasPermission && activeTab === 'calendar') {
+      loadDailyCount();
+    }
+  }, [loadDailyCount, hasPermission, activeTab]);
 
   const getCurrentSelection = () => {
     const parts = [];
@@ -362,27 +505,34 @@ const Attendance = () => {
 
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  const { getWidth: getAttColWidth, totalWidth: totalAttTableWidth, setHoveredCol: setAttHoveredCol, ResizeHandle: AttResizeHandle } = useResizableColumns(
+    ['studentId', 'studentName', 'instituteName', 'className', 'subjectName', 'timestamp', 'status', 'userType', 'location', 'markingMethod', 'eventId', 'calendarDayId'],
+    { studentId: 100, studentName: 220, instituteName: 150, className: 120, subjectName: 130, timestamp: 180, status: 100, userType: 130, location: 200, markingMethod: 120, eventId: 100, calendarDayId: 110 }
+  );
+
+  const { colState: attColState, visibleColumns: visAttDefs, toggleColumn: toggleAttCol, resetColumns: resetAttCols } = useColumnConfig(ATT_COL_DEFS, 'attendance');
+  const attVisibleKeys = useMemo(() => new Set(visAttDefs.map(c => c.key)), [visAttDefs]);
+
   if (!hasPermission) {
     return (
-      <div className="p-6">
+      <div className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
+        <div>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold">Attendance</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
+            View student attendance records
+          </p>
+        </div>
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Access Denied or Missing Selection
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12">
-              <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">Please select the required context to view attendance records:</h3>
-              <div className="text-sm text-muted-foreground space-y-2 mt-4">
-                <p><strong>Institute Admin/Attendance Marker:</strong> Select Institute only for institute-level attendance</p>
-                <p><strong>Institute Admin/Teacher/Attendance Marker:</strong> Select Institute + Class for class-level attendance</p>
-                <p><strong>Institute Admin/Teacher/Attendance Marker:</strong> Select Institute + Class + Subject for subject-level attendance</p>
-                <p className="mt-4 font-medium">Current Selection: {getCurrentSelection()}</p>
-              </div>
+          <CardContent className="p-4 sm:p-6">
+            <p className="font-medium mb-2 text-sm">Please select the required context to view attendance:</p>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>• <strong>Institute Admin / Attendance Marker:</strong> Select Institute only</p>
+              <p>• <strong>Institute Admin / Teacher / Attendance Marker:</strong> Select Institute + Class</p>
+              <p>• <strong>Institute Admin / Teacher / Attendance Marker:</strong> Select Institute + Class + Subject</p>
             </div>
+            {getCurrentSelection() !== 'No selection' && (
+              <p className="mt-3 text-xs font-medium text-muted-foreground">Current: {getCurrentSelection()}</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -390,295 +540,364 @@ const Attendance = () => {
   }
 
   const columns = getColumns();
+  const visibleCols = columns.filter(col => attVisibleKeys.has(col.id));
+  const visibleAttTotal = visibleCols.reduce((sum, col) => sum + getAttColWidth(col.id), 0);
   const displayData = viewType === 'student' ? childAttendanceRecords : studentAttendanceRecords;
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
+    <div className="p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4">
       {/* Header */}
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground truncate">{title}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Current Selection: <span className="font-medium text-foreground">{getCurrentSelection()}</span>
+      <div className="flex flex-col gap-2 sm:gap-3">
+        <div>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold">{title}</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
+            {getCurrentSelection()}
           </p>
-          {/* Dynamic Data Range Display */}
-          <div className="flex flex-wrap items-center gap-2 mt-2 text-sm">
-            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-              <CalendarRange className="h-3 w-3 mr-1" />
-              {filters.startDate && filters.endDate 
-                ? `${filters.startDate} to ${filters.endDate}`
-                : 'No date range selected'}
-            </Badge>
-            <Badge variant="secondary">
-              {totalRecords} {totalRecords === 1 ? 'record' : 'records'} across {Math.ceil(totalRecords / rowsPerPage) || 1} {Math.ceil(totalRecords / rowsPerPage) === 1 ? 'page' : 'pages'}
-            </Badge>
-          </div>
         </div>
-
-        <Button
-          onClick={loadStudentAttendanceData}
-          disabled={isLoading}
-          variant="outline"
-          className="shrink-0"
-        >
-          {isLoading ? (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              Refreshing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Refresh Data</span>
-              <span className="sm:hidden">Refresh</span>
-            </>
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <Button
+            onClick={() => {
+              if (activeTab === 'records') loadStudentAttendanceData();
+              else if (activeTab === 'calendar') loadDailyCount(true);
+              else if (activeTab === 'statistics') loadMonthlyCount(true);
+            }}
+            disabled={isLoading || dailyCountLoading || monthlyCountLoading}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5 ${(isLoading || dailyCountLoading || monthlyCountLoading) ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          {/* View Mode Toggle */}
+          <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+            <button
+              onClick={() => setViewMode('card')}
+              className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Card View"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Table View"
+            >
+              <Table2 className="h-4 w-4" />
+            </button>
+          </div>
+          {activeTab === 'records' && viewMode === 'table' && (
+            <ColumnConfigurator allColumns={ATT_COL_DEFS} colState={attColState} onToggle={toggleAttCol} onReset={resetAttCols} />
           )}
-        </Button>
-      </header>
-
-      {/* Filters Section */}
-      <AttendanceFilters
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        onApplyFilters={handleApplyFilters}
-        onClearFilters={handleClearFilters}
-      />
-
-      {/* Tab Navigation - Pill Style with Arrows */}
-      <div className="w-full">
-        <div className="flex items-center justify-center gap-2 py-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              const tabs = ['records', 'calendar', 'statistics'];
-              const currentIndex = tabs.indexOf(activeTab);
-              if (currentIndex > 0) {
-                setActiveTab(tabs[currentIndex - 1]);
-              }
-            }}
-            disabled={activeTab === 'records'}
-            className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30"
-          >
-            <ChevronLeft className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-          </Button>
-
-          {/* Pill Tab Buttons */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-full p-1">
-            {[
-              { id: 'records', icon: List, label: 'Records' },
-              { id: 'calendar', icon: CalendarRange, label: 'Calendar' },
-              { id: 'statistics', icon: PieChart, label: 'Statistics' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200
-                  ${activeTab === tab.id 
-                    ? 'bg-primary text-primary-foreground shadow-md' 
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                  }
-                `}
+          {/* Mobile Filter Button - Records tab only */}
+          {activeTab === 'records' && (
+          <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 sm:h-9 text-xs sm:text-sm px-2 sm:px-3 md:hidden"
               >
-                <tab.icon className="h-4 w-4" />
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => {
-              const tabs = ['records', 'calendar', 'statistics'];
-              const currentIndex = tabs.indexOf(activeTab);
-              if (currentIndex < tabs.length - 1) {
-                setActiveTab(tabs[currentIndex + 1]);
-              }
-            }}
-            disabled={activeTab === 'statistics'}
-            className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-30"
-          >
-            <ChevronRight className="h-5 w-5 text-slate-600 dark:text-slate-400" />
-          </Button>
-        </div>
-
-        {/* Dot indicators */}
-        <div className="flex justify-center gap-2 pb-4">
-          {['records', 'calendar', 'statistics'].map((tab) => (
-            <div
-              key={tab}
-              className={`h-2 w-2 rounded-full transition-all ${
-                activeTab === tab ? 'bg-primary w-6' : 'bg-muted-foreground/30'
-              }`}
-            />
-          ))}
+                <Filter className="h-3.5 w-3.5 mr-1" />
+                Filters
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="md:hidden flex flex-col max-h-[80vh]">
+              <SheetHeader>
+                <SheetTitle>Attendance Filters</SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto py-4">
+                <AttendanceFilters
+                  filters={filters}
+                  onFiltersChange={handleFiltersChange}
+                  onApplyFilters={() => {
+                    handleApplyFilters();
+                    setIsFilterSheetOpen(false);
+                  }}
+                  onClearFilters={handleClearFilters}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
+          )}
         </div>
       </div>
 
+      {/* Filters Section - Desktop Only, Records tab only */}
+      {activeTab === 'records' && (
+      <ScrollAnimationWrapper animationType="slide-up" className="hidden md:block">
+        <AttendanceFilters
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          onApplyFilters={handleApplyFilters}
+          onClearFilters={handleClearFilters}
+        />
+      </ScrollAnimationWrapper>
+      )}
+
+      {/* Tab Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="hidden" />
+        <TabsList className="w-full grid grid-cols-3">
+          <TabsTrigger value="records">Records</TabsTrigger>
+          <TabsTrigger value="calendar">Calendar</TabsTrigger>
+          <TabsTrigger value="statistics">Statistics</TabsTrigger>
+        </TabsList>
 
         {/* Tab 1: Records */}
-        <TabsContent value="records" className="mt-0 space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    <Users className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Records</p>
-                    <p className="text-2xl font-bold text-foreground">{totalRecords}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    <Calendar className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">View Type</p>
-                    <p className="text-lg font-medium text-foreground capitalize">{viewType} Level</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    <Clock className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Current Page</p>
-                    <p className="text-lg font-medium text-foreground">{page + 1} of {Math.ceil(totalRecords / rowsPerPage) || 1}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <TabsContent value="records" className="mt-4 space-y-4">
+          {/* Card View */}
+          {viewMode === 'card' && (
+            <div className="space-y-2">
+              {displayData.length > 0 ? (
+                <>
+                  <div className="space-y-2">
+                    {displayData.map((record, index) => {
+                      const config = getAttendanceStatusConfig((record as any).status);
+                      const isExpanded = expandedCards.has(index);
+                      return (
+                        <Card
+                          key={index}
+                          className="hover:shadow-md transition-shadow cursor-pointer select-none"
+                          onClick={() => toggleCard(index)}
+                        >
+                          {/* Always-visible summary row */}
+                          <div className="p-4 space-y-3">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10 shrink-0">
+                                {/* ✅ NEW: Use map first, then record fields */}
+                                {(() => {
+                                  const studentId = (record as any).studentId;
+                                  const mappedImage = studentId ? studentImagesMap.get(studentId) : undefined;
+                                  const imageUrl = mappedImage || (record as any).studentImageUrl || (record as any).imageUrl || '';
+                                  return (
+                                    <AvatarImage
+                                      src={getImageUrl(imageUrl)}
+                                      alt={(record as any).studentName || 'Student'}
+                                    />
+                                  );
+                                })()}
+                                <AvatarFallback className="text-xs">
+                                  {getInitials((record as any).studentName)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-sm truncate">{(record as any).studentName || '-'}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{(record as any).studentId || ''}</p>
+                              </div>
+                              <Badge className={`${config.bgColor} ${config.color} border text-xs shrink-0`}>
+                                {config.label}
+                              </Badge>
+                              <ChevronDown
+                                className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                                  isExpanded ? 'rotate-180' : ''
+                                }`}
+                              />
+                            </div>
+                            
+                            {/* Date, Time, User Type badges */}
+                            <div className="flex flex-wrap gap-2 items-center text-xs">
+                              {(record as any).date && (
+                                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                                  {(() => {
+                                    const d = (record as any).date;
+                                    const dStr = String(d);
+                                    let dateObj: Date;
+                                    if (/^\d{4}-\d{2}-\d{2}$/.test(dStr)) {
+                                      // Pure date string — avoid TZ shift
+                                      dateObj = new Date(dStr + 'T12:00:00');
+                                    } else if (/^\d+$/.test(dStr)) {
+                                      // Unix timestamp (ms)
+                                      dateObj = new Date(Number(dStr));
+                                    } else {
+                                      // ISO datetime or other string
+                                      dateObj = new Date(dStr);
+                                    }
+                                    return isNaN(dateObj.getTime())
+                                      ? dStr
+                                      : dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Colombo' });
+                                  })()}
+                                </Badge>
+                              )}
+                              {((record as any).markedAt || (record as any).timestamp) && (
+                                <Badge variant="outline" className="bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-cyan-500/20">
+                                  {new Date((record as any).markedAt ?? (record as any).timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                </Badge>
+                              )}
+                              {(record as any).userType && (
+                                <Badge variant="outline" className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
+                                  {(record as any).userType}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
 
-          {/* Data Table - Full Page Height */}
-          <Paper sx={{ width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 400px)', minHeight: '400px' }}>
-            <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
-              <Table stickyHeader aria-label="attendance table" sx={{ minWidth: 650 }}>
-                <TableHead>
-                  <TableRow>
-                    {columns.map((column) => (
-                      <TableCell
-                        key={column.id}
-                        align={column.align}
-                        sx={{ 
-                          minWidth: column.minWidth,
-                          fontWeight: 'bold',
-                          backgroundColor: 'hsl(var(--muted))',
-                          color: 'hsl(var(--foreground))',
-                          borderBottom: '2px solid hsl(var(--border))',
-                          fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                          padding: { xs: '8px 6px', sm: '12px 16px' },
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {column.label}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {displayData.length > 0 ? (
-                    displayData.map((record, index) => (
-                      <TableRow 
-                        hover 
-                        role="checkbox" 
-                        tabIndex={-1} 
-                        key={index}
-                        sx={{
-                          '&:hover': {
-                            backgroundColor: 'hsl(var(--muted) / 0.5)'
-                          }
-                        }}
-                      >
-                        {columns.map((column) => {
-                          const value = (record as any)[column.id];
-                          return (
-                            <TableCell 
-                              key={column.id} 
-                              align={column.align}
-                              sx={{
-                                fontSize: { xs: '0.7rem', sm: '0.875rem' },
-                                padding: { xs: '6px 4px', sm: '12px 16px' },
-                                borderBottom: '1px solid hsl(var(--border))',
-                                color: 'hsl(var(--foreground))'
-                              }}
-                            >
-                              {column.format ? column.format(value, record) : value}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    ))
-                  ) : (
+                          {/* Expandable detail section */}
+                          {isExpanded && (
+                            <div className="px-4 pb-4 border-t pt-3 space-y-1 text-xs text-muted-foreground">
+                              {(record as any).instituteName && (
+                                <p><span className="font-medium text-foreground">Institute:</span> {(record as any).instituteName}</p>
+                              )}
+                              {(record as any).className && (
+                                <p><span className="font-medium text-foreground">Class:</span> {(record as any).className}{(record as any).subjectName && ` · ${(record as any).subjectName}`}</p>
+                              )}
+                              {(record as any).location && (
+                                <p><span className="font-medium text-foreground">Location:</span> {(record as any).location}</p>
+                              )}
+                              {(record as any).markingMethod && (
+                                <p><span className="font-medium text-foreground">Method:</span> {(record as any).markingMethod}</p>
+                              )}
+                              {(record as any).userType && (
+                                <p><span className="font-medium text-foreground">User Type:</span> {(record as any).userType}</p>
+                              )}
+                              {(record as any).eventId && (
+                                <p><span className="font-medium text-foreground">Event:</span> {(record as any).eventId}</p>
+                              )}
+                              {(record as any).calendarDayId && (
+                                <p><span className="font-medium text-foreground">Calendar Day:</span> {(record as any).calendarDayId}</p>
+                              )}
+                            </div>
+                          )}
+                        </Card>
+                      );
+                    })}
+                  </div>
+
+                  {/* Card view pagination */}
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-sm text-muted-foreground">
+                      Showing {page * rowsPerPage + 1}–{Math.min((page + 1) * rowsPerPage, totalRecords)} of {totalRecords}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleChangePage(null, page - 1)} disabled={page === 0}>
+                        Prev
+                      </Button>
+                      <span className="text-sm font-medium px-2">{page + 1} / {Math.ceil(totalRecords / rowsPerPage) || 1}</span>
+                      <Button variant="outline" size="sm" onClick={() => handleChangePage(null, page + 1)} disabled={(page + 1) * rowsPerPage >= totalRecords}>
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="py-16 text-center text-muted-foreground">
+                  <p className="text-lg">No attendance records found</p>
+                  <p className="text-sm mt-1">{getCurrentSelection()}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Table View */}
+          {viewMode === 'table' && (
+            <Paper sx={{ width: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 400px)', minHeight: '400px' }}>
+              <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                <Table stickyHeader aria-label="attendance table" sx={{ width: '100%', minWidth: visibleAttTotal }}>
+                  <TableHead>
                     <TableRow>
-                      <TableCell colSpan={columns.length} align="center" sx={{ py: 8 }}>
-                        <div className="py-8 text-center text-muted-foreground">
-                          <Users className="h-10 w-10 sm:h-12 sm:w-12 mx-auto mb-3 sm:mb-4 opacity-50" />
-                          <p className="text-base sm:text-lg">No attendance records found</p>
-                          <p className="text-xs sm:text-sm mt-1">{getCurrentSelection()}</p>
-                        </div>
-                      </TableCell>
+                      {visibleCols.map((column) => (
+                        <TableCell
+                          key={column.id}
+                          align={column.align}
+                          onMouseEnter={() => setAttHoveredCol(column.id)}
+                          onMouseLeave={() => setAttHoveredCol(null)}
+                          style={{ position: 'relative', width: getAttColWidth(column.id), userSelect: 'none' }}
+                          sx={{ 
+                            fontWeight: 'bold',
+                            backgroundColor: 'hsl(var(--muted))',
+                            color: 'hsl(var(--foreground))',
+                            borderBottom: '2px solid hsl(var(--border))',
+                            fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                            padding: { xs: '8px 6px', sm: '12px 16px' },
+                          }}
+                        >
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{column.label}</div>
+                          <AttResizeHandle colId={column.id} />
+                        </TableCell>
+                      ))}
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            <TablePagination
-              rowsPerPageOptions={rowsPerPageOptions}
-              component="div"
-              count={totalRecords}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              sx={{
-                borderTop: '1px solid hsl(var(--border))',
-                '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
-                  fontSize: { xs: '0.7rem', sm: '0.875rem' }
-                },
-                '.MuiTablePagination-select': {
-                  fontSize: { xs: '0.7rem', sm: '0.875rem' }
-                },
-                '.MuiTablePagination-actions': {
-                  marginLeft: { xs: '4px', sm: '20px' }
-                }
-              }}
-            />
-          </Paper>
+                  </TableHead>
+                  <TableBody>
+                    {displayData.length > 0 ? (
+                      displayData.map((record, index) => (
+                        <TableRow 
+                          hover 
+                          role="checkbox" 
+                          tabIndex={-1} 
+                          key={index}
+                          sx={{
+                            '&:hover': {
+                              backgroundColor: 'hsl(var(--muted) / 0.5)'
+                            }
+                          }}
+                        >
+                          {visibleCols.map((column) => {
+                            const value = (record as any)[column.id];
+                            return (
+                              <TableCell 
+                                key={column.id} 
+                                align={column.align}
+                                sx={{
+                                  fontSize: { xs: '0.7rem', sm: '0.875rem' },
+                                  padding: { xs: '6px 4px', sm: '12px 16px' },
+                                  borderBottom: '1px solid hsl(var(--border))',
+                                  color: 'hsl(var(--foreground))'
+                                }}
+                              >
+                                {column.format ? column.format(value, record) : value}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={columns.length} align="center" sx={{ py: 8 }}>
+                          <div className="py-8 text-center text-muted-foreground">
+                            <p className="text-base sm:text-lg">No attendance records found</p>
+                            <p className="text-xs sm:text-sm mt-1">{getCurrentSelection()}</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <TablePagination
+                rowsPerPageOptions={rowsPerPageOptions}
+                component="div"
+                count={totalRecords}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                sx={{
+                  borderTop: '1px solid hsl(var(--border))',
+                  '.MuiTablePagination-selectLabel, .MuiTablePagination-displayedRows': {
+                    fontSize: { xs: '0.7rem', sm: '0.875rem' }
+                  },
+                  '.MuiTablePagination-select': {
+                    fontSize: { xs: '0.7rem', sm: '0.875rem' }
+                  },
+                  '.MuiTablePagination-actions': {
+                    marginLeft: { xs: '4px', sm: '20px' }
+                  }
+                }}
+              />
+            </Paper>
+          )}
         </TabsContent>
 
-        {/* Tab 2: Calendar View */}
         <TabsContent value="calendar" className="mt-0">
-          <Card className="border-border/50">
+          <Card>
             <CardHeader className="border-b border-border/50">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <CalendarRange className="h-5 w-5 text-primary" />
-                  Attendance Calendar
-                </CardTitle>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <CardTitle className="text-base font-semibold">Attendance Calendar</CardTitle>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="icon" onClick={() => navigateMonth('prev')}>
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="font-medium min-w-[140px] text-center text-sm sm:text-base">
-                    {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  <span className="font-medium min-w-[140px] text-center text-sm">
+                    {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: SL_TZ })}
                   </span>
                   <Button variant="outline" size="icon" onClick={() => navigateMonth('next')}>
                     <ChevronRight className="h-4 w-4" />
@@ -687,54 +906,44 @@ const Attendance = () => {
               </div>
             </CardHeader>
             <CardContent className="p-3 sm:p-4 md:p-6">
-              {/* Status Legend with Counts - Mobile Optimized */}
+              {/* Loading indicator */}
+              {dailyCountLoading && (
+                <div className="flex items-center justify-center py-4">
+                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading calendar data...</span>
+                </div>
+              )}
+
+              {/* Status Legend */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-6">
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
                   <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Present</span>
-                    <span className="text-sm font-bold text-emerald-800 dark:text-emerald-300">{last5DaysStats.present}</span>
-                  </div>
+                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Present</span>
                 </div>
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
                   <div className="w-3 h-3 rounded-full bg-red-500" />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-red-700 dark:text-red-400">Absent</span>
-                    <span className="text-sm font-bold text-red-800 dark:text-red-300">{last5DaysStats.absent}</span>
-                  </div>
+                  <span className="text-xs font-medium text-red-700 dark:text-red-400">Absent</span>
                 </div>
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
                   <div className="w-3 h-3 rounded-full bg-amber-500" />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Late</span>
-                    <span className="text-sm font-bold text-amber-800 dark:text-amber-300">{last5DaysStats.late}</span>
-                  </div>
+                  <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Late</span>
                 </div>
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
                   <div className="w-3 h-3 rounded-full bg-orange-500" />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-orange-700 dark:text-orange-400">Left</span>
-                    <span className="text-sm font-bold text-orange-800 dark:text-orange-300">0</span>
-                  </div>
+                  <span className="text-xs font-medium text-orange-700 dark:text-orange-400">Left</span>
                 </div>
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
                   <div className="w-3 h-3 rounded-full bg-purple-500" />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-purple-700 dark:text-purple-400">Left Early</span>
-                    <span className="text-sm font-bold text-purple-800 dark:text-purple-300">0</span>
-                  </div>
+                  <span className="text-xs font-medium text-purple-700 dark:text-purple-400">Left Early</span>
                 </div>
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-pink-50 dark:bg-pink-950/20 border border-pink-200 dark:border-pink-800">
                   <div className="w-3 h-3 rounded-full bg-pink-500" />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-pink-700 dark:text-pink-400">Left Late</span>
-                    <span className="text-sm font-bold text-pink-800 dark:text-pink-300">0</span>
-                  </div>
+                  <span className="text-xs font-medium text-pink-700 dark:text-pink-400">Left Late</span>
                 </div>
               </div>
 
-              {/* Calendar Grid - Responsive */}
-              <div className="grid grid-cols-7 gap-0.5 sm:gap-1 md:gap-2">
+              {/* Calendar Grid */}
+              <div className="grid grid-cols-7 gap-1 sm:gap-1.5 md:gap-2">
                 {/* Week Day Headers */}
                 {weekDays.map(day => (
                   <div key={day} className="text-center text-[10px] sm:text-xs md:text-sm font-medium text-muted-foreground py-1 sm:py-2">
@@ -742,39 +951,52 @@ const Attendance = () => {
                     <span className="sm:hidden">{day.charAt(0)}</span>
                   </div>
                 ))}
-                
+
                 {/* Calendar Days */}
                 {getCalendarDays.map((day, index) => {
                   if (day === null) {
-                    return <div key={`empty-${index}`} className="aspect-square" />;
+                    return <div key={`empty-${index}`} className="min-h-[52px] sm:min-h-[70px] md:min-h-[80px]" />;
                   }
-                  
-                  const stats = getDayStats(day);
-                  const isToday = new Date().getDate() === day && 
-                                  new Date().getMonth() === calendarMonth.getMonth() && 
-                                  new Date().getFullYear() === calendarMonth.getFullYear();
-                  
+
+                  const dayData = dailyCount.find(d => d.day === day);
+                  const slToday = getSLCurrentDate();
+                  const isToday =
+                    slToday.getDate() === day &&
+                    slToday.getMonth() === calendarMonth.getMonth() &&
+                    slToday.getFullYear() === calendarMonth.getFullYear();
+                  const weekday = index % 7; // 0=Sun, 6=Sat
+                  const isWeekend = weekday === 0 || weekday === 6;
+
                   return (
-                    <div 
+                    <div
                       key={day}
                       className={`
-                        aspect-square flex flex-col items-center justify-center rounded-md sm:rounded-lg text-xs sm:text-sm
-                        transition-all duration-200 cursor-default p-0.5 sm:p-1
-                        ${stats ? 'bg-muted/50' : 'bg-muted/20'}
+                        min-h-[52px] sm:min-h-[70px] md:min-h-[80px] flex flex-col items-center rounded-md sm:rounded-lg
+                        transition-all duration-200 cursor-default p-1 sm:p-1.5
+                        ${isWeekend ? 'bg-sky-100 dark:bg-sky-900/30' : dayData ? 'bg-muted/50' : 'bg-muted/20'}
                         ${isToday ? 'ring-2 ring-primary ring-offset-1 sm:ring-offset-2 ring-offset-background' : ''}
                       `}
                     >
-                      <span className="font-medium text-[10px] sm:text-xs md:text-sm mb-0.5">{day}</span>
-                      {stats && (
-                        <div className="flex flex-wrap gap-0.5 justify-center text-[8px] sm:text-[10px]">
-                          {stats.present > 0 && (
-                            <span className="bg-emerald-500 text-white px-0.5 sm:px-1 rounded text-[6px] sm:text-[8px] md:text-[10px]">{stats.present}</span>
+                      <span className="font-semibold text-xs sm:text-sm md:text-base mb-1 leading-none">{day}</span>
+                      {dayData && (
+                        <div className="flex flex-wrap gap-0.5 justify-center">
+                          {dayData.presentCount > 0 && (
+                            <span className="bg-emerald-500 text-white px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium leading-tight">{dayData.presentCount}</span>
                           )}
-                          {stats.absent > 0 && (
-                            <span className="bg-red-500 text-white px-0.5 sm:px-1 rounded text-[6px] sm:text-[8px] md:text-[10px]">{stats.absent}</span>
+                          {dayData.absentCount > 0 && (
+                            <span className="bg-red-500 text-white px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium leading-tight">{dayData.absentCount}</span>
                           )}
-                          {stats.late > 0 && (
-                            <span className="bg-amber-500 text-white px-0.5 sm:px-1 rounded text-[6px] sm:text-[8px] md:text-[10px]">{stats.late}</span>
+                          {dayData.lateCount > 0 && (
+                            <span className="bg-amber-500 text-white px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium leading-tight">{dayData.lateCount}</span>
+                          )}
+                          {dayData.leftCount > 0 && (
+                            <span className="bg-orange-500 text-white px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium leading-tight">{dayData.leftCount}</span>
+                          )}
+                          {dayData.leftEarlyCount > 0 && (
+                            <span className="bg-purple-500 text-white px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium leading-tight">{dayData.leftEarlyCount}</span>
+                          )}
+                          {dayData.leftLatelyCount > 0 && (
+                            <span className="bg-pink-500 text-white px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium leading-tight">{dayData.leftLatelyCount}</span>
                           )}
                         </div>
                       )}
@@ -787,40 +1009,67 @@ const Attendance = () => {
         </TabsContent>
 
         {/* Tab 3: Statistics View */}
-        <TabsContent value="statistics" className="mt-0 space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* 5-Day Pie Chart */}
-            <Card className="border-border/50">
+        <TabsContent value="statistics" className="mt-0 space-y-4">
+          {monthlyCountLoading && (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+              <span className="text-sm text-muted-foreground">Loading monthly statistics...</span>
+            </div>
+          )}
+
+          {/* Month Navigator */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-muted-foreground">Month</span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigateMonth('prev')}>
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="font-medium min-w-[140px] text-center text-sm">
+                    {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </span>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigateMonth('next')}>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="text-sm font-semibold">
+                  {monthlyStats.total > 0 && <span className="text-primary">{monthlyStats.attendanceRate}% rate</span>}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Monthly Pie Chart */}
+            <Card>
               <CardHeader className="border-b border-border/50">
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <PieChart className="h-5 w-5 text-primary" />
-                  Last 5 Days Attendance Distribution
-                </CardTitle>
+                <CardTitle className="text-base font-semibold">Monthly Distribution</CardTitle>
               </CardHeader>
                <CardContent className="p-4 md:p-6">
-                 {pieChartData.length > 0 ? (
+                 {monthlyPieChartData.length > 0 ? (
                    <div className="h-[250px] sm:h-[300px]">
                      <ResponsiveContainer width="100%" height="100%">
                        <RechartsPie>
                          <Pie
-                           data={pieChartData}
+                           data={monthlyPieChartData}
                            cx="50%"
                            cy="50%"
                            innerRadius={40}
                            outerRadius={70}
                            paddingAngle={2}
                            dataKey="value"
-                           label={({ name, percentage }) => `${name} ${percentage}%`}
+                           label={(props: any) => `${props.name} ${((props.percent ?? 0) * 100).toFixed(1)}%`}
                            labelLine={false}
                            fontSize={11}
                            isAnimationActive={true}
                          >
-                           {pieChartData.map((entry, index) => (
+                           {monthlyPieChartData.map((entry, index) => (
                              <Cell key={`cell-${index}`} fill={entry.color} />
                            ))}
                          </Pie>
                          <Tooltip 
-                           formatter={(value: number, name: string) => [`${value} students`, name]}
+                           formatter={(value: number, name: string) => [`${value} records`, name]}
                            contentStyle={{ 
                              backgroundColor: 'hsl(var(--card))', 
                              borderColor: 'hsl(var(--border))',
@@ -833,44 +1082,76 @@ const Attendance = () => {
                    </div>
                  ) : (
                    <div className="h-[250px] sm:h-[300px] flex items-center justify-center text-muted-foreground">
-                     No data available for last 5 days
+                     No attendance data for this month
                    </div>
                  )}
               </CardContent>
             </Card>
 
-            {/* 5-Day Summary Stats */}
-            <Card className="border-border/50">
+            {/* Monthly Summary Stats */}
+            <Card>
               <CardHeader className="border-b border-border/50">
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  5-Day Summary
-                </CardTitle>
+                <CardTitle className="text-base font-semibold">Monthly Summary</CardTitle>
               </CardHeader>
-              <CardContent className="p-4 md:p-6">
-                <div className="space-y-6">
+              <CardContent className="p-4">
+                <div className="space-y-4">
                   {/* Stats Cards */}
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center p-4 rounded-xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5">
-                      <UserCheck className="h-8 w-8 mx-auto mb-2 text-emerald-600" />
-                      <p className="text-3xl font-bold text-emerald-600">{last5DaysStats.present}</p>
-                      <p className="text-sm text-muted-foreground">Present</p>
+                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    <Card>
+                      <CardContent className="p-2.5 sm:p-4 text-center">
+                        <p className="text-2xl font-bold text-emerald-600">{monthlyStats.present}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Present</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-2.5 sm:p-4 text-center">
+                        <p className="text-2xl font-bold text-red-600">{monthlyStats.absent}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Absent</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-2.5 sm:p-4 text-center">
+                        <p className="text-2xl font-bold text-amber-600">{monthlyStats.late}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Late</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    <Card>
+                      <CardContent className="p-2.5 sm:p-4 text-center">
+                        <p className="text-2xl font-bold text-orange-600">{monthlyStats.left}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Left</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-2.5 sm:p-4 text-center">
+                        <p className="text-2xl font-bold text-purple-600">{monthlyStats.leftEarly}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Left Early</p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardContent className="p-2.5 sm:p-4 text-center">
+                        <p className="text-2xl font-bold text-pink-600">{monthlyStats.leftLate}</p>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground">Left Late</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Total & Rate */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total Records</p>
+                      <p className="text-lg font-bold">{monthlyStats.total}</p>
                     </div>
-                    <div className="text-center p-4 rounded-xl bg-gradient-to-br from-red-500/10 to-red-500/5">
-                      <UserX className="h-8 w-8 mx-auto mb-2 text-red-600" />
-                      <p className="text-3xl font-bold text-red-600">{last5DaysStats.absent}</p>
-                      <p className="text-sm text-muted-foreground">Absent</p>
-                    </div>
-                    <div className="text-center p-4 rounded-xl bg-gradient-to-br from-amber-500/10 to-amber-500/5">
-                      <Clock className="h-8 w-8 mx-auto mb-2 text-amber-600" />
-                      <p className="text-3xl font-bold text-amber-600">{last5DaysStats.late}</p>
-                      <p className="text-sm text-muted-foreground">Late</p>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Attendance Rate</p>
+                      <p className="text-lg font-bold text-primary">{monthlyStats.attendanceRate}%</p>
                     </div>
                   </div>
 
                   {/* Percentage Bars */}
                   <div className="space-y-3">
-                    {pieChartData.map((item) => (
+                    {monthlyPieChartData.map((item) => (
                       <div key={item.name} className="flex items-center gap-3">
                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
                         <span className="flex-1 text-sm font-medium">{item.name}</span>
@@ -884,43 +1165,6 @@ const Attendance = () => {
             </Card>
           </div>
 
-          {/* 5-Day Bar Chart */}
-          <Card className="border-border/50">
-            <CardHeader className="border-b border-border/50">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                Daily Attendance Trend (Last 5 Days)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 md:p-6">
-              {barChartData.some(d => d.present > 0 || d.absent > 0 || d.late > 0) ? (
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={barChartData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis dataKey="day" className="text-xs" />
-                      <YAxis />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'hsl(var(--card))', 
-                          borderColor: 'hsl(var(--border))',
-                          borderRadius: '8px'
-                        }}
-                      />
-                      <Legend />
-                      <Bar dataKey="present" name="Present" fill={ATTENDANCE_CHART_COLORS.present} radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="absent" name="Absent" fill={ATTENDANCE_CHART_COLORS.absent} radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="late" name="Late" fill={ATTENDANCE_CHART_COLORS.late} radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                  No data available for last 5 days
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>

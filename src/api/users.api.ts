@@ -26,6 +26,21 @@ export interface UserCreateData {
   paymentExpiresAt?: string;
 }
 
+export interface UpgradeUserTypeData {
+  studentData?: {
+    emergencyContact?: string;
+    medicalConditions?: string;
+    allergies?: string;
+    bloodGroup?: string;
+  };
+  parentData?: {
+    occupation?: string;
+    workplace?: string;
+    workPhone?: string;
+    educationLevel?: string;
+  };
+}
+
 export interface User {
   id: string;
   firstName: string;
@@ -51,9 +66,33 @@ export interface BasicUser {
   userType: string;
 }
 
+export interface UserLookupResult {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName?: string;
+  imageUrl?: string;
+  userType: string;
+  phoneNumber?: string;
+  email?: string;
+}
+
+/**
+ * Normalizes a Sri Lankan phone number to E.164 format (+94XXXXXXXXX).
+ * Handles inputs like: 0771234567, 94771234567, +94771234567, 771234567
+ */
+export function normalizePhoneNumber(input: string): string {
+  const cleaned = input.trim().replace(/[\s\-()]/g, '');
+  if (cleaned.startsWith('+94')) return cleaned;
+  if (cleaned.startsWith('0094')) return '+94' + cleaned.slice(4);
+  if (/^94\d{9}$/.test(cleaned)) return '+' + cleaned;
+  if (/^0\d{9}$/.test(cleaned)) return '+94' + cleaned.slice(1);
+  return cleaned;
+}
+
 export const usersApi = {
   create: async (data: UserCreateData): Promise<User> => {
-    const response = await apiClient.post('/users', data);
+    const response = await apiClient.post('/users/comprehensive', data);
     return response.data;
   },
   
@@ -65,5 +104,22 @@ export const usersApi = {
   getBasicInfoByRfid: async (rfid: string): Promise<BasicUser> => {
     const response = await apiClient.get(`/users/basic/rfid/${rfid}`);
     return response;
-  }
+  },
+
+  /** Lookup an existing user by normalized phone number (E.164 format) */
+  lookupByPhone: async (phone: string): Promise<UserLookupResult> => {
+    const normalized = normalizePhoneNumber(phone);
+    const response = await apiClient.get(`/users/basic/phone/${encodeURIComponent(normalized)}`);
+    return response;
+  },
+
+  /** Lookup an existing user by email address */
+  lookupByEmail: async (email: string): Promise<UserLookupResult> => {
+    const response = await apiClient.get(`/users/basic/email/${encodeURIComponent(email)}`);
+    return response;
+  },
+
+  upgradeUserType: async (data: UpgradeUserTypeData): Promise<User> => {
+    return await apiClient.patch<User>('/users/upgrade-type', data);
+  },
 };

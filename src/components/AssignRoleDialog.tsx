@@ -75,7 +75,7 @@ const AssignRoleDialog = ({ open, onOpenChange, member, organizationId, onSucces
     
     try {
       const response = await organizationSpecificApi.post(
-        `/organization/api/v1/organizations/${organizationId}/management/assign-role`,
+        `/organizations/${organizationId}/assign-role`,
         {
           userId: member.userId,
           role: selectedRole
@@ -88,7 +88,7 @@ const AssignRoleDialog = ({ open, onOpenChange, member, organizationId, onSucces
       });
       
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning role:', error);
       toast({
         title: "Error",

@@ -72,10 +72,10 @@ const OrganizationDetails = ({
 
   const handleLeaveOrganization = async () => {
     try {
-      await organizationSpecificApi.delete(`/organization/api/v1/organizations/${organization.organizationId}/leave`);
+      await organizationSpecificApi.delete(`/organizations/${organization.organizationId}/leave`);
       toast({ title: "Success", description: "You have successfully left the organization" });
       onBack();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error leaving organization:', error);
       toast({ title: "Error", description: "Failed to leave organization", variant: "destructive" });
     }

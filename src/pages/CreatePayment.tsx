@@ -229,7 +229,7 @@ const CreatePayment = () => {
         paymentSlip: null
       });
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating payment:', error);
       toast({
         title: "Error",
@@ -268,16 +268,16 @@ const CreatePayment = () => {
   return (
     <>
       <AppLayout currentPage="system-payment">
-        <div className="container mx-auto p-6 max-w-4xl">
+        <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
           {/* Header */}
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
             <Button variant="ghost" size="sm" onClick={() => navigate('/system-payment')}>
               <FileText className="h-4 w-4 mr-2" />
               Back to Payments
             </Button>
             <div>
-              <h1 className="text-3xl font-bold flex items-center gap-2">
-                <FileText className="h-8 w-8" />
+              <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+                <FileText className="h-7 w-7 sm:h-8 sm:w-8" />
                 Create New Payment
               </h1>
               <p className="text-muted-foreground">

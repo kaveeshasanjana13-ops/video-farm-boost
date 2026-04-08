@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
 import { instituteClassesApi } from '@/api/instituteClasses.api';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -16,6 +15,7 @@ import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import ImageCropUpload from '@/components/common/ImageCropUpload';
+import { getErrorMessage } from '@/api/apiError';
 
 interface CreateClassFormProps {
   onSubmit: (data: any) => void;
@@ -26,6 +26,7 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
   const { user, selectedInstitute } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const [formData, setFormData] = useState({
@@ -51,18 +52,12 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
   // Teachers list functionality removed - manual ID entry only
 
   const handleInputChange = (field: string, value: any) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
-  };
-
-  const getApiHeaders = () => {
-    const token = localStorage.getItem('access_token');
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -74,6 +69,19 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
         description: "Please select an institute first.",
         variant: "destructive"
       });
+      return;
+    }
+
+        const errors: Record<string, string> = {};
+    if (!formData.name && formData.name !== 0) errors.name = 'Name is required';
+    if (!formData.code && formData.code !== 0) errors.code = 'Code is required';
+    if (!formData.academicYear && formData.academicYear !== 0) errors.academicYear = 'Academic Year is required';
+    if (!formData.specialty && formData.specialty !== 0) errors.specialty = 'Specialty is required';
+    if (!formData.level && formData.level !== 0) errors.level = 'Level is required';
+    if (!formData.grade && formData.grade !== 0) errors.grade = 'Grade is required';
+    if (!formData.capacity && formData.capacity !== 0) errors.capacity = 'Capacity is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -104,22 +112,7 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
         imageUrl: imageUrl
       };
 
-      const token = localStorage.getItem('access_token');
-      const responseRaw = await fetch(`${getBaseUrl()}/institute-classes`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(classData)
-      });
-      
-      if (!responseRaw.ok) {
-        const error = await responseRaw.json();
-        throw new Error(error.message || 'Failed to create class');
-      }
-      
-      const response = await responseRaw.json();
+      const response = await instituteClassesApi.create(classData);
       
       toast({
         title: "Class Created",
@@ -128,9 +121,8 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
       onSubmit(response);
     } catch (error: any) {
       console.error('Create class error:', error);
-      const errorMessage = error?.message || 
-                          (typeof error === 'string' ? error : 'Failed to create class.');
-      
+      const errorMessage = getErrorMessage(error, 'Failed to create class.');
+
       toast({
         title: "Creation Failed",
         description: errorMessage,
@@ -159,9 +151,11 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
                   placeholder="Grade 10 Science - A"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="h-8 text-sm"
+                  className={`h-8 text-sm${fieldErrors.name ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   required
                 />
+
+                {fieldErrors.name && <p className="text-xs text-red-500 mt-1">{fieldErrors.name}</p>}
               </div>
               <div>
                 <Label htmlFor="code" className="text-xs">Class Code</Label>
@@ -170,9 +164,11 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
                   placeholder="G10SA"
                   value={formData.code}
                   onChange={(e) => handleInputChange('code', e.target.value)}
-                  className="h-8 text-sm"
+                  className={`h-8 text-sm${fieldErrors.code ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   required
                 />
+
+                {fieldErrors.code && <p className="text-xs text-red-500 mt-1">{fieldErrors.code}</p>}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -183,9 +179,11 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
                   placeholder="2025/2026"
                   value={formData.academicYear}
                   onChange={(e) => handleInputChange('academicYear', e.target.value)}
-                  className="h-8 text-sm"
+                  className={`h-8 text-sm${fieldErrors.academicYear ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   required
                 />
+
+                {fieldErrors.academicYear && <p className="text-xs text-red-500 mt-1">{fieldErrors.academicYear}</p>}
               </div>
               <div>
                 <Label htmlFor="specialty" className="text-xs">Specialty</Label>
@@ -194,9 +192,11 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
                   placeholder="Science Stream"
                   value={formData.specialty}
                   onChange={(e) => handleInputChange('specialty', e.target.value)}
-                  className="h-8 text-sm"
+                  className={`h-8 text-sm${fieldErrors.specialty ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   required
                 />
+
+                {fieldErrors.specialty && <p className="text-xs text-red-500 mt-1">{fieldErrors.specialty}</p>}
               </div>
             </div>
           </CardContent>
@@ -218,9 +218,11 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
                   max="13"
                   value={formData.level}
                   onChange={(e) => handleInputChange('level', parseInt(e.target.value))}
-                  className="h-8 text-sm"
+                  className={`h-8 text-sm${fieldErrors.level ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   required
                 />
+
+                {fieldErrors.level && <p className="text-xs text-red-500 mt-1">{fieldErrors.level}</p>}
               </div>
               <div>
                 <Label htmlFor="grade" className="text-xs">Grade</Label>
@@ -231,9 +233,11 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
                   max="13"
                   value={formData.grade}
                   onChange={(e) => handleInputChange('grade', parseInt(e.target.value))}
-                  className="h-8 text-sm"
+                  className={`h-8 text-sm${fieldErrors.grade ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   required
                 />
+
+                {fieldErrors.grade && <p className="text-xs text-red-500 mt-1">{fieldErrors.grade}</p>}
               </div>
             </div>
             <div>
@@ -245,9 +249,11 @@ const CreateClassForm = ({ onSubmit, onCancel }: CreateClassFormProps) => {
                 max="100"
                 value={formData.capacity}
                 onChange={(e) => handleInputChange('capacity', parseInt(e.target.value))}
-                className="h-8 text-sm"
+                className={`h-8 text-sm${fieldErrors.capacity ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                 required
               />
+
+              {fieldErrors.capacity && <p className="text-xs text-red-500 mt-1">{fieldErrors.capacity}</p>}
             </div>
             <div>
               <Label htmlFor="classType" className="text-xs">Type</Label>

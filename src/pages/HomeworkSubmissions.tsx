@@ -18,6 +18,7 @@ import { getImageUrl } from '@/utils/imageUrlHelper';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import UploadCorrectionDialog from '@/components/forms/UploadCorrectionDialog';
+import { EmptyState } from '@/components/ui/EmptyState';
 import ImagePreviewModal from '@/components/ImagePreviewModal';
 import { cn } from '@/lib/utils';
 
@@ -124,7 +125,7 @@ const HomeworkSubmissions = () => {
       setTotalSubmissions(meta.total || submissionsList.length);
       setCurrentPage(page);
       setLastRefresh(new Date());
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading submissions:', error);
       toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to load homework submissions', variant: 'destructive' });
       setSubmissions([]);
@@ -243,28 +244,26 @@ const HomeworkSubmissions = () => {
 
           {/* Content */}
           {!homeworkIdFromPath ? (
-            <Card className="border-dashed">
-              <CardContent className="text-center py-12">
-                <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-medium mb-2">Missing Homework</h3>
-                <p className="text-muted-foreground mb-4">Homework ID not found in the URL.</p>
-                <Button onClick={() => navigate('/homework')}>Go to Homework</Button>
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={BookOpen}
+              title="Missing Homework"
+              description="Homework ID not found in the URL."
+            >
+              <Button onClick={() => navigate('/homework')}>Go to Homework</Button>
+            </EmptyState>
           ) : isLoading ? (
             <div className="flex flex-col items-center justify-center py-16">
               <RefreshCw className="h-8 w-8 animate-spin text-primary mb-4" />
               <p className="text-muted-foreground">Loading submissions...</p>
             </div>
           ) : submissions.length === 0 ? (
-            <Card className="border-dashed">
-              <CardContent className="text-center py-12">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-medium mb-2">No Submissions Found</h3>
-                <p className="text-muted-foreground mb-4">No homework submissions found for this homework.</p>
-                <Button onClick={() => loadSubmissions(1)} variant="outline">Refresh Data</Button>
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={FileText}
+              title="No Submissions Found"
+              description="No homework submissions found for this homework."
+            >
+              <Button onClick={() => loadSubmissions(1)} variant="outline">Refresh Data</Button>
+            </EmptyState>
           ) : (
             <div className="space-y-3">
               {submissions.map((submission, index) => {

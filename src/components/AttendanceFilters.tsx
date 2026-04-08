@@ -92,7 +92,7 @@ const AttendanceFilters: React.FC<AttendanceFiltersProps> = ({
               <div className="space-y-2">
                 <Label>Attendance Status</Label>
                 <Select
-                  value={filters.status || ''}
+                  value={filters.status || 'all'}
                   onValueChange={(value) => updateFilter('status', value === 'all' ? '' : value)}
                 >
                   <SelectTrigger>
@@ -113,7 +113,7 @@ const AttendanceFilters: React.FC<AttendanceFiltersProps> = ({
               <div className="space-y-2">
                 <Label>Marking Method</Label>
                 <Select
-                  value={filters.markingMethod || ''}
+                  value={filters.markingMethod || 'all'}
                   onValueChange={(value) => updateFilter('markingMethod', value === 'all' ? '' : value)}
                 >
                   <SelectTrigger>
@@ -174,7 +174,7 @@ const AttendanceFilters: React.FC<AttendanceFiltersProps> = ({
               <div className="space-y-2">
                 <Label>Sort By</Label>
                 <Select
-                  value={filters.sortBy || ''}
+                  value={filters.sortBy || 'none'}
                   onValueChange={(value) => updateFilter('sortBy', value === 'none' ? '' : value)}
                 >
                   <SelectTrigger>

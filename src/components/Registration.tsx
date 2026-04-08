@@ -8,9 +8,10 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   ArrowLeft, ChevronRight, Loader2, CheckCircle2, Check,
   Users, GraduationCap, Shield, UserPlus, SkipForward, X,
+  UserCircle, ClipboardCheck, Heart,
 } from 'lucide-react';
 import surakshaLogo from '@/assets/suraksha-logo.png';
-import loginIllustration from '@/assets/login-illustration.png';
+
 import { useToast } from '@/hooks/use-toast';
 import {
   registerUser,
@@ -24,7 +25,7 @@ import StudentForm, { type StudentFormData, emptyStudentForm } from '@/component
 
 // ============= TYPES =============
 
-type AccountType = 'student-with-parent' | 'teacher' | 'institute-admin';
+type AccountType = 'student-with-parent' | 'student-without-parent' | 'parent' | 'teacher' | 'institute-admin' | 'attendance-marker';
 type ParentRole = 'father' | 'mother' | 'guardian';
 
 interface ParentEntry {
@@ -41,6 +42,7 @@ interface ParentEntry {
 
 type FlowStep =
   | 'select-type'
+  | 'parent-role-question'
   | 'parent-overview'
   | `parent-verify-${ParentRole}`
   | `parent-form-${ParentRole}-${'personal' | 'address' | 'parent-extra'}`
@@ -49,6 +51,14 @@ type FlowStep =
   | 'student-personal'
   | 'student-address'
   | 'student-info'
+  | 'solo-student-verify'
+  | 'solo-student-personal'
+  | 'solo-student-address'
+  | 'solo-student-info'
+  | 'parent-only-verify'
+  | 'parent-only-personal'
+  | 'parent-only-address'
+  | 'parent-only-extra'
   | 'simple-verify'
   | 'simple-personal'
   | 'simple-address'
@@ -115,6 +125,22 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
   const [simplePhone, setSimplePhone] = useState('');
   const [simplePersonal, setSimplePersonal] = useState<PersonFormData>(emptyPersonForm());
 
+  // Parent role question: does this parent also work as teacher/admin?
+  const [parentAlsoWorksAtInstitute, setParentAlsoWorksAtInstitute] = useState(false);
+
+  // Solo student (without parent) form data
+  const [soloStudentVerified, setSoloStudentVerified] = useState(false);
+  const [soloStudentEmail, setSoloStudentEmail] = useState('');
+  const [soloStudentPhone, setSoloStudentPhone] = useState('');
+  const [soloStudentPersonal, setSoloStudentPersonal] = useState<PersonFormData>(emptyPersonForm());
+  const [soloStudentInfo, setSoloStudentInfo] = useState<StudentFormData>(emptyStudentForm());
+
+  // Parent-only form data
+  const [parentOnlyVerified, setParentOnlyVerified] = useState(false);
+  const [parentOnlyEmail, setParentOnlyEmail] = useState('');
+  const [parentOnlyPhone, setParentOnlyPhone] = useState('');
+  const [parentOnlyPersonal, setParentOnlyPersonal] = useState<PersonFormData>(emptyPersonForm());
+
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -123,11 +149,20 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
   useEffect(() => {
     const routeMap: Record<string, string> = {
       'select-type': '/register/step1',
+      'parent-role-question': '/register/step1',
       'parent-overview': '/register/parents',
       'student-verify': '/register/verify',
       'student-personal': '/register/student',
       'student-address': '/register/student',
       'student-info': '/register/student',
+      'solo-student-verify': '/register/verify',
+      'solo-student-personal': '/register/details/personal-information',
+      'solo-student-address': '/register/details/address',
+      'solo-student-info': '/register/details/additional',
+      'parent-only-verify': '/register/verify',
+      'parent-only-personal': '/register/details/personal-information',
+      'parent-only-address': '/register/details/address',
+      'parent-only-extra': '/register/details/additional',
       'simple-verify': '/register/verify',
       'simple-personal': '/register/details/personal-information',
       'simple-address': '/register/details/address',
@@ -178,6 +213,21 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
       if (flowStep === 'parent-overview' || flowStep.startsWith('parent-')) return { steps, current: 1 };
       if (flowStep.startsWith('student-')) return { steps, current: 2 };
       return { steps, current: 3 };
+    }
+    if (accountType === 'student-without-parent') {
+      const steps = ['Type', 'Verify', 'Details', 'Review'];
+      if (flowStep === 'select-type') return { steps, current: 0 };
+      if (flowStep === 'solo-student-verify') return { steps, current: 1 };
+      if (flowStep === 'solo-student-personal' || flowStep === 'solo-student-address' || flowStep === 'solo-student-info') return { steps, current: 2 };
+      return { steps, current: 3 };
+    }
+    if (accountType === 'parent') {
+      const steps = ['Type', 'Role', 'Verify', 'Details', 'Review'];
+      if (flowStep === 'select-type') return { steps, current: 0 };
+      if (flowStep === 'parent-role-question') return { steps, current: 1 };
+      if (flowStep === 'parent-only-verify') return { steps, current: 2 };
+      if (flowStep === 'parent-only-personal' || flowStep === 'parent-only-address' || flowStep === 'parent-only-extra') return { steps, current: 3 };
+      return { steps, current: 4 };
     }
     const steps = ['Type', 'Verify', 'Details', 'Review'];
     if (flowStep === 'select-type') return { steps, current: 0 };
@@ -245,12 +295,14 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
 
     try {
       const result = await registerUser(payload);
-      updateParent(role, { registeredId: result.user.id });
+      updateParent(role, { registeredId: result?.user?.id });
       toast({ title: `${parentLabels[role]} Registered`, description: `${fd.firstName} has been registered successfully.` });
       setFlowStep(getNextParentStep(role));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
-      toast({ title: 'Registration Failed', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Registration failed';
+      const isApiErr = typeof msg === 'string' && !msg.startsWith('Cannot read');
+      setError(isApiErr ? msg : 'Registration failed. Please try again.');
+      toast({ title: 'Registration Failed', description: isApiErr ? msg : 'Please try again.', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -272,7 +324,7 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
       firstName: fd.firstName,
       lastName: fd.lastName,
       nameWithInitials: fd.nameWithInitials || undefined,
-      email: studentEmail,
+      email: studentEmail || undefined,
       userType: 'USER',
       gender: (fd.gender || 'OTHER') as Gender,
       district: fd.district,
@@ -290,6 +342,7 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
         bloodGroup: studentInfo.bloodGroup || undefined,
         medicalConditions: studentInfo.medicalConditions || undefined,
         allergies: studentInfo.allergies || undefined,
+        cardDeliveryRecipient: studentInfo.cardDeliveryRecipient || undefined,
         fatherId: father.registeredId || undefined,
         fatherPhoneNumber: father.phone || undefined,
         motherId: mother.registeredId || undefined,
@@ -307,19 +360,21 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
     }
 
     try {
-      const result = await registerUser(payload);
-      toast({ title: 'Account Created!', description: `Welcome ${result.user.firstName}!` });
+      await registerUser(payload);
+      toast({ title: 'Account Created!', description: `Welcome ${fd.firstName}!` });
       setFlowStep('success');
       setTimeout(() => onComplete(), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
-      toast({ title: 'Registration Failed', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Registration failed';
+      const isApiErr = typeof msg === 'string' && !msg.startsWith('Cannot read');
+      setError(isApiErr ? msg : 'Registration failed. Please try again.');
+      toast({ title: 'Registration Failed', description: isApiErr ? msg : 'Please try again.', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ============= API: Register Teacher/Admin =============
+  // ============= API: Register Teacher/Admin/Marker =============
 
   const registerSimple = async () => {
     setIsLoading(true);
@@ -332,7 +387,7 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
       lastName: fd.lastName,
       nameWithInitials: fd.nameWithInitials || undefined,
       email: simpleEmail,
-      userType: 'USER_WITHOUT_STUDENT',
+      userType: 'USER_WITHOUT_PARENT',
       gender: (fd.gender || 'OTHER') as Gender,
       district: fd.district,
       province,
@@ -344,6 +399,7 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
       city: fd.city || undefined,
       postalCode: fd.postalCode || undefined,
       language: fd.language,
+      studentData: {},
     };
 
     if (fd.instituteCode) {
@@ -351,13 +407,129 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
     }
 
     try {
-      const result = await registerUser(payload);
-      toast({ title: 'Account Created!', description: `Welcome ${result.user.firstName}!` });
+      await registerUser(payload);
+      toast({ title: 'Account Created!', description: `Welcome ${fd.firstName}!` });
       setFlowStep('success');
       setTimeout(() => onComplete(), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
-      toast({ title: 'Registration Failed', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Registration failed';
+      const isApiErr = typeof msg === 'string' && !msg.startsWith('Cannot read');
+      setError(isApiErr ? msg : 'Registration failed. Please try again.');
+      toast({ title: 'Registration Failed', description: isApiErr ? msg : 'Please try again.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ============= API: Register Solo Student (without parent) =============
+
+  const registerSoloStudent = async () => {
+    setIsLoading(true);
+    setError('');
+
+    const fd = soloStudentPersonal;
+    const province = DISTRICT_TO_PROVINCE[fd.district] || '';
+    const payload: CreateUserRequest = {
+      firstName: fd.firstName,
+      lastName: fd.lastName,
+      nameWithInitials: fd.nameWithInitials || undefined,
+      email: soloStudentEmail,
+      userType: 'USER_WITHOUT_PARENT',
+      gender: (fd.gender || 'OTHER') as Gender,
+      district: fd.district,
+      province,
+      country: 'Sri Lanka',
+      phoneNumber: soloStudentPhone || undefined,
+      dateOfBirth: fd.dateOfBirth || undefined,
+      nic: fd.nic || undefined,
+      addressLine1: fd.addressLine1 || undefined,
+      city: fd.city || undefined,
+      postalCode: fd.postalCode || undefined,
+      language: fd.language,
+      studentData: {
+        emergencyContact: soloStudentInfo.emergencyContact || undefined,
+        bloodGroup: soloStudentInfo.bloodGroup || undefined,
+        medicalConditions: soloStudentInfo.medicalConditions || undefined,
+        allergies: soloStudentInfo.allergies || undefined,
+      },
+    };
+
+    if (fd.instituteCode) {
+      payload.institute = { instituteCode: fd.instituteCode };
+    }
+
+    try {
+      await registerUser(payload);
+      toast({ title: 'Account Created!', description: `Welcome ${fd.firstName}!` });
+      setFlowStep('success');
+      setTimeout(() => onComplete(), 3000);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Registration failed';
+      const isApiErr = typeof msg === 'string' && !msg.startsWith('Cannot read');
+      setError(isApiErr ? msg : 'Registration failed. Please try again.');
+      toast({ title: 'Registration Failed', description: isApiErr ? msg : 'Please try again.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ============= API: Register Parent Only =============
+
+  const registerParentOnly = async () => {
+    setIsLoading(true);
+    setError('');
+
+    const fd = parentOnlyPersonal;
+    const province = DISTRICT_TO_PROVINCE[fd.district] || '';
+
+    // If parent also works at institute → USER (full flexibility, creates student+parent)
+    // Otherwise → USER_WITHOUT_STUDENT (parent only)
+    const userType = parentAlsoWorksAtInstitute ? 'USER' : 'USER_WITHOUT_STUDENT';
+
+    const payload: CreateUserRequest = {
+      firstName: fd.firstName,
+      lastName: fd.lastName,
+      nameWithInitials: fd.nameWithInitials || undefined,
+      email: parentOnlyEmail,
+      userType,
+      gender: (fd.gender || 'OTHER') as Gender,
+      district: fd.district,
+      province,
+      country: 'Sri Lanka',
+      phoneNumber: parentOnlyPhone || undefined,
+      dateOfBirth: fd.dateOfBirth || undefined,
+      nic: fd.nic || undefined,
+      addressLine1: fd.addressLine1 || undefined,
+      city: fd.city || undefined,
+      postalCode: fd.postalCode || undefined,
+      language: fd.language,
+      parentData: {
+        occupation: fd.occupation || undefined,
+        workplace: fd.workplace || undefined,
+        workPhone: fd.workPhone || undefined,
+        educationLevel: fd.educationLevel || undefined,
+      },
+    };
+
+    // USER type requires studentData too
+    if (parentAlsoWorksAtInstitute) {
+      payload.studentData = {};
+    }
+
+    if (fd.instituteCode) {
+      payload.institute = { instituteCode: fd.instituteCode };
+    }
+
+    try {
+      await registerUser(payload);
+      toast({ title: 'Account Created!', description: `Welcome ${fd.firstName}!` });
+      setFlowStep('success');
+      setTimeout(() => onComplete(), 3000);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Registration failed';
+      const isApiErr = typeof msg === 'string' && !msg.startsWith('Cannot read');
+      setError(isApiErr ? msg : 'Registration failed. Please try again.');
+      toast({ title: 'Registration Failed', description: isApiErr ? msg : 'Please try again.', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -373,6 +545,9 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
   const handleBack = () => {
     switch (flowStep) {
       case 'select-type': onBack(); break;
+
+      // Parent role question
+      case 'parent-role-question': setFlowStep('select-type'); break;
 
       // Student-with-parent flow
       case 'parent-overview': setFlowStep('select-type'); break;
@@ -407,13 +582,27 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
       case 'student-address': setFlowStep('student-personal'); break;
       case 'student-info': setFlowStep('student-address'); break;
 
-      // Simple flow
+      // Solo student flow (without parent)
+      case 'solo-student-verify': setFlowStep('select-type'); break;
+      case 'solo-student-personal': setFlowStep('solo-student-verify'); break;
+      case 'solo-student-address': setFlowStep('solo-student-personal'); break;
+      case 'solo-student-info': setFlowStep('solo-student-address'); break;
+
+      // Parent-only flow
+      case 'parent-only-verify': setFlowStep('parent-role-question'); break;
+      case 'parent-only-personal': setFlowStep('parent-only-verify'); break;
+      case 'parent-only-address': setFlowStep('parent-only-personal'); break;
+      case 'parent-only-extra': setFlowStep('parent-only-address'); break;
+
+      // Simple flow (teacher/admin/marker)
       case 'simple-verify': setFlowStep('select-type'); break;
       case 'simple-personal': setFlowStep('simple-verify'); break;
       case 'simple-address': setFlowStep('simple-personal'); break;
 
       case 'review': {
         if (accountType === 'student-with-parent') setFlowStep('student-info');
+        else if (accountType === 'student-without-parent') setFlowStep('solo-student-info');
+        else if (accountType === 'parent') setFlowStep('parent-only-extra');
         else setFlowStep('simple-address');
         break;
       }
@@ -451,9 +640,12 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">Select the type of account you want to create:</p>
           {([
+            { value: 'parent' as AccountType, label: 'Parent / Guardian', desc: 'Register as a parent or guardian of a student', icon: Heart },
+            { value: 'student-without-parent' as AccountType, label: 'Student (No Parent)', desc: 'Register as a student without parent accounts', icon: UserCircle },
             { value: 'student-with-parent' as AccountType, label: 'Student with Parent', desc: 'Register student with father/mother/guardian accounts', icon: GraduationCap },
             { value: 'teacher' as AccountType, label: 'Teacher', desc: 'Register as a teacher', icon: Users },
             { value: 'institute-admin' as AccountType, label: 'Institute Admin', desc: 'Register as an institute administrator', icon: Shield },
+            { value: 'attendance-marker' as AccountType, label: 'Attendance Marker', desc: 'Register as an attendance marker', icon: ClipboardCheck },
           ]).map(opt => (
             <button
               key={opt.value}
@@ -480,6 +672,8 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
               className="flex-1 h-11"
               onClick={() => {
                 if (accountType === 'student-with-parent') setFlowStep('parent-overview');
+                else if (accountType === 'student-without-parent') setFlowStep('solo-student-verify');
+                else if (accountType === 'parent') setFlowStep('parent-role-question');
                 else setFlowStep('simple-verify');
               }}
             >
@@ -509,33 +703,33 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
             return (
               <div
                 key={role}
-                className={`p-4 rounded-xl border-2 transition-all ${
+                className={`p-3 sm:p-4 rounded-xl border-2 transition-all ${
                   p.registeredId ? 'border-green-500/50 bg-green-50/50 dark:bg-green-950/20'
                   : p.skipped ? 'border-muted bg-muted/30 opacity-60'
                   : 'border-border'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <UserPlus className={`h-5 w-5 ${p.registeredId ? 'text-green-500' : p.skipped ? 'text-muted-foreground' : 'text-primary'}`} />
-                    <div>
-                      <div className="font-medium text-foreground">{parentLabels[role]}</div>
-                      {p.registeredId && <div className="text-xs text-green-600">{p.formData.firstName} {p.formData.lastName} — Registered ✓</div>}
-                      {p.skipped && <div className="text-xs text-muted-foreground">Skipped: {p.skipReason}</div>}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <UserPlus className={`h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 ${p.registeredId ? 'text-green-500' : p.skipped ? 'text-muted-foreground' : 'text-primary'}`} />
+                    <div className="min-w-0">
+                      <div className="font-medium text-foreground text-sm sm:text-base">{parentLabels[role]}</div>
+                      {p.registeredId && <div className="text-[10px] sm:text-xs text-green-600 truncate">{p.formData.firstName} {p.formData.lastName} — Registered ✓</div>}
+                      {p.skipped && <div className="text-[10px] sm:text-xs text-muted-foreground truncate">Skipped: {p.skipReason}</div>}
                     </div>
                   </div>
                   {!p.registeredId && !p.skipped && (
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setFlowStep(`parent-skip-${role}`)}>
-                        <SkipForward className="h-3 w-3 mr-1" /> Skip
+                    <div className="flex gap-1.5 sm:gap-2 flex-shrink-0">
+                      <Button size="sm" variant="outline" className="h-7 sm:h-8 text-[10px] sm:text-xs px-2 sm:px-3" onClick={() => setFlowStep(`parent-skip-${role}`)}>
+                        <SkipForward className="h-3 w-3 mr-0.5 sm:mr-1" /> Skip
                       </Button>
-                      <Button size="sm" className="h-8 text-xs" onClick={() => setFlowStep(`parent-verify-${role}`)}>
-                        <UserPlus className="h-3 w-3 mr-1" /> Create
+                      <Button size="sm" className="h-7 sm:h-8 text-[10px] sm:text-xs px-2 sm:px-3" onClick={() => setFlowStep(`parent-verify-${role}`)}>
+                        <UserPlus className="h-3 w-3 mr-0.5 sm:mr-1" /> Create
                       </Button>
                     </div>
                   )}
                   {p.skipped && (
-                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => updateParent(role, { skipped: false, skipReason: '' })}>
+                    <Button size="sm" variant="ghost" className="h-7 sm:h-8 text-[10px] sm:text-xs px-2 sm:px-3" onClick={() => updateParent(role, { skipped: false, skipReason: '' })}>
                       Undo
                     </Button>
                   )}
@@ -607,10 +801,10 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
       return (
         <OtpVerificationStep
           title={`Verify ${parentLabels[role]}'s Contact`}
-          subtitle={`Verify the email for the ${parentLabels[role].toLowerCase()}.`}
+          subtitle={`Verify the email and phone number for the ${parentLabels[role].toLowerCase()}.`}
           emailRequired={true}
-          phoneRequired={false}
-          showPhone={false}
+          phoneRequired={true}
+          showPhone={true}
           onBack={handleBack}
           onVerified={({ email, phone }) => {
             updateParent(role, {
@@ -685,11 +879,12 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
 
     // ---- STUDENT VERIFY ----
     if (flowStep === 'student-verify') {
+      // In student-with-parent flow, email is optional since parent has contact info
       return (
         <OtpVerificationStep
           title="Verify Student's Contact"
-          subtitle="Email is required. Phone number is optional."
-          emailRequired={true}
+          subtitle="Email is optional when parents have contact info. Phone number is also optional."
+          emailRequired={false}
           phoneRequired={false}
           showPhone={true}
           onBack={handleBack}
@@ -756,6 +951,14 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
     }
 
     if (flowStep === 'student-info') {
+      // Build available recipients based on registered parents
+      const cardRecipients: { value: import('@/api/registration.api').CardDeliveryRecipient; label: string }[] = [
+        { value: 'SELF', label: 'Student (Self)' },
+      ];
+      if (getParent('father').registeredId) cardRecipients.push({ value: 'FATHER', label: 'Father' });
+      if (getParent('mother').registeredId) cardRecipients.push({ value: 'MOTHER', label: 'Mother' });
+      if (getParent('guardian').registeredId) cardRecipients.push({ value: 'GUARDIAN', label: 'Guardian' });
+
       return (
         <div className="space-y-4">
           <div>
@@ -766,7 +969,12 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
               ))}
             </div>
           </div>
-          <StudentForm data={studentInfo} onChange={setStudentInfo} />
+          <StudentForm
+            data={studentInfo}
+            onChange={setStudentInfo}
+            showCardDelivery={true}
+            availableRecipients={cardRecipients}
+          />
           {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">{error}</div>}
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
@@ -778,15 +986,273 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
       );
     }
 
-    // ---- SIMPLE VERIFY (Teacher/Admin) ----
-    if (flowStep === 'simple-verify') {
+    // ---- PARENT ROLE QUESTION ----
+    if (flowStep === 'parent-role-question') {
+      return (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-foreground text-base">About Your Role</h3>
+          <p className="text-sm text-muted-foreground">
+            Do you also work at an institute as a teacher, institute admin, or attendance marker?
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={() => setParentAlsoWorksAtInstitute(true)}
+              className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                parentAlsoWorksAtInstitute
+                  ? 'border-primary bg-primary/5 shadow-sm'
+                  : 'border-border hover:border-primary/40'
+              }`}
+            >
+              <Users className={`h-6 w-6 shrink-0 ${parentAlsoWorksAtInstitute ? 'text-primary' : 'text-muted-foreground'}`} />
+              <div className="flex-1">
+                <div className="font-medium text-foreground">Yes, I work at an institute</div>
+                <div className="text-xs text-muted-foreground">I am a teacher, admin, or attendance marker and also a parent</div>
+              </div>
+              {parentAlsoWorksAtInstitute && <CheckCircle2 className="h-5 w-5 text-primary" />}
+            </button>
+            <button
+              onClick={() => setParentAlsoWorksAtInstitute(false)}
+              className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                !parentAlsoWorksAtInstitute
+                  ? 'border-primary bg-primary/5 shadow-sm'
+                  : 'border-border hover:border-primary/40'
+              }`}
+            >
+              <Heart className={`h-6 w-6 shrink-0 ${!parentAlsoWorksAtInstitute ? 'text-primary' : 'text-muted-foreground'}`} />
+              <div className="flex-1">
+                <div className="font-medium text-foreground">No, I am a parent only</div>
+                <div className="text-xs text-muted-foreground">I only want to manage my children's education</div>
+              </div>
+              {!parentAlsoWorksAtInstitute && <CheckCircle2 className="h-5 w-5 text-primary" />}
+            </button>
+          </div>
+          <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg">
+            {parentAlsoWorksAtInstitute
+              ? 'Your account will be created with full flexibility — you can be assigned as a parent AND work at institutes as teacher/admin/marker.'
+              : 'Your account will be created as a parent-only account. You can manage your children\'s education but cannot be assigned staff roles at institutes.'}
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-11" onClick={handleBack}>
+              <ArrowLeft className="h-4 w-4 mr-2" /> Back
+            </Button>
+            <Button className="flex-1 h-11" onClick={() => setFlowStep('parent-only-verify')}>
+              Continue <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- PARENT ONLY VERIFY ----
+    if (flowStep === 'parent-only-verify') {
       return (
         <OtpVerificationStep
-          title={`Verify Your Contact — ${accountType === 'teacher' ? 'Teacher' : 'Institute Admin'}`}
-          subtitle="Email is required."
+          title="Verify Your Contact — Parent"
+          subtitle="Email is required. Phone number is required."
+          emailRequired={true}
+          phoneRequired={true}
+          showPhone={true}
+          onBack={handleBack}
+          onVerified={({ email, phone }) => {
+            setParentOnlyEmail(email);
+            setParentOnlyPhone(phone);
+            setParentOnlyVerified(true);
+            setParentOnlyPersonal(prev => ({ ...prev, email, phoneNumber: phone }));
+            setFlowStep('parent-only-personal');
+          }}
+        />
+      );
+    }
+
+    // ---- PARENT ONLY PERSONAL ----
+    if (flowStep === 'parent-only-personal') {
+      return (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-foreground text-base">Parent — Personal Information</h3>
+            <div className="flex gap-1 mt-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full ${i === 0 ? 'bg-primary' : 'bg-muted'}`} />
+              ))}
+            </div>
+          </div>
+          <PersonForm
+            data={parentOnlyPersonal}
+            onChange={setParentOnlyPersonal}
+            section="personal"
+            emailLocked={true}
+            phoneLocked={!!parentOnlyPhone && parentOnlyPhone.replace(/\D/g, '').length > 2}
+          />
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+            <Button className="flex-1 h-10" onClick={() => setFlowStep('parent-only-address')} disabled={!isPersonalValid(parentOnlyPersonal)}>
+              Next <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- PARENT ONLY ADDRESS ----
+    if (flowStep === 'parent-only-address') {
+      return (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-foreground text-base">Parent — Address Details</h3>
+            <div className="flex gap-1 mt-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= 1 ? 'bg-primary' : 'bg-muted'}`} />
+              ))}
+            </div>
+          </div>
+          <PersonForm data={parentOnlyPersonal} onChange={setParentOnlyPersonal} section="address" showInstituteCode={parentAlsoWorksAtInstitute} />
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+            <Button className="flex-1 h-10" onClick={() => setFlowStep('parent-only-extra')} disabled={!isAddressValid(parentOnlyPersonal)}>
+              Next <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- PARENT ONLY EXTRA (occupation, workplace etc) ----
+    if (flowStep === 'parent-only-extra') {
+      return (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-foreground text-base">Parent — Additional Details</h3>
+            <div className="flex gap-1 mt-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full bg-primary`} />
+              ))}
+            </div>
+          </div>
+          <PersonForm
+            data={parentOnlyPersonal}
+            onChange={setParentOnlyPersonal}
+            section="parent-extra"
+            showParentFields={true}
+            showInstituteCode={false}
+          />
+          {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">{error}</div>}
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+            <Button className="flex-1 h-10" onClick={() => setFlowStep('review')}>
+              Review <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- SOLO STUDENT VERIFY (Student without parent) ----
+    if (flowStep === 'solo-student-verify') {
+      return (
+        <OtpVerificationStep
+          title="Verify Your Contact — Student"
+          subtitle="Email is required. Phone number is optional."
           emailRequired={true}
           phoneRequired={false}
-          showPhone={false}
+          showPhone={true}
+          onBack={handleBack}
+          onVerified={({ email, phone }) => {
+            setSoloStudentEmail(email);
+            setSoloStudentPhone(phone);
+            setSoloStudentVerified(true);
+            setSoloStudentPersonal(prev => ({ ...prev, email, phoneNumber: phone }));
+            setFlowStep('solo-student-personal');
+          }}
+        />
+      );
+    }
+
+    // ---- SOLO STUDENT PERSONAL ----
+    if (flowStep === 'solo-student-personal') {
+      return (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-foreground text-base">Student — Personal Information</h3>
+            <div className="flex gap-1 mt-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full ${i === 0 ? 'bg-primary' : 'bg-muted'}`} />
+              ))}
+            </div>
+          </div>
+          <PersonForm
+            data={soloStudentPersonal}
+            onChange={setSoloStudentPersonal}
+            section="personal"
+            emailLocked={true}
+            phoneLocked={!!soloStudentPhone && soloStudentPhone.replace(/\D/g, '').length > 2}
+          />
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+            <Button className="flex-1 h-10" onClick={() => setFlowStep('solo-student-address')} disabled={!isPersonalValid(soloStudentPersonal)}>
+              Next <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- SOLO STUDENT ADDRESS ----
+    if (flowStep === 'solo-student-address') {
+      return (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-foreground text-base">Student — Address Details</h3>
+            <div className="flex gap-1 mt-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= 1 ? 'bg-primary' : 'bg-muted'}`} />
+              ))}
+            </div>
+          </div>
+          <PersonForm data={soloStudentPersonal} onChange={setSoloStudentPersonal} section="address" showInstituteCode={true} />
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+            <Button className="flex-1 h-10" onClick={() => setFlowStep('solo-student-info')} disabled={!isAddressValid(soloStudentPersonal)}>
+              Next <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- SOLO STUDENT INFO (medical, blood group etc) ----
+    if (flowStep === 'solo-student-info') {
+      return (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-foreground text-base">Student — Additional Information</h3>
+            <div className="flex gap-1 mt-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full bg-primary`} />
+              ))}
+            </div>
+          </div>
+          <StudentForm data={soloStudentInfo} onChange={setSoloStudentInfo} />
+          {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">{error}</div>}
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+            <Button className="flex-1 h-10" onClick={() => setFlowStep('review')}>
+              Review <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- SIMPLE VERIFY (Teacher/Admin/Marker) ----
+    if (flowStep === 'simple-verify') {
+      const typeLabel = accountType === 'teacher' ? 'Teacher' : accountType === 'attendance-marker' ? 'Attendance Marker' : 'Institute Admin';
+      return (
+        <OtpVerificationStep
+          title={`Verify Your Contact — ${typeLabel}`}
+          subtitle="Email is required. Phone number is required."
+          emailRequired={true}
+          phoneRequired={true}
+          showPhone={true}
           onBack={handleBack}
           onVerified={({ email, phone }) => {
             setSimpleEmail(email);
@@ -805,7 +1271,7 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
         <div className="space-y-4">
           <div>
             <h3 className="font-semibold text-foreground text-base">
-              {accountType === 'teacher' ? 'Teacher' : 'Institute Admin'} — Personal Information
+              {accountType === 'teacher' ? 'Teacher' : accountType === 'attendance-marker' ? 'Attendance Marker' : 'Institute Admin'} — Personal Information
             </h3>
             <div className="flex gap-1 mt-2">
               {[0, 1].map(i => (
@@ -836,7 +1302,7 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
         <div className="space-y-4">
           <div>
             <h3 className="font-semibold text-foreground text-base">
-              {accountType === 'teacher' ? 'Teacher' : 'Institute Admin'} — Address Details
+              {accountType === 'teacher' ? 'Teacher' : accountType === 'attendance-marker' ? 'Attendance Marker' : 'Institute Admin'} — Address Details
             </h3>
             <div className="flex gap-1 mt-2">
               {[0, 1].map(i => (
@@ -919,40 +1385,130 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
         );
       }
 
-      // Teacher / Admin review
-      return (
-        <div className="space-y-4">
-          <h3 className="font-semibold text-foreground text-base">Review — {accountType === 'teacher' ? 'Teacher' : 'Institute Admin'}</h3>
-          <div className="space-y-2 text-sm">
-            {[
-              ['Name', `${simplePersonal.firstName} ${simplePersonal.lastName}`],
-              ['Email', simpleEmail],
-              ['Phone', simplePhone],
-              ['Gender', simplePersonal.gender],
-              ['District', simplePersonal.district?.replace(/_/g, ' ')],
-              ...(simplePersonal.instituteCode ? [['Institute Code', simplePersonal.instituteCode]] : []),
-            ].filter(([, v]) => v).map(([label, value]) => (
-              <div key={label} className="flex justify-between py-1.5 border-b border-border/50">
-                <span className="text-muted-foreground">{label}</span>
-                <span className="font-medium text-foreground">{value}</span>
+      // Teacher / Admin / Marker review
+      if (accountType === 'teacher' || accountType === 'institute-admin' || accountType === 'attendance-marker') {
+        const typeLabel = accountType === 'teacher' ? 'Teacher' : accountType === 'attendance-marker' ? 'Attendance Marker' : 'Institute Admin';
+        return (
+          <div className="space-y-4">
+            <h3 className="font-semibold text-foreground text-base">Review — {typeLabel}</h3>
+            <div className="space-y-2 text-sm">
+              {[
+                ['Account Type', typeLabel],
+                ['Name', `${simplePersonal.firstName} ${simplePersonal.lastName}`],
+                ['Email', simpleEmail],
+                ['Phone', simplePhone],
+                ['Gender', simplePersonal.gender],
+                ['District', simplePersonal.district?.replace(/_/g, ' ')],
+                ...(simplePersonal.instituteCode ? [['Institute Code', simplePersonal.instituteCode]] : []),
+              ].filter(([, v]) => v).map(([label, value]) => (
+                <div key={label} className="flex justify-between py-1.5 border-b border-border/50">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className="font-medium text-foreground">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-xs text-muted-foreground bg-primary/10 p-3 rounded-lg">
+              By creating an account, you agree to the terms of service. After registration, you'll need to activate your account.
+            </div>
+
+            {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">{error}</div>}
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+              <Button className="flex-1 h-10" onClick={registerSimple} disabled={isLoading}>
+                {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</> : 'Create Account'}
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
+      // Solo student (without parent) review
+      if (accountType === 'student-without-parent') {
+        return (
+          <div className="space-y-4">
+            <h3 className="font-semibold text-foreground text-base">Review — Student</h3>
+            <div className="space-y-2 text-sm">
+              {[
+                ['Name', `${soloStudentPersonal.firstName} ${soloStudentPersonal.lastName}`],
+                ['Email', soloStudentEmail],
+                ['Phone', soloStudentPhone],
+                ['Gender', soloStudentPersonal.gender],
+                ['District', soloStudentPersonal.district?.replace(/_/g, ' ')],
+                ['Blood Group', soloStudentInfo.bloodGroup],
+                ...(soloStudentPersonal.instituteCode ? [['Institute Code', soloStudentPersonal.instituteCode]] : []),
+              ].filter(([, v]) => v).map(([label, value]) => (
+                <div key={label} className="flex justify-between py-1.5 border-b border-border/50">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className="font-medium text-foreground">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-xs text-muted-foreground bg-primary/10 p-3 rounded-lg">
+              By creating an account, you agree to the terms of service. After registration, you'll need to activate your account.
+            </div>
+
+            {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">{error}</div>}
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+              <Button className="flex-1 h-10" onClick={registerSoloStudent} disabled={isLoading}>
+                {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</> : 'Create Student Account'}
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
+      // Parent-only review
+      if (accountType === 'parent') {
+        return (
+          <div className="space-y-4">
+            <h3 className="font-semibold text-foreground text-base">Review — Parent</h3>
+            <div className="space-y-2 text-sm">
+              {[
+                ['Account Type', parentAlsoWorksAtInstitute ? 'Parent + Institute Staff' : 'Parent Only'],
+                ['Name', `${parentOnlyPersonal.firstName} ${parentOnlyPersonal.lastName}`],
+                ['Email', parentOnlyEmail],
+                ['Phone', parentOnlyPhone],
+                ['Gender', parentOnlyPersonal.gender],
+                ['District', parentOnlyPersonal.district?.replace(/_/g, ' ')],
+                ['Occupation', parentOnlyPersonal.occupation],
+                ['Workplace', parentOnlyPersonal.workplace],
+                ...(parentOnlyPersonal.instituteCode ? [['Institute Code', parentOnlyPersonal.instituteCode]] : []),
+              ].filter(([, v]) => v).map(([label, value]) => (
+                <div key={label} className="flex justify-between py-1.5 border-b border-border/50">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className="font-medium text-foreground">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            {parentAlsoWorksAtInstitute && (
+              <div className="text-xs text-blue-600 bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg">
+                Your account will have full flexibility — you can be assigned as a parent AND work at institutes as teacher/admin/marker.
               </div>
-            ))}
-          </div>
+            )}
 
-          <div className="text-xs text-muted-foreground bg-primary/10 p-3 rounded-lg">
-            By creating an account, you agree to the terms of service. After registration, you'll need to activate your account.
-          </div>
+            <div className="text-xs text-muted-foreground bg-primary/10 p-3 rounded-lg">
+              By creating an account, you agree to the terms of service. After registration, you'll need to activate your account.
+            </div>
 
-          {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">{error}</div>}
+            {error && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg">{error}</div>}
 
-          <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
-            <Button className="flex-1 h-10" onClick={registerSimple} disabled={isLoading}>
-              {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</> : 'Create Account'}
-            </Button>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1 h-10" onClick={handleBack}><ArrowLeft className="h-4 w-4 mr-2" /> Back</Button>
+              <Button className="flex-1 h-10" onClick={registerParentOnly} disabled={isLoading}>
+                {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...</> : 'Create Parent Account'}
+              </Button>
+            </div>
           </div>
-        </div>
-      );
+        );
+      }
+
+      return null;
     }
 
     return null;
@@ -961,51 +1517,44 @@ const Registration: React.FC<RegistrationProps> = ({ onBack, onComplete }) => {
   // ============= LAYOUT =============
 
   return (
-    <div className="min-h-[100dvh] flex flex-col md:flex-row overflow-x-hidden bg-background">
-      {/* Top Illustration - Mobile Only */}
-      <div className="block md:hidden w-full relative h-[18vh] shrink-0 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5" />
-        <img src={loginIllustration} alt="Registration" className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-      </div>
+    <div className="min-h-[100dvh] flex flex-col bg-background overflow-x-hidden">
+      {/* Subtle top accent bar */}
+      <div className="h-1.5 w-full bg-gradient-to-r from-primary via-primary/70 to-primary/40 shrink-0" />
 
-      {/* Form Area */}
-      <div className="w-full md:w-3/5 lg:w-1/2 flex flex-col items-center justify-start px-5 py-6 sm:p-7 md:p-10 bg-background -mt-8 md:mt-0 rounded-t-[3rem] md:rounded-none relative z-10 flex-1 md:min-h-screen overflow-y-auto">
-        <div className="w-full max-w-md md:max-w-lg space-y-5">
+      <div className="flex-1 flex flex-col items-center justify-start px-4 py-6 sm:px-6 sm:py-8 md:px-8 lg:px-12 overflow-y-auto">
+        <div className="w-full max-w-xl lg:max-w-2xl space-y-6">
           {/* Header */}
-          <div className="text-center space-y-1">
-            <div className="flex justify-center mb-2">
-              <div className="w-12 h-12 md:w-16 md:h-16 rounded-lg overflow-hidden">
-                <img src={surakshaLogo} alt="SurakshaLMS" className="w-full h-full object-contain" loading="lazy" />
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl overflow-hidden bg-primary/5 border border-border/50 p-1.5 shrink-0">
+              <img src={surakshaLogo} alt="SurakshaLMS" className="w-full h-full object-contain" loading="lazy" />
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">Create Account</h1>
+            <div>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-foreground tracking-tight">Create Account</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">Fill in the details to get started</p>
+            </div>
           </div>
 
           {/* Step Indicator */}
-          <StepIndicator steps={stepLabels} current={currentStepIdx} />
+          <div className="bg-card border border-border/50 rounded-2xl p-4 shadow-sm">
+            <StepIndicator steps={stepLabels} current={currentStepIdx} />
+          </div>
 
-          {/* Card */}
-          <Card className="border-border/50 shadow-md">
-            <CardContent className="p-5 md:p-8">
+          {/* Main Content Card */}
+          <Card className="border-border/50 shadow-lg rounded-2xl overflow-hidden">
+            <CardContent className="p-5 sm:p-6 md:p-8 lg:p-10">
               {renderContent()}
             </CardContent>
           </Card>
 
           {/* Back to Login link */}
           {flowStep === 'select-type' && (
-            <div className="text-center">
-              <Button variant="link" onClick={onBack} className="text-sm text-muted-foreground">
+            <div className="text-center pb-6">
+              <Button variant="link" onClick={onBack} className="text-sm text-muted-foreground hover:text-primary">
                 Already have an account? Go to Login
               </Button>
             </div>
           )}
         </div>
-      </div>
-
-      {/* Right Side - Illustration (Desktop) */}
-      <div className="hidden md:flex md:w-1/2 lg:w-3/5 relative min-h-[300px] md:min-h-screen">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
-        <img src={loginIllustration} alt="Registration illustration" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
       </div>
     </div>
   );

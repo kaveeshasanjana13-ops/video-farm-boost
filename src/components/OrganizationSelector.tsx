@@ -55,7 +55,7 @@ const OrganizationSelector = ({
         title: "Organizations Loaded",
         description: `Successfully loaded ${response.data.length} organizations.`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading organizations:', error);
       toast({
         title: "Error",

@@ -73,7 +73,7 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
     try {
       const data: StudentsResponse = await enhancedCachedClient.get(
         `/institute-users/institute/${selectedInstitute.id}/users/STUDENT/class/${selectedClass.id}`,
-        {},
+        { limit: 1000, page: 1 },
         {
           ttl: CACHE_TTL.STUDENTS,
           forceRefresh,
@@ -84,9 +84,9 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
         }
       );
       
-      setStudents(data.data);
+      setStudents(data?.data ?? []);
       setDataLoaded(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching students:', error);
       toast({
         title: "Error",
@@ -189,7 +189,7 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
         onOpenChange(false);
         setSelectedStudentIds([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning students to subject:', error);
       toast({
         title: "Network Error",
@@ -211,7 +211,7 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
 
   useEffect(() => {
     if (open && !dataLoaded && hasPermission && selectedClass?.id) {
-      fetchAvailableStudents();
+      fetchAvailableStudents(true);
     } else if (open && !hasPermission) {
       toast({
         title: "Access Denied",
@@ -226,6 +226,8 @@ const AssignSubjectStudentsDialog: React.FC<AssignSubjectStudentsDialogProps> = 
     if (!open) {
       setSearchTerm('');
       setSelectedStudentIds([]);
+      setStudents([]);
+      setDataLoaded(false);
     }
   }, [open]);
 

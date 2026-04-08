@@ -392,38 +392,49 @@ class HomeworkSubmissionsApi {
 
   /**
    * Review submission with correction file (Teacher/Admin)
-   * PATCH /institute-class-subject-homework-submissions/{submissionId}/review
+   * Backend review endpoint only accepts {remarks, requestResubmission, grade}.
+   * correctionFileUrl must be uploaded separately via the correction-file endpoint.
    */
   async reviewSubmissionWithCorrection(
     submissionId: string, 
     data: ReviewSubmissionData & { correctionFileUrl: string }
   ): Promise<HomeworkSubmission> {
     console.log('✏️ Reviewing submission with correction:', submissionId);
+    const { correctionFileUrl, ...reviewData } = data;
+    // Step 1: Upload correction file
+    if (correctionFileUrl) {
+      await apiClient.post(
+        `${this.basePath}/${submissionId}/correction-file`,
+        { correctionFileUrl }
+      );
+    }
+    // Step 2: Submit the review
     return apiClient.patch(
       `${this.basePath}/${submissionId}/review`,
-      data
+      reviewData
     );
   }
 
   /**
    * Delete correction file (Teacher/Admin)
-   * DELETE /institute-class-subject-homework-submissions/{submissionId}/correction-file
+   * Backend has no DELETE endpoint for correction-file.
+   * Instead, clear it by POSTing an empty correctionFileUrl.
    */
   async deleteCorrectionFile(submissionId: string): Promise<void> {
-    console.log('🗑️ Deleting correction file:', submissionId);
-    return apiClient.delete(`${this.basePath}/${submissionId}/correction-file`);
+    console.log('🗑️ Clearing correction file:', submissionId);
+    await apiClient.post(`${this.basePath}/${submissionId}/correction-file`, { correctionFileUrl: '' });
   }
 
   /**
    * Update correction file (Teacher/Admin)
-   * PUT /institute-class-subject-homework-submissions/{submissionId}/correction-file
+   * Backend only supports POST for correction-file (re-upload replaces existing).
    */
   async updateCorrectionFile(
     submissionId: string, 
     correctionFileUrl: string
   ): Promise<{ teacherCorrectionFileUrl: string }> {
     console.log('📝 Updating correction file:', submissionId);
-    return apiClient.put(
+    return apiClient.post(
       `${this.basePath}/${submissionId}/correction-file`,
       { correctionFileUrl }
     );

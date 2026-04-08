@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,9 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 import { 
   CreditCard, 
   CheckCircle, 
@@ -18,7 +21,9 @@ import {
   Clock,
   RefreshCw,
   Plus,
-  Eye
+  Eye,
+  LayoutGrid,
+  Table2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +32,20 @@ import AppLayout from '@/components/layout/AppLayout';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useViewMode } from '@/hooks/useViewMode';
+import PaymentSlipPreviewDialog from '@/components/PaymentSlipPreviewDialog';
+
+const PAY_COL_DEFS: ColumnDef[] = [
+  { key: 'amount', header: 'Amount', locked: true, defaultWidth: 120, minWidth: 90 },
+  { key: 'reference', header: 'Reference', defaultWidth: 160, minWidth: 120 },
+  { key: 'method', header: 'Method', defaultWidth: 130, minWidth: 90 },
+  { key: 'paymentDate', header: 'Payment Date', defaultWidth: 160, minWidth: 120 },
+  { key: 'month', header: 'Month', defaultWidth: 100, minWidth: 80 },
+  { key: 'status', header: 'Status', defaultWidth: 130, minWidth: 90 },
+  { key: 'notes', header: 'Notes', defaultVisible: false, defaultWidth: 200, minWidth: 120 },
+  { key: 'rejectionReason', header: 'Rejection Reason', defaultVisible: false, defaultWidth: 200, minWidth: 120 },
+  { key: 'slip', header: 'Slip', defaultWidth: 120, minWidth: 80 },
+];
 
 interface PaymentRecord {
   id: string;
@@ -59,12 +78,19 @@ const Payments = () => {
   const userRole = useInstituteRole();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { viewMode, setViewMode } = useViewMode();
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [allPayments, setAllPayments] = useState<PaymentRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'PENDING' | 'VERIFIED' | 'REJECTED'>('PENDING');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  const payColIds = useMemo(() => PAY_COL_DEFS.map(c => c.key), []);
+  const payColDefaultWidths = useMemo(() => Object.fromEntries(PAY_COL_DEFS.map(c => [c.key, c.defaultWidth ?? 150])), []);
+  const { getWidth: getPayColWidth, setHoveredCol: setPayHoveredCol, ResizeHandle: PayResizeHandle } = useResizableColumns(payColIds, payColDefaultWidths);
+  const { colState: payColState, visibleColumns: payVisDefs, toggleColumn: togglePayCol, resetColumns: resetPayCols } = useColumnConfig(PAY_COL_DEFS, 'payments');
+  const payVisKeys = useMemo(() => new Set(payVisDefs.map(c => c.key)), [payVisDefs]);
 
   // Load all payment history from API
   const loadPaymentHistory = async (showToast = true, forceRefresh = false) => {
@@ -100,7 +126,7 @@ const Payments = () => {
       setAllPayments(data.payments);
       filterPaymentsByStatus(data.payments, activeTab);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading payment history:', error);
       if (showToast) {
         toast({
@@ -186,13 +212,11 @@ const Payments = () => {
     return `Rs ${parseFloat(amount).toLocaleString()}`;
   };
 
+  const [slipPreview, setSlipPreview] = useState<{ url: string; ref: string } | null>(null);
+
   const handleViewSlip = (payment: PaymentRecord) => {
     if (payment.paymentSlipUrl) {
-      window.open(payment.paymentSlipUrl, '_blank');
-      toast({
-        title: "Opening Payment Slip",
-        description: `Payment slip for ${payment.paymentReference} is being opened.`,
-      });
+      setSlipPreview({ url: payment.paymentSlipUrl, ref: payment.paymentReference });
     }
   };
 
@@ -203,12 +227,12 @@ const Payments = () => {
 
   return (
     <AppLayout currentPage="system-payment">
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <CreditCard className="h-8 w-8" />
+            <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+              <CreditCard className="h-7 w-7 sm:h-8 sm:w-8" />
               Payment History
             </h1>
             <p className="text-muted-foreground">
@@ -267,7 +291,7 @@ const Payments = () => {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center flex-wrap gap-3">
           <Button
             onClick={handleNewPayment}
             className="bg-blue-600 hover:bg-blue-700 text-white"
@@ -276,15 +300,35 @@ const Payments = () => {
             New Payment
           </Button>
           
-          <Button
-            onClick={() => loadPaymentHistory(true, true)} // Force refresh from backend with toast
-            disabled={isLoading}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => loadPaymentHistory(true, true)} // Force refresh from backend with toast
+              disabled={isLoading}
+              variant="outline"
+              size="sm"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <ColumnConfigurator allColumns={PAY_COL_DEFS} colState={payColState} onToggle={togglePayCol} onReset={resetPayCols} />
+            {/* View Mode Toggle */}
+            <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+              <button
+                onClick={() => setViewMode('card')}
+                className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Card View"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                title="Table View"
+              >
+                <Table2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Payment Tabs */}
@@ -308,75 +352,147 @@ const Payments = () => {
           </TabsList>
 
           <TabsContent value={activeTab} className="mt-6">
-            <Paper sx={{ width: '100%', overflow: 'hidden', height: 'calc(100vh - 320px)' }}>
-              <TableContainer sx={{ height: 'calc(100% - 52px)' }}>
-                <Table stickyHeader aria-label="payment submissions table">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell style={{ minWidth: 120 }}>Amount</TableCell>
-                      <TableCell style={{ minWidth: 150 }}>Reference</TableCell>
-                      <TableCell style={{ minWidth: 120 }}>Method</TableCell>
-                      <TableCell style={{ minWidth: 150 }}>Payment Date</TableCell>
-                      <TableCell style={{ minWidth: 100 }}>Month</TableCell>
-                      <TableCell style={{ minWidth: 120 }}>Status</TableCell>
-                      <TableCell style={{ minWidth: 200 }}>Notes</TableCell>
-                      <TableCell style={{ minWidth: 200 }}>Rejection Reason</TableCell>
-                      <TableCell style={{ minWidth: 120 }}>Slip</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {payments
-                      .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                      .map((payment) => (
-                        <TableRow hover role="checkbox" tabIndex={-1} key={payment.id}>
-                          <TableCell>{formatAmount(payment.paymentAmount)}</TableCell>
-                          <TableCell>
-                            <span className="font-mono text-xs">{payment.paymentReference}</span>
+            {viewMode === 'card' ? (
+              <div className="w-full">
+                <div className="w-full space-y-1">
+                  {payments
+                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                    .map((payment) => {
+                      const statusColor = payment.status === 'VERIFIED' 
+                        ? 'bg-green-500' 
+                        : payment.status === 'PENDING' 
+                        ? 'bg-yellow-500' 
+                        : payment.status === 'REJECTED' 
+                        ? 'bg-red-500' 
+                        : 'bg-blue-500';
+                      
+                      return (
+                        <Card key={payment.id} className="hover:shadow-md transition-all border-border overflow-hidden">
+                          <div className={`h-1 w-full ${statusColor}`} />
+                          <div className="p-3 flex items-center justify-between gap-2">
+                            {/* Left: Amount */}
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-foreground">{formatAmount(payment.paymentAmount)}</p>
+                              <p className="text-xs text-muted-foreground">Payment</p>
+                            </div>
+                            
+                            {/* Middle: Info with dots */}
+                            <div className="flex-1 min-w-0 text-xs text-muted-foreground flex items-center gap-1 px-2 truncate">
+                              <span className="truncate">{payment.paymentReference}</span>
+                              <span>•</span>
+                              <span className="hidden sm:inline">{payment.paymentMethod?.replace('_', ' ') || '-'}</span>
+                              <span className="hidden sm:inline">•</span>
+                              <span>{payment.paymentMonth}</span>
+                            </div>
+                            
+                            {/* Right: Status & Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {getStatusBadge(payment.status)}
+                              {payment.paymentSlipUrl && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => handleViewSlip(payment)}
+                                  title="View Slip"
+                                >
+                                  <Eye className="h-3.5 w-3.5 mr-1" />
+                                  View
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                </div>
+                
+                {/* Pagination */}
+                <div className="mt-4 flex justify-between items-center px-1">
+                  <p className="text-xs text-muted-foreground">
+                    {Math.min(page * rowsPerPage + 1, payments.length)} - {Math.min((page + 1) * rowsPerPage, payments.length)} of {payments.length}
+                  </p>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setPage(page - 1)}
+                      disabled={page === 0}
+                    >
+                      Prev
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setPage(page + 1)}
+                      disabled={(page + 1) * rowsPerPage >= payments.length}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Paper sx={{ width: '100%', height: 'calc(100vh - 320px)', display: 'flex', flexDirection: 'column' }}>
+                <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                  <Table stickyHeader aria-label="payment submissions table" sx={{ tableLayout: 'fixed', minWidth: payVisDefs.reduce((s, c) => s + getPayColWidth(c.key), 0) }}>
+                    <TableHead>
+                      <TableRow>
+                        {payVisDefs.map(col => (
+                          <TableCell
+                            key={col.key}
+                            sx={{ position: 'relative', width: getPayColWidth(col.key), maxWidth: getPayColWidth(col.key), overflow: 'hidden', whiteSpace: 'nowrap' }}
+                            onMouseEnter={() => setPayHoveredCol(col.key)}
+                            onMouseLeave={() => setPayHoveredCol(null)}
+                          >
+                            <div style={{ paddingRight: 12 }}>{col.header}</div>
+                            <PayResizeHandle colId={col.key} />
                           </TableCell>
-                          <TableCell>{payment.paymentMethod?.replace('_', ' ') || '-'}</TableCell>
-                          <TableCell>{formatDate(payment.paymentDate)}</TableCell>
-                          <TableCell>{payment.paymentMonth}</TableCell>
-                          <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                          <TableCell>
-                            <span className="text-sm text-gray-600 truncate block max-w-[200px]" title={payment.notes}>
-                              {payment.notes || '-'}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-sm text-red-600 truncate block max-w-[200px]" title={payment.rejectionReason || ''}>
-                              {payment.rejectionReason || '-'}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {payment.paymentSlipUrl && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewSlip(payment)}
-                              >
-                                <Eye className="h-4 w-4 mr-1" />
-                                View
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              <TablePagination
-                rowsPerPageOptions={[10, 25, 50, 100]}
-                component="div"
-                count={payments.length}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-              />
-            </Paper>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {payments
+                        .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                        .map((payment) => (
+                          <TableRow hover role="checkbox" tabIndex={-1} key={payment.id}>
+                            {payVisKeys.has('amount') && <TableCell style={{ width: getPayColWidth('amount'), maxWidth: getPayColWidth('amount'), overflow: 'hidden' }}>{formatAmount(payment.paymentAmount)}</TableCell>}
+                            {payVisKeys.has('reference') && <TableCell style={{ width: getPayColWidth('reference'), maxWidth: getPayColWidth('reference'), overflow: 'hidden' }}><span className="font-mono text-xs">{payment.paymentReference}</span></TableCell>}
+                            {payVisKeys.has('method') && <TableCell style={{ width: getPayColWidth('method'), maxWidth: getPayColWidth('method'), overflow: 'hidden' }}>{payment.paymentMethod?.replace('_', ' ') || '-'}</TableCell>}
+                            {payVisKeys.has('paymentDate') && <TableCell style={{ width: getPayColWidth('paymentDate'), maxWidth: getPayColWidth('paymentDate'), overflow: 'hidden' }}>{formatDate(payment.paymentDate)}</TableCell>}
+                            {payVisKeys.has('month') && <TableCell style={{ width: getPayColWidth('month'), maxWidth: getPayColWidth('month'), overflow: 'hidden' }}>{payment.paymentMonth}</TableCell>}
+                            {payVisKeys.has('status') && <TableCell style={{ width: getPayColWidth('status'), maxWidth: getPayColWidth('status'), overflow: 'hidden' }}>{getStatusBadge(payment.status)}</TableCell>}
+                            {payVisKeys.has('notes') && <TableCell style={{ width: getPayColWidth('notes'), maxWidth: getPayColWidth('notes'), overflow: 'hidden' }}><span className="text-sm text-gray-600 truncate block" title={payment.notes}>{payment.notes || '-'}</span></TableCell>}
+                            {payVisKeys.has('rejectionReason') && <TableCell style={{ width: getPayColWidth('rejectionReason'), maxWidth: getPayColWidth('rejectionReason'), overflow: 'hidden' }}><span className="text-sm text-red-600 truncate block" title={payment.rejectionReason || ''}>{payment.rejectionReason || '-'}</span></TableCell>}
+                            {payVisKeys.has('slip') && <TableCell style={{ width: getPayColWidth('slip'), maxWidth: getPayColWidth('slip'), overflow: 'hidden' }}>{payment.paymentSlipUrl && (<Button variant="outline" size="sm" onClick={() => handleViewSlip(payment)}><Eye className="h-4 w-4 mr-1" />View</Button>)}</TableCell>}
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <TablePagination
+                  rowsPerPageOptions={[10, 25, 50, 100]}
+                  component="div"
+                  count={payments.length}
+                  rowsPerPage={rowsPerPage}
+                  page={page}
+                  onPageChange={handleChangePage}
+                  onRowsPerPageChange={handleChangeRowsPerPage}
+                />
+              </Paper>
+            )}
           </TabsContent>
         </Tabs>
       </div>
+
+      <PaymentSlipPreviewDialog
+        open={!!slipPreview}
+        onOpenChange={(open) => { if (!open) setSlipPreview(null); }}
+        url={slipPreview?.url || ''}
+        title={`Payment Slip — ${slipPreview?.ref || ''}`}
+      />
     </AppLayout>
   );
 };

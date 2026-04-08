@@ -35,6 +35,7 @@ const UpdateInstituteLectureForm = ({ lecture, onClose, onSuccess }: UpdateInsti
     isActive: true
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const { selectedInstitute } = useAuth();
 
@@ -61,6 +62,8 @@ const UpdateInstituteLectureForm = ({ lecture, onClose, onSuccess }: UpdateInsti
   }, [lecture]);
 
   const handleInputChange = (field: string, value: string | boolean | number) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -76,6 +79,16 @@ const UpdateInstituteLectureForm = ({ lecture, onClose, onSuccess }: UpdateInsti
         description: "Please select an institute before updating the lecture",
         variant: "destructive",
       });
+      return;
+    }
+
+        const errors: Record<string, string> = {};
+    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
+    if (!formData.subject && formData.subject !== 0) errors.subject = 'Subject is required';
+    if (!formData.description && formData.description !== 0) errors.description = 'Description is required';
+    if (!formData.venue && formData.venue !== 0) errors.venue = 'Venue is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -120,7 +133,7 @@ const UpdateInstituteLectureForm = ({ lecture, onClose, onSuccess }: UpdateInsti
       if (onClose) {
         onClose();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating institute lecture:', error);
       toast({
         title: "Error",
@@ -162,7 +175,10 @@ const UpdateInstituteLectureForm = ({ lecture, onClose, onSuccess }: UpdateInsti
                   value={formData.title}
                   onChange={(e) => handleInputChange('title', e.target.value)}
                   required
+              className={`${fieldErrors.title ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                 />
+
+                {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
               </div>
 
               <div className="space-y-2">
@@ -173,7 +189,10 @@ const UpdateInstituteLectureForm = ({ lecture, onClose, onSuccess }: UpdateInsti
                   value={formData.subject}
                   onChange={(e) => handleInputChange('subject', e.target.value)}
                   required
+              className={`${fieldErrors.subject ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                 />
+
+                {fieldErrors.subject && <p className="text-xs text-red-500 mt-1">{fieldErrors.subject}</p>}
               </div>
             </div>
 
@@ -186,7 +205,10 @@ const UpdateInstituteLectureForm = ({ lecture, onClose, onSuccess }: UpdateInsti
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 rows={3}
                 required
+              className={`${fieldErrors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
               />
+
+              {fieldErrors.description && <p className="text-xs text-red-500 mt-1">{fieldErrors.description}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -237,7 +259,10 @@ const UpdateInstituteLectureForm = ({ lecture, onClose, onSuccess }: UpdateInsti
                 value={formData.venue}
                 onChange={(e) => handleInputChange('venue', e.target.value)}
                 required
+              className={`${fieldErrors.venue ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
               />
+
+              {fieldErrors.venue && <p className="text-xs text-red-500 mt-1">{fieldErrors.venue}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

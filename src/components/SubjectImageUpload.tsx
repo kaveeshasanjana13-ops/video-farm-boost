@@ -17,6 +17,10 @@ interface SubjectImageUploadProps {
   value?: string;
   onChange: (imageUrl: string) => void;
   onRemove?: () => void;
+  /** When true, image is uploaded to cloud immediately on crop. When false (default), only a local preview is shown and getPendingUpload() must be called to upload later. */
+  uploadImmediately?: boolean;
+  /** Ref to expose the pending upload function for deferred uploads */
+  uploadRef?: React.MutableRefObject<(() => Promise<string | null>) | null>;
 }
 
 function centerAspectCrop(
@@ -39,7 +43,7 @@ function centerAspectCrop(
   )
 }
 
-const SubjectImageUpload: React.FC<SubjectImageUploadProps> = ({ value, onChange, onRemove }) => {
+const SubjectImageUpload: React.FC<SubjectImageUploadProps> = ({ value, onChange, onRemove, uploadImmediately = true, uploadRef }) => {
   const { toast } = useToast();
   const [previewUrl, setPreviewUrl] = useState<string>(value ? getImageUrl(value) : '');
   const [showCropDialog, setShowCropDialog] = useState(false);
@@ -50,6 +54,31 @@ const SubjectImageUpload: React.FC<SubjectImageUploadProps> = ({ value, onChange
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pendingBlob, setPendingBlob] = useState<{ blob: Blob; fileName: string } | null>(null);
+
+  // Expose deferred upload function via ref
+  React.useEffect(() => {
+    if (uploadRef) {
+      uploadRef.current = async () => {
+        if (!pendingBlob) return null;
+        try {
+          const signedUrlData = await getSignedUrl(
+            'subject-images',
+            pendingBlob.fileName,
+            'image/png',
+            pendingBlob.blob.size
+          );
+          await uploadToSignedUrl(signedUrlData.uploadUrl, pendingBlob.blob, signedUrlData.fields);
+          await verifyAndPublish(signedUrlData.relativePath);
+          setPendingBlob(null);
+          return signedUrlData.publicUrl;
+        } catch (error) {
+          console.error('Deferred image upload failed:', error);
+          throw error;
+        }
+      };
+    }
+  }, [pendingBlob, uploadRef]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -154,9 +183,23 @@ const SubjectImageUpload: React.FC<SubjectImageUploadProps> = ({ value, onChange
     try {
       // Get cropped image blob
       const croppedImageBlob = await getCroppedImg(imgRef.current, completedCrop);
-      
-      // Step 1: Get signed URL
       const fileName = selectedFile.name.replace(/\.[^/.]+$/, "") + '.png';
+
+      if (!uploadImmediately) {
+        // Deferred mode: save blob locally, show preview, don't upload yet
+        const localPreviewUrl = URL.createObjectURL(croppedImageBlob);
+        setPreviewUrl(localPreviewUrl);
+        setPendingBlob({ blob: croppedImageBlob, fileName });
+        onChange('__pending__'); // Signal that there's a pending image
+        toast({
+          title: "Image Ready",
+          description: "Image will be uploaded when you submit the form.",
+        });
+        handleCloseDialog();
+        return;
+      }
+      
+      // Immediate mode: upload to cloud storage right away
       const signedUrlData = await getSignedUrl(
         'subject-images',
         fileName,
@@ -164,17 +207,14 @@ const SubjectImageUpload: React.FC<SubjectImageUploadProps> = ({ value, onChange
         croppedImageBlob.size
       );
 
-      // Step 2: Upload to signed URL
       await uploadToSignedUrl(
         signedUrlData.uploadUrl,
         croppedImageBlob,
         signedUrlData.fields
       );
 
-      // Step 3: Verify and publish
       await verifyAndPublish(signedUrlData.relativePath);
 
-      // Step 4: Use public URL with transformed base
       setPreviewUrl(getImageUrl(signedUrlData.publicUrl));
       onChange(signedUrlData.publicUrl);
       
@@ -184,7 +224,7 @@ const SubjectImageUpload: React.FC<SubjectImageUploadProps> = ({ value, onChange
       });
       
       handleCloseDialog();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading image:', error);
       toast({
         title: "Upload failed",
@@ -209,6 +249,7 @@ const SubjectImageUpload: React.FC<SubjectImageUploadProps> = ({ value, onChange
 
   const handleRemove = () => {
     setPreviewUrl('');
+    setPendingBlob(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }

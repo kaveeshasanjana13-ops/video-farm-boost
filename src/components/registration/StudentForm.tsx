@@ -4,12 +4,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { GraduationCap } from 'lucide-react';
 import { BLOOD_GROUPS } from '@/api/registration.api';
+import type { CardDeliveryRecipient } from '@/api/registration.api';
 
 export interface StudentFormData {
   emergencyContact: string;
   bloodGroup: string;
   medicalConditions: string;
   allergies: string;
+  cardDeliveryRecipient: CardDeliveryRecipient | '';
 }
 
 export const emptyStudentForm = (): StudentFormData => ({
@@ -17,14 +19,17 @@ export const emptyStudentForm = (): StudentFormData => ({
   bloodGroup: '',
   medicalConditions: '',
   allergies: '',
+  cardDeliveryRecipient: '',
 });
 
 interface StudentFormProps {
   data: StudentFormData;
   onChange: (data: StudentFormData) => void;
+  showCardDelivery?: boolean;
+  availableRecipients?: { value: CardDeliveryRecipient; label: string }[];
 }
 
-const StudentForm: React.FC<StudentFormProps> = ({ data, onChange }) => {
+const StudentForm: React.FC<StudentFormProps> = ({ data, onChange, showCardDelivery = false, availableRecipients }) => {
   const update = (field: keyof StudentFormData, value: string) => {
     onChange({ ...data, [field]: value });
   };
@@ -62,6 +67,19 @@ const StudentForm: React.FC<StudentFormProps> = ({ data, onChange }) => {
           <Input value={data.allergies} onChange={e => update('allergies', e.target.value)} placeholder="None" className="h-9" />
         </div>
       </div>
+      {showCardDelivery && availableRecipients && availableRecipients.length > 0 && (
+        <div className="space-y-1.5">
+          <Label className="text-xs">ID Card Delivery Recipient</Label>
+          <Select value={data.cardDeliveryRecipient} onValueChange={v => update('cardDeliveryRecipient', v)}>
+            <SelectTrigger className="h-9"><SelectValue placeholder="Who should receive the ID card?" /></SelectTrigger>
+            <SelectContent>
+              {availableRecipients.map(r => (
+                <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,25 +1,24 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Sun } from 'lucide-react';
+import { Sun, Moon } from 'lucide-react';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const ThemeToggle = () => {
-  React.useEffect(() => {
-    // Always set light mode
-    const root = window.document.documentElement;
-    root.classList.remove('dark');
-    root.classList.add('light');
-    localStorage.setItem('theme', 'light');
-  }, []);
+  const { resolvedTheme, setTheme } = useTheme();
+
+  const toggle = () => {
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
+  };
 
   return (
     <Button
       variant="ghost"
       size="sm"
       className="p-2 hover:bg-muted"
-      aria-label="Light theme"
-      disabled
+      aria-label="Toggle theme"
+      onClick={toggle}
     >
-      <Sun className="h-5 w-5" />
+      {resolvedTheme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
     </Button>
   );
 };

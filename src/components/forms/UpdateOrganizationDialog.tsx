@@ -9,6 +9,7 @@ import { Organization, organizationSpecificApi, OrganizationUpdateData } from '@
 import { Save, Loader2 } from 'lucide-react';
 import { getBaseUrl } from '@/contexts/utils/auth.api';
 import ImageCropUpload from '@/components/common/ImageCropUpload';
+import { getErrorMessage } from '@/api/apiError';
 
 interface UpdateOrganizationDialogProps {
   open: boolean;
@@ -83,11 +84,11 @@ const UpdateOrganizationDialog = ({
 
       onUpdate?.(updatedOrganization);
       onOpenChange(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating organization:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update organization",
+        description: getErrorMessage(error, 'Failed to update organization'),
         variant: "destructive",
       });
     } finally {

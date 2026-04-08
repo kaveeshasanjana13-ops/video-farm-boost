@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AppLoadingScreen from '@/components/AppLoadingScreen';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppNavigation } from '@/hooks/useAppNavigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTenant } from '@/contexts/TenantContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useContextUrlSync, extractPageFromUrl } from '@/utils/pageNavigation';
 import { useRouteContext } from '@/hooks/useRouteContext';
@@ -66,6 +67,8 @@ import TeacherExams from '@/components/TeacherExams';
 import TeacherLectures from '@/components/TeacherLectures';
 import InstituteLectures from '@/components/InstituteLectures';
 import AttendanceMarkerSubjectSelector from '@/components/AttendanceMarkerSubjectSelector';
+import SelectAttendanceMarkType from '@/components/attendance/SelectAttendanceMarkType';
+import CloseAttendancePage from '@/components/admin-attendance/CloseAttendance';
 import UnverifiedStudents from '@/components/UnverifiedStudents';
 import EnrollClass from '@/components/EnrollClass';
 import EnrollSubject from '@/components/EnrollSubject';
@@ -75,6 +78,7 @@ import InstituteProfile from '@/components/InstituteProfile';
 import InstituteSettingsPage from '@/pages/InstituteSettingsPage';
 import StudentHomeworkSubmissions from '@/components/StudentHomeworkSubmissions';
 import FreeLectures from '@/components/FreeLectures';
+import StructuredLectures from '@/components/StructuredLectures';
 import SMS from '@/components/SMS';
 import SMSHistory from '@/pages/SMSHistory';
 import MyChildren from '@/pages/MyChildren';
@@ -103,17 +107,27 @@ import TodayDashboard from '@/components/TodayDashboard';
 import ParentAttendanceDashboard from '@/components/parent-attendance/ParentAttendanceDashboard';
 import ClassCalendarPage from '@/pages/ClassCalendarPage';
 import DeviceManagement from '@/pages/DeviceManagement';
+import Feedback from '@/components/Feedback';
+import GlobalIdCardsPage from '@/pages/GlobalIdCardsPage';
+import Payments from '@/pages/Payments';
+import InstituteHouses from '@/pages/InstituteHouses';
+import HouseDetail from '@/pages/HouseDetail';
+import InstituteBillingPage from '@/pages/InstituteBillingPage';
+import InstituteCreditsPage from '@/pages/InstituteCreditsPage';
+
 
 interface AppContentProps {
   initialPage?: string;
 }
 
 const AppContent = ({ initialPage }: AppContentProps) => {
-  const { user, login, selectedInstitute, selectedClass, selectedSubject, selectedChild, selectedOrganization, setSelectedOrganization, currentInstituteId, isViewingAsParent } = useAuth();
+  const { user, login, isInitialized, selectedInstitute, selectedClass, selectedSubject, selectedChild, selectedOrganization, setSelectedOrganization, currentInstituteId, isViewingAsParent, setSelectedInstitute, loadUserInstitutes } = useAuth();
+  const { isTenantLogin, branding, isLoading: tenantLoading } = useTenant();
   const { navigateToPage, getPageFromPath } = useAppNavigation();
   const location = useLocation();
   const navigate = useNavigate();
   const [hasNavigatedAfterLogin, setHasNavigatedAfterLogin] = React.useState(false);
+  const tenantAutoSelected = useRef(false);
   
   // 📱 Mobile permissions hook - handles permission prompts after login on mobile
   const { isRequesting: isRequestingPermissions, permissionStatus } = useMobilePermissions();
@@ -123,6 +137,36 @@ const AppContent = ({ initialPage }: AppContentProps) => {
   
   // Institute-specific role - always uses selectedInstitute.userRole
   const userRole = useInstituteRole();
+
+  // ═══ Subdomain / Custom Domain auto-select institute ═══
+  // When logged in via a tenant subdomain/domain, automatically select the matching institute
+  // so the user skips the InstituteSelector and lands directly in their institute.
+  useEffect(() => {
+    if (!isTenantLogin || !user || !branding?.id || tenantAutoSelected.current || selectedInstitute) return;
+
+    const autoSelect = async () => {
+      // Check user.institutes first, load if not available
+      let institutes = user.institutes;
+      if (!institutes || institutes.length === 0) {
+        try {
+          institutes = await loadUserInstitutes();
+        } catch {
+          return;
+        }
+      }
+
+      // Find the institute that matches the tenant branding
+      const match = institutes?.find(inst => inst.id === branding.id);
+      if (match) {
+        tenantAutoSelected.current = true;
+        setSelectedInstitute(match);
+        // Navigate to the institute dashboard
+        navigate(`/institute/${match.id}/dashboard`, { replace: true });
+      }
+    };
+
+    autoSelect();
+  }, [isTenantLogin, user, branding, selectedInstitute, setSelectedInstitute, loadUserInstitutes, navigate]);
   
   
   
@@ -190,6 +234,18 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     if (/\/child\/[^\/]+\/results/.test(path)) {
       return 'child-results-page';
     }
+    // child/:id/subject-payments - Parent viewing child's subject payments
+    if (/\/child\/[^\/]+\/subject-payments/.test(path)) {
+      return 'child-subject-payments';
+    }
+    // child/:id/subject-pay-submission - Parent viewing child's payment submissions
+    if (/\/child\/[^\/]+\/subject-pay-submission/.test(path)) {
+      return 'child-subject-pay-submission';
+    }
+    // houses/:houseId - House detail page
+    if (/\/houses\/[^\/]+/.test(path)) {
+      return 'house-detail-view';
+    }
     return null;
   }, [location.pathname]);
   
@@ -204,40 +260,49 @@ const AppContent = ({ initialPage }: AppContentProps) => {
   // If we were redirected to login, React Router stores the original destination in location.state.from
   const intendedPath = (location.state as any)?.from as string | undefined;
   
-  // Auto-navigate to Select Institute page after login (only if not loading from URL)
+  // Auto-navigate after login
   React.useEffect(() => {
-    // ✅ If user was redirected to login from a deep link, go back there immediately after login.
-    // This is what enables: open /institute/.../subject/... while logged out → login → land on that page.
+    // Don't auto-navigate if we have an institute ID in URL (direct navigation)
+    if (urlInstituteId) {
+      return;
+    }
+
+    // If ProtectedRoute redirected here from a deep link, go back to that page after login.
+    // intendedPath is set by ProtectedRoute via location.state.from.
+    // On logout we navigate to '/' with state: null, so intendedPath is undefined → goes to dashboard.
     if (user && !hasNavigatedAfterLogin && intendedPath && intendedPath !== '/' && intendedPath !== location.pathname) {
-      console.log('🔁 Post-login redirect to intended route:', intendedPath);
       setHasNavigatedAfterLogin(true);
       navigate(intendedPath, { replace: true, state: {} });
       return;
     }
 
-    // Don't auto-navigate if we have an institute ID in URL (direct navigation)
-    if (urlInstituteId) {
-      console.log('🔗 Direct URL navigation detected, waiting for context to load...');
-      return;
-    }
-    
-    if (user && !hasNavigatedAfterLogin && !selectedInstitute && (location.pathname === '/dashboard' || location.pathname === '/')) {
-      console.log('🏢 Auto-navigating to Select Institute after login');
+    // On browser reload, context (selectedInstitute, selectedChild, etc.) is cleared.
+    // Redirect to dashboard so the user can re-select their context instead of
+    // landing on a broken/empty page.
+    const navType = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type;
+    const isPageReload = navType === 'reload';
+
+    // Default: go to dashboard after login OR after a page reload
+    if (user && !hasNavigatedAfterLogin && (location.pathname === '/' || location.pathname === '' || isPageReload)) {
       setHasNavigatedAfterLogin(true);
-      navigate('/select-institute');
+      navigate('/dashboard', { replace: true, state: {} });
     }
-  }, [user, hasNavigatedAfterLogin, intendedPath, selectedInstitute, location.pathname, navigate, urlInstituteId]);
+  }, [user, hasNavigatedAfterLogin, intendedPath, location.pathname, navigate, urlInstituteId]);
   
   // Reset the flag when user logs out and navigate to root
   React.useEffect(() => {
     if (!user) {
       setHasNavigatedAfterLogin(false);
-      // Navigate to root (login page) when user logs out
-      if (location.pathname !== '/') {
-        navigate('/', { replace: true });
-      }
+      // Clear any saved redirect path so after login we always go to dashboard.
+      sessionStorage.removeItem('redirectAfterLogin');
+      // Always navigate to '/' with state: null.
+      // This is critical: ProtectedRoute may have already navigated to '/' with
+      // state.from set (when the user was on a protected page and logged out).
+      // Without this call the state.from lingers and the login effect would
+      // redirect back to the protected page after re-login.
+      navigate('/', { replace: true, state: null });
     }
-  }, [user, location.pathname, navigate]);
+  }, [user, navigate]);
   const [showCreateOrgForm, setShowCreateOrgForm] = useState(false);
   const [organizationCurrentPage, setOrganizationCurrentPage] = useState('organizations');
 
@@ -254,7 +319,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
   };
 
   const handleOrganizationSelect = (organization: any) => {
-    console.log('Organization selected:', organization);
+
     setSelectedOrganization(organization);
     
     // Switch to using baseUrl2 for organization-specific API calls
@@ -282,7 +347,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
   };
 
   const handleCreateOrganizationSuccess = (organization: any) => {
-    console.log('Organization created successfully:', organization);
+
     setShowCreateOrgForm(false);
     setCurrentPage('organization-selector');
   };
@@ -493,10 +558,21 @@ const AppContent = ({ initialPage }: AppContentProps) => {
   };
 
   const renderComponent = () => {
+    // Helper: case-insensitive check for tuition_institute type
+    const isNotTuitionInstitute = (selectedInstitute?.type || '').toLowerCase() !== 'tuition_institute';
     // CRITICAL: Show branded loading state when loading context from direct URL navigation
     if (isLoadingContextFromUrl) {
       return <AppLoadingScreen message="Loading your data..." />;
     }
+
+    // CRITICAL: Global pages that should ALWAYS render regardless of role/institute/child selection
+    if (currentPage === 'feedback') return <Feedback />;
+    if (currentPage === 'settings') return <Settings />;
+    if (currentPage === 'all-notifications') return <AllNotificationsPage />;
+    if (currentPage === 'profile') return <Profile />;
+    if (currentPage === 'appearance') return <Appearance />;
+    if (currentPage === 'id-cards') return <GlobalIdCardsPage />;
+    if (currentPage === 'system-payment' || currentPage === 'system-payments') return <Payments />;
     
     // CRITICAL: Handle parent viewing child routes FIRST - regardless of user role
     // When isViewingAsParent is true and child is selected, show student UI in view-only mode
@@ -533,6 +609,9 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       if (nestedRouteComponent === 'child-results-page') {
         return <Results />;
       }
+      // Child subject payments (view-only for parent)
+      if (nestedRouteComponent === 'child-subject-payments') return <SubjectPayments />;
+      if (nestedRouteComponent === 'child-subject-pay-submission') return <SubjectPaymentSubmissions />;
       // Legacy child routes
       if (nestedRouteComponent === 'child-results') return <ChildResults />;
       if (nestedRouteComponent === 'child-attendance') return <ChildAttendancePage />;
@@ -541,6 +620,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     
     // Non-parent-viewing child routes
     if (selectedChild && nestedRouteComponent) {
+      if (nestedRouteComponent === 'child-subject-payments') return <SubjectPayments />;
+      if (nestedRouteComponent === 'child-subject-pay-submission') return <SubjectPaymentSubmissions />;
       if (nestedRouteComponent === 'child-results') return <ChildResults />;
       if (nestedRouteComponent === 'child-attendance') return <ChildAttendancePage />;
       if (nestedRouteComponent === 'child-transport') return <ChildTransportPage />;
@@ -623,6 +704,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <Profile />;
         case 'settings':
           return <Settings />;
+        case 'feedback':
+          return <Feedback />;
         case 'all-notifications':
           return <AllNotificationsPage />;
         case 'notifications':
@@ -638,6 +721,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       // Handle nested routes first for Student role
       if (nestedRouteComponent === 'exam-results-view') return <ExamResults />;
       if (nestedRouteComponent === 'homework-submissions-view') return <HomeworkSubmissions />;
+      if (nestedRouteComponent === 'house-detail-view' && isNotTuitionInstitute) return <HouseDetail />;
       
       if (!selectedInstitute && user.institutes.length === 1) {
         // Auto-select the only institute available
@@ -645,7 +729,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       }
       
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard' && currentPage !== 'feedback') {
         return <InstituteSelector />;
       }
 
@@ -657,13 +741,10 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         case 'select-subject':
           return <SubjectSelector />;
         case 'enroll-class':
-          console.log('Student: Rendering EnrollClass component');
           return <EnrollClass />;
         case 'enroll-subject':
-          console.log('Student: Rendering EnrollSubject component');
           return <EnrollSubject />;
         case 'my-attendance':
-          console.log('Student: Rendering MyAttendance component');
           return <MyAttendance />;
         case 'students':
           return <Students />;
@@ -680,7 +761,6 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         case 'results':
           return <Results />;
         case 'institute-lectures':
-          console.log('Student: Rendering InstituteLectures component');
           return <InstituteLectures />;
         case 'profile':
           return <Profile />;
@@ -719,6 +799,10 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <TodayDashboard />;
         case 'settings':
           return <Settings />;
+        case 'feedback':
+          return <Feedback />;
+        case 'houses':
+          return isNotTuitionInstitute ? <InstituteHouses /> : <Dashboard />;
         default:
           return <Dashboard />;
       }
@@ -730,12 +814,13 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       if (nestedRouteComponent === 'child-results') return <ChildResults />;
       if (nestedRouteComponent === 'child-attendance') return <ChildAttendancePage />;
       if (nestedRouteComponent === 'child-transport') return <ChildTransportPage />;
+      if (nestedRouteComponent === 'house-detail-view' && isNotTuitionInstitute) return <HouseDetail />;
 
       if (currentPage === 'parents') {
         return <ParentChildrenSelector />;
       }
 
-      if (!selectedChild && currentPage !== 'parents' && currentPage !== 'profile' && currentPage !== 'appearance' && currentPage !== 'settings') {
+      if (!selectedChild && currentPage !== 'parents' && currentPage !== 'profile' && currentPage !== 'appearance' && currentPage !== 'settings' && currentPage !== 'feedback' && currentPage !== 'all-notifications' && currentPage !== 'notifications') {
         return <ParentChildrenSelector />;
       }
 
@@ -758,6 +843,14 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <Results />;
         case 'exams':
           return <Exams />;
+        case 'institute-payments':
+          return <InstitutePayments />;
+        case 'my-submissions':
+          return <MySubmissions />;
+        case 'subject-payments':
+          return <SubjectPayments />;
+        case 'subject-pay-submission':
+          return <SubjectPaymentSubmissions />;
         case 'profile':
           return <Profile />;
         case 'child-attendance':
@@ -774,6 +867,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <Appearance />;
         case 'settings':
           return <Settings />;
+        case 'feedback':
+          return <Feedback />;
         case 'all-notifications':
           return <AllNotificationsPage />;
         case 'notifications':
@@ -791,6 +886,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <ClassSelector />;
         case 'select-subject':
           return <SubjectSelector />;
+        case 'houses':
+          return isNotTuitionInstitute ? <InstituteHouses /> : <Dashboard />;
         default:
           return <ParentChildrenSelector />;
       }
@@ -799,7 +896,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     // For Teacher role
     if (userRole === 'Teacher') {
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard' && currentPage !== 'feedback') {
         return <InstituteSelector />;
       }
 
@@ -825,6 +922,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       if (nestedRouteComponent === 'homework-submissions-view') return <HomeworkSubmissions />;
       if (nestedRouteComponent === 'exam-results-view') return <ExamResults />;
       if (nestedRouteComponent === 'exam-create-results') return <CreateExamResults />;
+      if (nestedRouteComponent === 'house-detail-view' && isNotTuitionInstitute) return <HouseDetail />;
 
       switch (currentPage) {
         case 'dashboard':
@@ -853,8 +951,15 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         case 'attendance':
         case 'daily-attendance':
           return <Attendance />;
-        case 'qr-attendance':
-          return <QRAttendance />;
+        case 'my-attendance':
+          return <MyAttendance />;
+        case 'rfid-attendance':
+        case 'rfid':
+          return <RfidAttendance />;
+        case 'select-attendance-mark-type':
+          return <SelectAttendanceMarkType />;
+        case 'close-attendance':
+          return <CloseAttendancePage />;
         case 'institute-mark-attendance':
           return <InstituteMarkAttendance />;
         case 'lectures':
@@ -863,6 +968,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <InstituteLectures />;
         case 'free-lectures':
           return <FreeLectures />;
+        case 'structured-lectures':
+          return <StructuredLectures />;
         case 'live-lectures':
           return <LiveLectures />;
         case 'homework':
@@ -881,6 +988,10 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <InstituteProfile />;
         case 'institute-settings':
           return <InstituteSettingsPage />;
+        case 'institute-billing':
+          return <InstituteBillingPage />;
+        case 'institute-credits':
+          return <InstituteCreditsPage />;
         case 'institute-payments':
           return <InstitutePayments />;
         case 'pending-submissions':
@@ -906,6 +1017,10 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <NotificationsPage />;
         case 'settings':
           return <Settings />;
+        case 'feedback':
+          return <Feedback />;
+        case 'houses':
+          return isNotTuitionInstitute ? <InstituteHouses /> : <Dashboard />;
         default:
           return <Dashboard />;
       }
@@ -914,7 +1029,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     // For AttendanceMarker role
     if (userRole === 'AttendanceMarker') {
       // Only redirect to InstituteSelector if no institute AND not loading from URL
-      if (!selectedInstitute && !urlInstituteId && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard') {
+      if (!selectedInstitute && !urlInstituteId && currentPage !== 'select-institute' && currentPage !== 'settings' && currentPage !== 'appearance' && currentPage !== 'all-notifications' && currentPage !== 'notifications' && currentPage !== 'dashboard' && currentPage !== 'feedback') {
         return <InstituteSelector />;
       }
 
@@ -942,7 +1057,12 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <AttendanceMarkers />;
         case 'qr-attendance':
           return <QRAttendance />;
+        case 'select-attendance-mark-type':
+          return <SelectAttendanceMarkType />;
+        case 'close-attendance':
+          return <CloseAttendancePage />;
         case 'rfid-attendance':
+        case 'rfid':
           return <RfidAttendance />;
         case 'institute-mark-attendance':
           return <InstituteMarkAttendance />;
@@ -960,6 +1080,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
           return <InstituteSettingsPage />;
         case 'settings':
           return <Settings />;
+        case 'feedback':
+          return <Feedback />;
         case 'all-notifications':
           return <AllNotificationsPage />;
         case 'notifications':
@@ -986,6 +1108,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       'child/:childId/attendance',
       'child/:childId/transport',
       'institute-payments',
+      'institute-billing',
       'subject-payments',
       'my-submissions',
       'notifications',
@@ -996,19 +1119,13 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       'today-dashboard',
       'admin-attendance',
       'parent-attendance',
+      'my-attendance',
       'class-calendar',
       'device-management'
     ];
     
-    console.log('🔍 Student Role - Debug:', { 
-      currentPage, 
-      selectedInstitute: !!selectedInstitute,
-      isInExceptionList: pagesWithoutClassRequirement.includes(currentPage)
-    });
-    
     // Only redirect to institute selector if institute is not selected AND not loading from URL AND page is not in exception list
     if (!selectedInstitute && !urlInstituteId && currentPage !== 'institutes' && currentPage !== 'select-institute' && currentPage !== 'organizations' && currentPage !== 'dashboard' && !pagesWithoutClassRequirement.includes(currentPage)) {
-      console.log('❌ Redirecting to InstituteSelector');
       return <InstituteSelector />;
     }
 
@@ -1026,7 +1143,6 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     if (!pagesWithoutClassRequirement.includes(currentPage)) {
       const classRequiredPages = ['grading'];
       if (selectedInstitute && !selectedClass && classRequiredPages.includes(currentPage)) {
-        console.log('❌ Redirecting to ClassSelector for class-required page');
         return <ClassSelector />;
       }
     }
@@ -1040,6 +1156,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     if (nestedRouteComponent === 'homework-submissions-view') return <HomeworkSubmissions />;
     if (nestedRouteComponent === 'exam-results-view') return <ExamResults />;
     if (nestedRouteComponent === 'exam-create-results') return <CreateExamResults />;
+    if (nestedRouteComponent === 'house-detail-view' && isNotTuitionInstitute) return <HouseDetail />;
 
     switch (currentPage) {
       case 'dashboard':
@@ -1059,10 +1176,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       case 'unverified-students':
         return <UnverifiedStudents />;
       case 'enroll-class':
-        console.log('Rendering EnrollClass component for Student');
         return <EnrollClass />;
       case 'enroll-subject':
-        console.log('Rendering EnrollSubject component for Student');
         return <EnrollSubject />;
       case 'teachers':
         return <Teachers />;
@@ -1092,11 +1207,18 @@ const AppContent = ({ initialPage }: AppContentProps) => {
       case 'attendance':
       case 'daily-attendance':
         return <Attendance />;
+      case 'my-attendance':
+        return <MyAttendance />;
       case 'attendance-markers':
         return <AttendanceMarkers />;
       case 'qr-attendance':
         return <QRAttendance />;
+      case 'select-attendance-mark-type':
+        return <SelectAttendanceMarkType />;
+      case 'close-attendance':
+        return <CloseAttendancePage />;
       case 'rfid-attendance':
+      case 'rfid':
         return <RfidAttendance />;
       case 'institute-mark-attendance':
         return <InstituteMarkAttendance />;
@@ -1104,6 +1226,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <Lectures />;
       case 'free-lectures':
         return <FreeLectures />;
+      case 'structured-lectures':
+        return <StructuredLectures />;
       case 'institute-lectures':
         return <InstituteLectures />;
       case 'live-lectures':
@@ -1128,6 +1252,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <Profile />;
       case 'settings':
         return <Settings />;
+      case 'feedback':
+        return <Feedback />;
       case 'setup-guide':
         return <SetupGuide />;
       case 'institute-details':
@@ -1149,6 +1275,10 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <NotificationsPage />;
       case 'institute-payments':
         return <InstitutePayments />;
+      case 'institute-billing':
+        return <InstituteBillingPage />;
+      case 'institute-credits':
+        return <InstituteCreditsPage />;
       case 'pending-submissions':
         return <PendingSubmissions />;
       case 'subject-payments':
@@ -1173,6 +1303,8 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         return <ClassCalendarPage />;
       case 'device-management':
         return <DeviceManagement />;
+      case 'houses':
+        return isNotTuitionInstitute ? <InstituteHouses /> : <Dashboard />;
       case 'my-children':
         return <MyChildren />;
       case 'child/:childId/dashboard':
@@ -1188,11 +1320,20 @@ const AppContent = ({ initialPage }: AppContentProps) => {
     }
   };
 
+  // While auth is still initializing (checking stored token / cookie refresh),
+  // show the branded loading screen so the WebView never paints blank white
+  // before the Capacitor splash hides.
+  if (!isInitialized) {
+    return <AppLoadingScreen message="Starting..." />;
+  }
+
   if (!user) {
-    return <Login onLogin={(userData) => {
-      // Login success is handled by the auth context
-      console.log('User logged in successfully:', userData);
-    }} loginFunction={login} />;
+    return <Login onLogin={() => {}} loginFunction={login} />;
+  }
+
+  // While tenant auto-select is in progress, show loading
+  if (isTenantLogin && user && branding?.id && !selectedInstitute && !tenantAutoSelected.current) {
+    return <AppLoadingScreen message="Loading institute..." />;
   }
 
   // 🛡️ Show branded loading state while validating context from URL
@@ -1214,7 +1355,7 @@ const AppContent = ({ initialPage }: AppContentProps) => {
         />
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <Header onMenuClick={handleMenuClick} />
-          <main className="flex-1 overflow-auto p-3 sm:p-4 lg:p-6 pb-20 lg:pb-6">
+          <main className="flex-1 overflow-auto p-3 sm:p-4 lg:p-6 pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-6">
             <div className="max-w-full">
               {renderComponent()}
             </div>

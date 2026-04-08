@@ -78,7 +78,7 @@ const ModalRouter: React.FC = () => {
           const sub = await cachedApiClient.get(`/payment-submissions/${active.params.submissionId}`);
           setSubmission(sub);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to load modal data:', error);
       } finally {
         setLoading(false);

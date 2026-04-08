@@ -19,6 +19,9 @@ const CHART_COLORS = {
   left: 'hsl(var(--chart-4))',
 };
 
+interface ChartCache { todayStats: { present: number; absent: number; late: number; left: number; total: number } }
+const _chartCache = new Map<string, ChartCache>(); // keyed by `${instituteId}-${date}`
+
 const AdminDashboardCharts: React.FC = () => {
   const { currentInstituteId } = useAuth();
   const [todayStats, setTodayStats] = useState<{ present: number; absent: number; late: number; left: number; total: number } | null>(null);
@@ -26,10 +29,16 @@ const AdminDashboardCharts: React.FC = () => {
 
   const loadCharts = useCallback(async () => {
     if (!currentInstituteId) return;
+    const today = new Date().toISOString().split('T')[0];
+    const cacheKey = `${currentInstituteId}-${today}`;
+    const cached = _chartCache.get(cacheKey);
+    if (cached) {
+      setTodayStats(cached.todayStats);
+      return;
+    }
     setLoading(true);
     try {
       // Load today's data - use summary from response
-      const today = new Date().toISOString().split('T')[0];
       const todayRes = await adminAttendanceApi.getInstituteAttendance(
         currentInstituteId,
         { startDate: today, endDate: today, limit: 100 },
@@ -48,19 +57,24 @@ const AdminDashboardCharts: React.FC = () => {
           left: todayRecords.filter(r => ['left', 'left_early', 'left_lately'].includes(r.status)).length,
           total: todayRecords.length,
         });
+        _chartCache.set(cacheKey, { todayStats: {
+          present: todayRecords.filter(r => r.status === 'present').length,
+          absent: todayRecords.filter(r => r.status === 'absent').length,
+          late: todayRecords.filter(r => r.status === 'late').length,
+          left: todayRecords.filter(r => ['left', 'left_early', 'left_lately'].includes(r.status)).length,
+          total: todayRecords.length,
+        }});
       } else if (todaySummary.totalPresent > 0 || todaySummary.totalAbsent > 0 || todaySummary.totalLate > 0) {
         // Fall back to summary data
         const left = todaySummary.totalLeft + todaySummary.totalLeftEarly + todaySummary.totalLeftLately;
         const total = todaySummary.totalPresent + todaySummary.totalAbsent + todaySummary.totalLate + left;
-        setTodayStats({
-          present: todaySummary.totalPresent,
-          absent: todaySummary.totalAbsent,
-          late: todaySummary.totalLate,
-          left,
-          total,
-        });
+        const stats = { present: todaySummary.totalPresent, absent: todaySummary.totalAbsent, late: todaySummary.totalLate, left, total };
+        setTodayStats(stats);
+        _chartCache.set(cacheKey, { todayStats: stats });
       } else {
-        setTodayStats({ present: 0, absent: 0, late: 0, left: 0, total: 0 });
+        const empty = { present: 0, absent: 0, late: 0, left: 0, total: 0 };
+        setTodayStats(empty);
+        _chartCache.set(cacheKey, { todayStats: empty });
       }
 
     } catch (e: any) {

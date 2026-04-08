@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,12 +6,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useAppNavigation } from '@/hooks/useAppNavigation';
-import { Building, Users, CheckCircle, RefreshCw, MapPin, Mail, Phone, Youtube, Facebook, Globe } from 'lucide-react';
+import { Building, Users, CheckCircle, RefreshCw, MapPin, Mail, Phone, Youtube, Facebook, Globe, Plus, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cachedApiClient } from '@/api/cachedClient';
 import { getBaseUrl } from '@/contexts/utils/auth.api';
 import ChildCurrentSelection from '@/components/ChildCurrentSelection';
-
+import { useTenant } from '@/contexts/TenantContext';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 
 // Helper function to resolve image URLs
@@ -46,6 +46,8 @@ interface InstituteApiResponse {
   youtubeChannelUrl?: string;
   vision?: string;
   mission?: string;
+  tier?: string;
+  subdomain?: string;
   // Parent institutes response fields
   primaryColorCode?: string;
   secondaryColorCode?: string;
@@ -73,12 +75,15 @@ const InstituteSelector = ({
   const {
     toast
   } = useToast();
+  const { isTenantLogin } = useTenant();
   const [institutes, setInstitutes] = useState<InstituteApiResponse[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasAutoLoaded, setHasAutoLoaded] = useState(false);
   const [expandedInstituteId, setExpandedInstituteId] = useState<string | null>(null);
   const userRole = useInstituteRole();
   const { navigateToPage } = useAppNavigation();
+  // Track if auto-skip was already attempted (prevents double-fire)
+  const hasAutoSkipped = useRef(false);
   // Sidebar collapse awareness for grid columns
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     typeof document !== 'undefined' && document.documentElement.classList.contains('sidebar-collapsed')
@@ -91,15 +96,15 @@ const InstituteSelector = ({
 
   // Auto-load institutes on mount (uses cache if available)
   React.useEffect(() => {
-    const userId = useChildId && selectedChild ? selectedChild.id : user?.id;
+    const userId = useChildId && selectedChild ? (selectedChild.userId || selectedChild.id) : user?.id;
     if (userId && !hasAutoLoaded && institutes.length === 0) {
       setHasAutoLoaded(true);
       handleLoadInstitutes();
     }
-  }, [user?.id, selectedChild?.id, useChildId, hasAutoLoaded]);
+  }, [user?.id, selectedChild?.userId, selectedChild?.id, useChildId, hasAutoLoaded]);
   const handleLoadInstitutes = async () => {
-    // For Parent role, use the selected child's ID instead of the parent's ID
-    const userId = useChildId && selectedChild ? selectedChild.id : user?.id;
+    // For Parent role, use the selected child's USER ID (not student record ID)
+    const userId = useChildId && selectedChild ? (selectedChild.userId || selectedChild.id) : user?.id;
     if (!userId) {
       toast({
         title: "Error",
@@ -177,7 +182,7 @@ const InstituteSelector = ({
         district: raw.district || '',
         province: raw.province || '',
         pinCode: raw.pinCode || '',
-        type: raw.type || raw.instituteType || '',
+        type: (() => { const t = raw.type || raw.instituteType || raw.instituteKind || ''; return t ? String(t).toLowerCase() : ''; })(),
         isActive: raw.isActive !== undefined ? raw.isActive : raw.instituteIsActive !== undefined ? raw.instituteIsActive : true,
         createdAt: raw.createdAt || '',
         imageUrl: raw.imageUrl || '',
@@ -188,6 +193,8 @@ const InstituteSelector = ({
         youtubeChannelUrl: raw.youtubeChannelUrl || '',
         vision: raw.vision || '',
         mission: raw.mission || '',
+        tier: raw.tier || '',
+        subdomain: raw.subdomain || '',
         instituteUserType: raw.instituteUserType || raw.role || '',
         userIdByInstitute: raw.userIdByInstitute || raw.instituteUserId || '',
         status: raw.status || ''
@@ -196,8 +203,30 @@ const InstituteSelector = ({
       // Filter out any invalid institute data
       const validInstitutes = normalized.filter(inst => inst && inst.id && inst.name);
       setInstitutes(validInstitutes);
+
+      // 🏢 Multi-tenant auto-skip:
+      // When the user logged in from a subdomain/custom domain login page (or via institute-level
+      // login form), the instituteId is stored in sessionStorage by auth.api.ts.
+      // Read it now, clear it immediately (one-time use), then auto-select the institute.
+      // Note: We check for preSelectedInstituteId regardless of isTenantLogin so this
+      // also works for institute-level logins on the main domain.
+      if (!useChildId && !hasAutoSkipped.current) {
+        const preId = sessionStorage.getItem('tenant_preSelectedInstituteId');
+        if (preId) {
+          // Clear immediately so navigating back to /select-institute shows full list
+          sessionStorage.removeItem('tenant_preSelectedInstituteId');
+          sessionStorage.removeItem('tenant_preSelectedInstituteName');
+          hasAutoSkipped.current = true;
+          const match = validInstitutes.find(inst => inst.id === preId);
+          if (match) {
+            // Small delay to let React finish state update before navigating
+            setTimeout(() => handleSelectInstitute(match), 50);
+            return; // Skip setInstitutes render — will navigate away
+          }
+        }
+      }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading institutes:', error);
       toast({
         title: "Error",
@@ -243,40 +272,66 @@ const InstituteSelector = ({
       description: `Selected institute: ${selectedInstitute.name}`
     });
 
-    // When parent is viewing child's data, navigate to child's class selection
+    // When parent is viewing child's data, navigate to child's class selection.
+    // replace:true removes /select-institute (or /child/:id/select-institute) from the
+    // back stack so the Android back button returns to the page BEFORE the selection flow.
     if (isViewingAsParent && selectedChild) {
-      navigate(`/child/${selectedChild.id}/select-class`);
+      navigate(`/child/${selectedChild.id}/select-class`, { replace: true });
       return;
     }
 
     // After selecting an institute, always go to institute-scoped class selection.
+    // replace:true removes the /select-institute page from history — pressing back will
+    // return to wherever the user was BEFORE the selection flow, not back to this selector.
     // IMPORTANT: don't use navigateToPage here because it depends on selectedInstitute state
     // which may not be updated yet (causes route to become /select-class and selection to be cleared).
-    navigate(`/institute/${selectedInstitute.id}/select-class`);
+    navigate(`/institute/${selectedInstitute.id}/select-class`, { replace: true });
     return;
   };
   return <div className="space-y-2 sm:space-y-4 px-1 sm:px-3 md:px-0">
+      {/* Header with back button */}
+      <div className="flex items-center gap-3 pb-2 border-b border-border">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(-1)}
+          className="h-8 w-8 p-0 rounded-lg hover:bg-accent"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div className="flex items-center gap-2">
+          <Building className="h-5 w-5 text-primary" />
+          <h1 className="text-base sm:text-lg font-semibold text-foreground">Select Institute</h1>
+        </div>
+      </div>
+
       {/* Show Current Child Selection for Parent flow */}
       {useChildId && <ChildCurrentSelection className="mb-4" />}
 
       <div className="text-center mb-2 sm:mb-4">
         <h1 className="text-sm sm:text-base md:text-lg font-semibold text-foreground mb-0.5">
-          Select Institute
+          Institutes
         </h1>
         <p className="text-xs text-muted-foreground max-w-md mx-auto">
-          Choose an institute to continue to your dashboard
+          Choose an institute to continue to your dashboard or create a new one
         </p>
       </div>
 
       {institutes.length === 0 && !isLoading && hasAutoLoaded && <div className="flex flex-col items-center justify-center py-6 sm:py-12 px-2">
           <Building className="h-8 w-8 sm:h-12 sm:w-12 text-gray-300 dark:text-gray-600 mb-2 sm:mb-3" />
           <p className="text-gray-600 dark:text-gray-400 mb-3 sm:mb-4 text-center text-xs sm:text-sm">
-            No institutes found. Click to retry.
+            No institutes found. Click to retry or create a new one.
           </p>
-          <Button onClick={handleLoadInstitutes} className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-1.5 text-xs sm:text-sm h-7 sm:h-8">
-            <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-1.5" />
-            Retry
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleLoadInstitutes} variant="outline" className="px-3 sm:px-4 py-1.5 text-xs sm:text-sm h-7 sm:h-8">
+              <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-1.5" />
+              Retry
+            </Button>
+            <Button onClick={() => navigate('/register/institute')} className="bg-primary hover:bg-primary/90 text-primary-foreground px-3 sm:px-4 py-1.5 text-xs sm:text-sm h-7 sm:h-8">
+              <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-1.5" />
+              Create New
+            </Button>
+          </div>
         </div>}
 
       {isLoading && <div className="flex flex-col items-center justify-center py-6 sm:py-12">
@@ -289,10 +344,16 @@ const InstituteSelector = ({
             <h2 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-white">
               Your Institutes ({institutes.length})
             </h2>
-            <Button onClick={handleLoadInstitutes} variant="outline" size="sm" disabled={isLoading} className="h-6 sm:h-7 text-[10px] sm:text-xs px-2 sm:px-2.5">
-              <RefreshCw className={`h-3 w-3 sm:h-3.5 sm:w-3.5 mr-0.5 sm:mr-1 ${isLoading ? 'animate-spin' : ''}`} />
-              <span className="hidden xs:inline">Refresh</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => navigate('/register/institute')} variant="default" size="sm" className="h-6 sm:h-7 text-[10px] sm:text-xs px-2 sm:px-2.5">
+                <Plus className="h-3 w-3 sm:h-3.5 sm:w-3.5 mr-0.5 sm:mr-1" />
+                <span className="hidden xs:inline">Create New</span>
+              </Button>
+              <Button onClick={handleLoadInstitutes} variant="outline" size="sm" disabled={isLoading} className="h-6 sm:h-7 text-[10px] sm:text-xs px-2 sm:px-2.5">
+                <RefreshCw className={`h-3 w-3 sm:h-3.5 sm:w-3.5 mr-0.5 sm:mr-1 ${isLoading ? 'animate-spin' : ''}`} />
+                <span className="hidden xs:inline">Refresh</span>
+              </Button>
+            </div>
           </div>
 
           <div
@@ -300,9 +361,9 @@ const InstituteSelector = ({
           >
             {institutes.map(institute => {
           const showSocial = expandedInstituteId === institute.id;
-          return <div key={institute.id} className="relative flex w-full flex-col rounded-lg bg-card bg-clip-border text-card-foreground shadow-sm hover:shadow-md transition-all duration-300 border-2 border-primary/30 hover:border-primary/60">
+          return <div key={institute.id} className="relative flex w-full flex-col mt-5 rounded-lg bg-card bg-clip-border text-card-foreground shadow-sm hover:shadow-md transition-all duration-300 border border-border hover:border-primary/50">
                   {/* Institute Image - Gradient Header */}
-                  <div className="relative mx-3 -mt-5 h-28 overflow-hidden rounded-lg bg-clip-border text-white shadow-md shadow-primary/30 bg-gradient-to-r from-primary to-primary/80">
+                  <div className="relative mx-4 -mt-5 h-32 overflow-hidden rounded-lg bg-clip-border text-white shadow-md shadow-primary/20 bg-gradient-to-br from-primary to-primary/80">
                     {(institute.imageUrl || institute.logoUrl) ? (
                       <img 
                         src={resolveImageUrl(institute.imageUrl || institute.logoUrl)} 
@@ -334,7 +395,21 @@ const InstituteSelector = ({
                           <CheckCircle className="h-2.5 w-2.5 mr-0.5" />
                           Active
                         </Badge>}
+                      {(institute as any).instituteUserType && (
+                        <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
+                          <Users className="h-2.5 w-2.5 mr-0.5" />
+                          {(institute as any).instituteUserType}
+                        </Badge>
+                      )}
                     </div>
+
+                    {/* Subdomain URL if available */}
+                    {(institute as any).subdomain && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Globe className="h-3 w-3 text-blue-500 dark:text-blue-400" />
+                        <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400">{(institute as any).subdomain}.suraksha.lk</span>
+                      </div>
+                    )}
 
                     {/* Description */}
                     <p className="block font-sans text-xs font-light leading-relaxed text-muted-foreground antialiased line-clamp-2">
@@ -396,12 +471,12 @@ const InstituteSelector = ({
 
                   {/* Action Buttons */}
                   <div className="p-4 pt-0 space-y-2">
-                    <button onClick={() => setExpandedInstituteId(showSocial ? null : institute.id)} className="w-full select-none rounded-md bg-muted py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-foreground shadow-sm transition-all hover:shadow active:opacity-90">
+                    <button onClick={() => setExpandedInstituteId(showSocial ? null : institute.id)} className="w-full select-none rounded-md border border-border bg-transparent py-2 px-4 text-center align-middle font-sans text-[11px] font-semibold uppercase text-muted-foreground shadow-none transition-all hover:bg-muted hover:text-foreground active:opacity-90">
                       {showSocial ? 'Show Less' : 'Read More'}
                     </button>
                     
-                    <button onClick={() => handleSelectInstitute(institute)} className="w-full select-none rounded-md bg-primary py-2 px-4 text-center align-middle font-sans text-[10px] font-semibold uppercase text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:shadow-md hover:shadow-primary/30 active:opacity-90">
-                      Select Institute
+                    <button onClick={() => handleSelectInstitute(institute)} className="w-full select-none rounded-md bg-primary py-2 px-4 text-center align-middle font-sans text-[11px] font-semibold uppercase text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:shadow-md hover:shadow-primary/30 active:opacity-90">
+                      Select
                     </button>
                   </div>
                 </div>;

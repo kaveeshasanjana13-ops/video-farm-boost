@@ -5,17 +5,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { RefreshCw, Search, Filter, Calendar, User, Clock, CheckCircle, MapPin, School, BookOpen, UserCheck, UserX, TrendingUp, LogOut, DoorOpen, Building2, GraduationCap, ChevronRight, ChevronLeft, CalendarDays, List, PieChart as PieChartIcon, CalendarRange } from 'lucide-react';
+import { RefreshCw, Search, Filter, Calendar, User, Clock, CheckCircle, MapPin, School, BookOpen, UserCheck, UserX, TrendingUp, LogOut, DoorOpen, Building2, GraduationCap, ChevronRight, ChevronLeft, CalendarDays, List, PieChart as PieChartIcon, CalendarRange, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { useToast } from '@/hooks/use-toast';
 import { getAttendanceUrl, getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getImageUrl } from '@/utils/imageUrlHelper';
 
 interface AttendanceRecord {
   attendanceId?: string;
   studentId: string;
   studentName: string;
+  studentImageUrl?: string;
+  imageUrl?: string;
   instituteId?: string;
   instituteName?: string;
   classId?: string;
@@ -28,6 +32,20 @@ interface AttendanceRecord {
   location?: string;
   markingMethod: string;
   markedBy?: string;
+}
+
+function parseLocation(raw?: string | null): { address: string; mapsUrl?: string } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && parsed.address) {
+      const mapsUrl = parsed.latitude != null && parsed.longitude != null
+        ? `https://www.google.com/maps?q=${parsed.latitude},${parsed.longitude}`
+        : undefined;
+      return { address: parsed.address, mapsUrl };
+    }
+  } catch { /* plain string */ }
+  return { address: raw };
 }
 
 interface AttendanceResponse {
@@ -255,10 +273,16 @@ const NewAttendance = () => {
       }
       
       const result: AttendanceResponse = await response.json();
+      console.log('📊 Attendance API Response:', result);
+      console.log('📸 First record image fields:', result.data[0] ? {
+        studentImageUrl: result.data[0].studentImageUrl,
+        imageUrl: result.data[0].imageUrl,
+        studentName: result.data[0].studentName
+      } : 'No records');
       setAttendanceData(result);
       setFilteredRecords(result.data);
       setDataLoaded(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load attendance data:', error);
       toast({
         title: "Load Failed",
@@ -478,11 +502,36 @@ const NewAttendance = () => {
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // Mobile Card Component
-  const AttendanceCard = ({ record }: { record: AttendanceRecord }) => (
+  const AttendanceCard = ({ record }: { record: AttendanceRecord }) => {
+    const imageUrl = record.studentImageUrl || record.imageUrl;
+    console.log('🖼️ Raw image fields:', {
+      studentImageUrl: record.studentImageUrl,
+      imageUrl: record.imageUrl,
+      combined: imageUrl,
+      transformed: getImageUrl(imageUrl),
+      studentName: record.studentName
+    });
+
+    return (
     <Card className="hover:shadow-md transition-shadow duration-200 border-border/50">
       <CardHeader className="pb-3">
         <div className="flex justify-between items-start">
-          <CardTitle className="text-lg font-semibold">{record.studentName}</CardTitle>
+          <div className="flex items-center gap-3">
+            <Avatar className="h-10 w-10 shrink-0">
+              <AvatarImage
+                src={imageUrl || ''}
+                alt={record.studentName}
+                onError={(e) => {
+                  console.error('❌ Image load failed for', record.studentName, 'URL:', imageUrl);
+                }}
+                onLoad={() => console.log('✅ Image loaded for', record.studentName)}
+              />
+              <AvatarFallback className="text-sm font-semibold">
+                {record.studentName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+              </AvatarFallback>
+            </Avatar>
+            <CardTitle className="text-lg font-semibold">{record.studentName}</CardTitle>
+          </div>
           <Badge className={`${getStatusColor(record.status)} gap-1`}>
             {getStatusIcon(record.status)}
             {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
@@ -505,12 +554,20 @@ const NewAttendance = () => {
               <span>{record.instituteName}</span>
             </div>
           )}
-          {record.location && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4 text-primary" />
-              <span>{record.location}</span>
-            </div>
-          )}
+          {record.location && (() => {
+            const loc = parseLocation(record.location);
+            return loc ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <MapPin className="h-4 w-4 text-primary shrink-0" />
+                <span>{loc.address}</span>
+                {loc.mapsUrl && (
+                  <a href={loc.mapsUrl} target="_blank" rel="noopener noreferrer" className="text-primary shrink-0">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </div>
+            ) : null;
+          })()}
           <div className="flex items-center gap-2 text-muted-foreground">
             <CheckCircle className="h-4 w-4 text-primary" />
             <span>{record.markingMethod}</span>
@@ -518,7 +575,8 @@ const NewAttendance = () => {
         </div>
       </CardContent>
     </Card>
-  );
+    );
+  };
 
   if (!hasPermission) {
     return (
@@ -929,9 +987,24 @@ const NewAttendance = () => {
                         {filteredRecords.map((record, index) => (
                           <TableRow key={record.attendanceId || index} className="group hover:bg-muted/30 transition-colors">
                             <TableCell className="py-4">
-                              <div>
-                                <p className="font-medium">{record.studentName}</p>
-                                <p className="text-xs text-muted-foreground">{record.studentId}</p>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-8 w-8 shrink-0">
+                                  <AvatarImage
+                                    src={record.studentImageUrl || record.imageUrl || ''}
+                                    alt={record.studentName}
+                                    onError={(e) => {
+                                      console.error('❌ Table image failed:', record.studentName, 'URL:', record.studentImageUrl || record.imageUrl);
+                                    }}
+                                    onLoad={() => console.log('✅ Table image loaded:', record.studentName)}
+                                  />
+                                  <AvatarFallback className="text-xs font-semibold">
+                                    {record.studentName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <p className="font-medium">{record.studentName}</p>
+                                  <p className="text-xs text-muted-foreground">{record.studentId}</p>
+                                </div>
                               </div>
                             </TableCell>
                             <TableCell>
@@ -950,7 +1023,20 @@ const NewAttendance = () => {
                               <p className="text-sm">{record.instituteName || '-'}</p>
                             </TableCell>
                             <TableCell className="hidden lg:table-cell">
-                              <p className="text-sm text-muted-foreground">{record.location || '-'}</p>
+                              {(() => {
+                                const loc = parseLocation(record.location);
+                                if (!loc) return <p className="text-sm text-muted-foreground">-</p>;
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-sm text-muted-foreground">{loc.address}</p>
+                                    {loc.mapsUrl && (
+                                      <a href={loc.mapsUrl} target="_blank" rel="noopener noreferrer" className="text-primary shrink-0">
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                      </a>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </TableCell>
                             <TableCell className="hidden lg:table-cell">
                               <p className="text-sm text-muted-foreground">{record.markingMethod}</p>

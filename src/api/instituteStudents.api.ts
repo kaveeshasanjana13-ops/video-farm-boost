@@ -1,4 +1,4 @@
-import { getAttendanceUrl, getApiHeaders } from '@/contexts/utils/auth.api';
+import { getAttendanceUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
 
 export interface StudentListRecord {
   id: string;
@@ -58,6 +58,8 @@ import { AttendanceStatus, AttendanceSummary } from '@/types/attendance.types';
 export interface StudentAttendanceRecord {
   studentId: string;
   studentName: string;
+  studentImageUrl?: string;
+  imageUrl?: string;
   instituteId: string;
   instituteName: string;
   classId?: string;
@@ -68,6 +70,10 @@ export interface StudentAttendanceRecord {
   status: AttendanceStatus;
   location: string;
   markingMethod: string;
+  userType?: string;
+  calendarDayId?: string;
+  eventId?: string;
+  timestamp?: number;
 }
 
 export interface StudentAttendanceResponse {
@@ -102,7 +108,28 @@ export interface StudentAttendanceParams {
 
 class InstituteStudentsApi {
   // STUDENT LIST METHODS
-  
+
+  // Get all students in an institute (no class filter)
+  async getStudentsByInstitute(
+    instituteId: string,
+    params: { page?: number; limit?: number } = {}
+  ): Promise<StudentListResponse> {
+    const queryParams = new URLSearchParams({
+      page: String(params.page || 1),
+      limit: String(params.limit || 500),
+    });
+
+    const attendanceUrl = getAttendanceUrl();
+    const endpoint = `${attendanceUrl}/institute-users/institute/${instituteId}/users/STUDENT?${queryParams}`;
+    const headers = await getApiHeadersAsync();
+
+    const response = await fetch(endpoint, { headers });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    return response.json();
+  }
+
   // Get students by class
   async getStudentsByClass(
     instituteId: string,
@@ -123,7 +150,7 @@ class InstituteStudentsApi {
 
     const attendanceUrl = getAttendanceUrl();
     const endpoint = `${attendanceUrl}/institute-users/institute/${instituteId}/users/STUDENT/class/${classId}?${queryParams}`;
-    const headers = await getApiHeaders();
+    const headers = await getApiHeadersAsync();
     
     const response = await fetch(endpoint, { headers });
     if (!response.ok) {
@@ -153,7 +180,7 @@ class InstituteStudentsApi {
 
     const attendanceUrl = getAttendanceUrl();
     const endpoint = `${attendanceUrl}/institute-users/institute/${instituteId}/users/STUDENT/class/${classId}/subject/${subjectId}?${queryParams}`;
-    const headers = await getApiHeaders();
+    const headers = await getApiHeadersAsync();
     
     const response = await fetch(endpoint, { headers });
     if (!response.ok) {
@@ -186,7 +213,7 @@ class InstituteStudentsApi {
 
     const attendanceUrl = getAttendanceUrl();
     const endpoint = `${attendanceUrl}/api/attendance/institute/${instituteId}?${queryParams.toString()}`;
-    const headers = await getApiHeaders();
+    const headers = await getApiHeadersAsync();
     
     const response = await fetch(endpoint, { headers });
     if (!response.ok) {
@@ -218,7 +245,7 @@ class InstituteStudentsApi {
 
     const attendanceUrl = getAttendanceUrl();
     const endpoint = `${attendanceUrl}/api/attendance/institute/${instituteId}/class/${classId}?${queryParams.toString()}`;
-    const headers = await getApiHeaders();
+    const headers = await getApiHeadersAsync();
     
     const response = await fetch(endpoint, { headers });
     if (!response.ok) {
@@ -251,7 +278,7 @@ class InstituteStudentsApi {
 
     const attendanceUrl = getAttendanceUrl();
     const endpoint = `${attendanceUrl}/api/attendance/institute/${instituteId}/class/${classId}/subject/${subjectId}?${queryParams.toString()}`;
-    const headers = await getApiHeaders();
+    const headers = await getApiHeadersAsync();
     
     const response = await fetch(endpoint, { headers });
     if (!response.ok) {

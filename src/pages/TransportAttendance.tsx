@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,18 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
+
+const TA_COL_DEFS: ColumnDef[] = [
+  { key: 'date', header: 'Date', locked: true, defaultWidth: 120, minWidth: 90 },
+  { key: 'status', header: 'Status', defaultWidth: 100, minWidth: 80 },
+  { key: 'time', header: 'Time', defaultWidth: 100, minWidth: 80 },
+  { key: 'vehicleNumber', header: 'Vehicle Number', defaultWidth: 140, minWidth: 110 },
+  { key: 'location', header: 'Location', defaultWidth: 150, minWidth: 110 },
+  { key: 'notes', header: 'Notes', defaultWidth: 150, minWidth: 110 },
+];
 const TransportAttendance: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,6 +46,11 @@ const TransportAttendance: React.FC = () => {
   const [attendanceRecords, setAttendanceRecords] = useState<TransportAttendanceRecord[]>([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const taColIds = useMemo(() => TA_COL_DEFS.map(c => c.key), []);
+  const taColDefaultWidths = useMemo(() => Object.fromEntries(TA_COL_DEFS.map(c => [c.key, c.defaultWidth!])), []);
+  const { getWidth: getTAColWidth, setHoveredCol: setTAHoveredCol, ResizeHandle: TAResizeHandle } = useResizableColumns(taColIds, taColDefaultWidths);
+  const { colState: taColState, visibleColumns: taVisDefs, toggleColumn: toggleTACol, resetColumns: resetTACols } = useColumnConfig(TA_COL_DEFS, 'transport-attendance');
+  const taVisKeys = useMemo(() => new Set(taVisDefs.map(c => c.key)), [taVisDefs]);
   useEffect(() => {
     // Set transport from location state if available
     if (location.state?.transport && !selectedTransport) {
@@ -73,7 +90,7 @@ const TransportAttendance: React.FC = () => {
         title: "Success",
         description: `Loaded ${list.length} attendance records`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading attendance:', error);
       toast({
         title: "Error",
@@ -160,6 +177,7 @@ const TransportAttendance: React.FC = () => {
               {loading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Refresh
             </Button>
+            <ColumnConfigurator allColumns={TA_COL_DEFS} colState={taColState} onToggle={toggleTACol} onReset={resetTACols} />
           </div>
         </div>
 
@@ -174,35 +192,28 @@ const TransportAttendance: React.FC = () => {
           flexDirection: 'column',
           minHeight: 0
         }}>
-              <TableContainer sx={{
-            flex: 1,
-            overflow: 'auto',
-            minHeight: 0
-          }}>
-                <Table stickyHeader aria-label="transport attendance table">
+              <TableContainer sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+                <Table stickyHeader aria-label="transport attendance table" sx={{ tableLayout: 'fixed', minWidth: taVisDefs.reduce((s, c) => s + getTAColWidth(c.key), 0) }}>
                    <TableHead>
                     <TableRow>
-                      <TableCell>Date</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Time</TableCell>
-                      <TableCell>Vehicle Number</TableCell>
-                      <TableCell>Location</TableCell>
-                      <TableCell>Notes</TableCell>
+                      {taVisDefs.map((col) => (
+                        <TableCell key={col.key} sx={{ position: 'relative', width: getTAColWidth(col.key), fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}
+                          onMouseEnter={() => setTAHoveredCol(col.key)} onMouseLeave={() => setTAHoveredCol(null)}>
+                          <div style={{ paddingRight: 12 }}>{col.header}</div>
+                          <TAResizeHandle colId={col.key} />
+                        </TableCell>
+                      ))}
                     </TableRow>
                   </TableHead>
                    <TableBody>
                     {attendanceRecords.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((record, index) => <TableRow hover key={`${record.timestamp}-${index}`}>
-                          <TableCell>{formatDate(record.attendanceDate)}</TableCell>
-                          <TableCell>
-                            <Badge className={getStatusColor(record.status)}>
-                              {record.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{formatTime(record.timestamp)}</TableCell>
-                          <TableCell>{record.vehicleNumber || '-'}</TableCell>
-                          <TableCell>{record.location || '-'}</TableCell>
-                          <TableCell>{record.notes || '-'}</TableCell>
-                        </TableRow>)}
+                      {taVisKeys.has('date') && <TableCell style={{ width: getTAColWidth('date'), maxWidth: getTAColWidth('date'), overflow: 'hidden' }}>{formatDate(record.attendanceDate)}</TableCell>}
+                      {taVisKeys.has('status') && <TableCell style={{ width: getTAColWidth('status'), maxWidth: getTAColWidth('status'), overflow: 'hidden' }}><Badge className={getStatusColor(record.status)}>{record.status}</Badge></TableCell>}
+                      {taVisKeys.has('time') && <TableCell style={{ width: getTAColWidth('time'), maxWidth: getTAColWidth('time'), overflow: 'hidden' }}>{formatTime(record.timestamp)}</TableCell>}
+                      {taVisKeys.has('vehicleNumber') && <TableCell style={{ width: getTAColWidth('vehicleNumber'), maxWidth: getTAColWidth('vehicleNumber'), overflow: 'hidden' }}>{record.vehicleNumber || '-'}</TableCell>}
+                      {taVisKeys.has('location') && <TableCell style={{ width: getTAColWidth('location'), maxWidth: getTAColWidth('location'), overflow: 'hidden' }}>{record.location || '-'}</TableCell>}
+                      {taVisKeys.has('notes') && <TableCell style={{ width: getTAColWidth('notes'), maxWidth: getTAColWidth('notes'), overflow: 'hidden' }}>{record.notes || '-'}</TableCell>}
+                    </TableRow>)}
                   </TableBody>
                 </Table>
               </TableContainer>

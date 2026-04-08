@@ -2,16 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import adminAttendanceApi, { AdminAttendanceRecord } from '@/api/adminAttendance.api';
 import { normalizeAttendanceSummary, AttendanceSummary } from '@/types/attendance.types';
-import { apiClient } from '@/api/client';
+import { cachedApiClient } from '@/api/cachedClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { getImageUrl } from '@/utils/imageUrlHelper';
 
 interface ClassOption { id: string; name: string }
 interface SubjectOption { id: string; name: string }
@@ -36,7 +38,7 @@ const ClassSubjectDrillDown: React.FC = () => {
   // Load classes
   useEffect(() => {
     if (!currentInstituteId) return;
-    apiClient.get(`/institutes/${currentInstituteId}/classes`)
+    cachedApiClient.get(`/institutes/${currentInstituteId}/classes`, undefined, { ttl: 60 })
       .then((res: any) => setClasses(res?.data || res || []))
       .catch(() => {});
   }, [currentInstituteId]);
@@ -44,7 +46,7 @@ const ClassSubjectDrillDown: React.FC = () => {
   // Load subjects when class changes
   useEffect(() => {
     if (!currentInstituteId || !selectedClass) { setSubjects([]); return; }
-    apiClient.get(`/institutes/${currentInstituteId}/classes/${selectedClass}/subjects`)
+    cachedApiClient.get(`/institutes/${currentInstituteId}/classes/${selectedClass}/subjects`, undefined, { ttl: 60 })
       .then((res: any) => setSubjects(res?.data || res || []))
       .catch(() => {});
   }, [currentInstituteId, selectedClass]);
@@ -96,10 +98,16 @@ const ClassSubjectDrillDown: React.FC = () => {
   // Group by student for per-student breakdown
   const studentBreakdown = React.useMemo(() => {
     if (!selectedSubject || selectedSubject === ALL_SUBJECTS_VALUE) return null;
-    const map = new Map<string, { name: string; dates: Map<string, string> }>();
+    const map = new Map<string, { name: string; imageUrl?: string; dates: Map<string, string> }>();
     for (const r of records) {
       const key = r.studentId || r.userId || 'unknown';
-      if (!map.has(key)) map.set(key, { name: r.studentName || r.userName || key, dates: new Map() });
+      if (!map.has(key)) {
+        map.set(key, {
+          name: r.studentName || r.userName || key,
+          imageUrl: r.studentImageUrl || r.imageUrl,
+          dates: new Map(),
+        });
+      }
       const date = r.date || r.markedAt?.split('T')[0] || '';
       map.get(key)!.dates.set(date, r.status);
     }
@@ -223,7 +231,15 @@ const ClassSubjectDrillDown: React.FC = () => {
               <TableBody>
                 {studentBreakdown.map((s, i) => (
                   <TableRow key={i}>
-                    <TableCell className="text-xs font-medium">{s.name}</TableCell>
+                    <TableCell className="text-xs font-medium">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-7 w-7">
+                          <AvatarImage src={getImageUrl(s.imageUrl || '')} alt={s.name} />
+                          <AvatarFallback className="text-[10px]">{(s.name || '?').charAt(0).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <span>{s.name}</span>
+                      </div>
+                    </TableCell>
                     {uniqueDates.map(d => (
                       <TableCell key={d} className="text-xs text-center">
                         {statusIcon(s.dates.get(d) || '')}

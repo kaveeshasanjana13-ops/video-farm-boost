@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 const CacheManagement: React.FC = () => {
   const { currentInstituteId } = useAuth();
@@ -39,7 +40,7 @@ const CacheManagement: React.FC = () => {
       toast.success('Cache invalidated successfully');
       loadStats();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to invalidate cache');
+      toast.error(getErrorMessage(error, 'Failed to invalidate cache'));
     } finally {
       setInvalidating(false);
     }

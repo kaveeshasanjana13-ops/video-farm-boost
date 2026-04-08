@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import { FileText, Calendar, User, ExternalLink, RefreshCw, ArrowLeft, Lock, Edi
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import AppLayout from '@/components/layout/AppLayout';
 import UploadCorrectionDialog from '@/components/forms/UploadCorrectionDialog';
+import { EmptyState } from '@/components/ui/EmptyState';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -21,13 +22,23 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 
-interface Column {
-  id: string;
-  label: string;
-  minWidth?: number;
-  align?: 'right' | 'left' | 'center';
-}
+const HSD_COL_DEFS: ColumnDef[] = [
+  { key: 'id', header: 'ID', defaultWidth: 80, minWidth: 60 },
+  { key: 'studentId', header: 'Student ID', defaultWidth: 100, minWidth: 80 },
+  { key: 'studentName', header: 'Student Name', defaultWidth: 150, minWidth: 100 },
+  { key: 'submissionDate', header: 'Submission Date', defaultWidth: 150, minWidth: 120 },
+  { key: 'remarks', header: 'Remarks', defaultWidth: 100, minWidth: 80 },
+  { key: 'fileUrl', header: 'Submission', defaultWidth: 120, minWidth: 90 },
+  { key: 'correctionUrl', header: 'Correction', defaultWidth: 120, minWidth: 90 },
+  { key: 'isActive', header: 'Status', defaultWidth: 100, minWidth: 80 },
+  { key: 'createdAt', header: 'Created At', defaultVisible: false, defaultWidth: 150, minWidth: 120 },
+  { key: 'updatedAt', header: 'Updated At', defaultVisible: false, defaultWidth: 150, minWidth: 120 },
+  { key: 'actions', header: 'Actions', defaultWidth: 120, minWidth: 90 },
+];
 
 const HomeworkSubmissionDetails = () => {
   const { instituteId, classId, subjectId, homeworkId } = useParams<{ 
@@ -61,7 +72,7 @@ const HomeworkSubmissionDetails = () => {
     try {
       const response = await homeworkApi.getHomeworkById(homeworkId);
       setHomework(response);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading homework:', error);
       toast({
         title: "Error",
@@ -93,7 +104,7 @@ const HomeworkSubmissionDetails = () => {
       setSubmissions(submissionsList);
       setTotalSubmissions(meta?.total ?? submissionsList.length);
       setPage(pageNumber - 1);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading submissions:', error);
       toast({
         title: "Error",
@@ -150,19 +161,11 @@ const HomeworkSubmissionDetails = () => {
     void loadSubmissions(1, next);
   };
 
-  const columns: Column[] = [
-    { id: 'id', label: 'ID', minWidth: 80 },
-    { id: 'studentId', label: 'Student ID', minWidth: 100 },
-    { id: 'studentName', label: 'Student Name', minWidth: 150 },
-    { id: 'submissionDate', label: 'Submission Date', minWidth: 150 },
-    { id: 'remarks', label: 'Remarks', minWidth: 100, align: 'center' },
-    { id: 'fileUrl', label: 'Submission', minWidth: 120, align: 'center' },
-    { id: 'correctionUrl', label: 'Correction', minWidth: 120, align: 'center' },
-    { id: 'isActive', label: 'Status', minWidth: 100 },
-    { id: 'createdAt', label: 'Created At', minWidth: 150 },
-    { id: 'updatedAt', label: 'Updated At', minWidth: 150 },
-    ...(canUploadCorrections ? [{ id: 'actions', label: 'Actions', minWidth: 120, align: 'center' as const }] : []),
-  ];
+  const hsdColIds = useMemo(() => HSD_COL_DEFS.map(c => c.key), []);
+  const hsdColDefaultWidths = useMemo(() => Object.fromEntries(HSD_COL_DEFS.map(c => [c.key, c.defaultWidth!])), []);
+  const { getWidth: getHSDColWidth, setHoveredCol: setHSDHoveredCol, ResizeHandle: HSDResizeHandle } = useResizableColumns(hsdColIds, hsdColDefaultWidths);
+  const { colState: hsdColState, visibleColumns: hsdVisDefs, toggleColumn: toggleHSDCol, resetColumns: resetHSDCols } = useColumnConfig(HSD_COL_DEFS, 'homework-submission-details');
+  const hsdVisKeys = useMemo(() => new Set(hsdVisDefs.map(c => c.key)), [hsdVisDefs]);
 
   // Check if user has permission to view homework submissions (institute-specific)
   if (!AccessControl.hasPermission(instituteRole as UserRole, 'view-homework-submissions')) {
@@ -207,16 +210,13 @@ const HomeworkSubmissionDetails = () => {
     return (
       <AppLayout>
         <div className="container mx-auto py-8">
-          <Card className="max-w-md mx-auto">
-            <CardContent className="text-center py-8">
-              <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">Homework Not Found</h3>
-              <p className="text-muted-foreground mb-4">The homework assignment could not be found.</p>
-              <Button onClick={() => navigate('/homework')}>
-                Back to Homework
-              </Button>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={FileText}
+            title="Homework Not Found"
+            description="The homework assignment could not be found."
+          >
+            <Button onClick={() => navigate('/homework')}>Back to Homework</Button>
+          </EmptyState>
         </div>
       </AppLayout>
     );
@@ -224,9 +224,9 @@ const HomeworkSubmissionDetails = () => {
 
   return (
     <AppLayout>
-      <div className="container mx-auto py-8 space-y-6">
+      <div className="container mx-auto py-4 sm:py-8 px-4 sm:px-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
           <Button
             variant="ghost"
             size="sm"
@@ -237,7 +237,7 @@ const HomeworkSubmissionDetails = () => {
           </Button>
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            <h1 className="text-2xl font-bold">Homework Submissions</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">Homework Submissions</h1>
           </div>
         </div>
 
@@ -248,7 +248,7 @@ const HomeworkSubmissionDetails = () => {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">{homework.description}</p>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-sm text-muted-foreground">
               {homework.startDate && (
                 <span>Start: {new Date(homework.startDate).toLocaleDateString()}</span>
               )}
@@ -267,6 +267,7 @@ const HomeworkSubmissionDetails = () => {
                 Submissions ({submissions.length})
               </CardTitle>
               <div className="flex items-center gap-2">
+                <ColumnConfigurator allColumns={HSD_COL_DEFS} colState={hsdColState} onToggle={toggleHSDCol} onReset={resetHSDCols} />
                 <Button
                   variant="default"
                   size="sm"
@@ -304,110 +305,76 @@ const HomeworkSubmissionDetails = () => {
                 <p className="text-muted-foreground">Loading submissions...</p>
               </div>
             ) : submissions.length === 0 ? (
-              <div className="text-center py-8">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-medium mb-2">No Submissions Yet</h3>
-                <p className="text-muted-foreground">No students have submitted this homework yet.</p>
-              </div>
+              <EmptyState
+                icon={FileText}
+                title="No Submissions Yet"
+                description="No students have submitted this homework yet."
+              />
             ) : (
-              <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-                <TableContainer sx={{ maxHeight: 600 }}>
-                  <Table stickyHeader aria-label="homework submissions table">
+              <Paper sx={{ width: '100%', height: 'calc(100vh - 390px)', display: 'flex', flexDirection: 'column' }}>
+                <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+                  <Table stickyHeader aria-label="homework submissions table" sx={{ tableLayout: 'fixed', minWidth: hsdVisDefs.filter(c => c.key !== 'actions' || canUploadCorrections).reduce((s, c) => s + getHSDColWidth(c.key), 0) }}>
                     <TableHead>
                       <TableRow>
-                        {columns.map((column) => (
+                        {hsdVisDefs.filter(col => col.key !== 'actions' || canUploadCorrections).map((col) => (
                           <TableCell
-                            key={column.id}
-                            align={column.align}
-                            style={{ minWidth: column.minWidth }}
-                            sx={{
-                              fontWeight: 600,
-                              backgroundColor: 'hsl(var(--muted))',
-                              color: 'hsl(var(--foreground))',
-                              borderBottom: '1px solid hsl(var(--border))'
-                            }}
+                            key={col.key}
+                            sx={{ position: 'relative', width: getHSDColWidth(col.key), fontWeight: 600, backgroundColor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))', borderBottom: '1px solid hsl(var(--border))', overflow: 'hidden', whiteSpace: 'nowrap' }}
+                            onMouseEnter={() => setHSDHoveredCol(col.key)}
+                            onMouseLeave={() => setHSDHoveredCol(null)}
                           >
-                            {column.label}
+                            <div style={{ paddingRight: 12 }}>{col.header}</div>
+                            <HSDResizeHandle colId={col.key} />
                           </TableCell>
                         ))}
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {submissions.map((row) => (
-                          <TableRow hover role="checkbox" tabIndex={-1} key={row.id}>
-                            <TableCell>{row.id}</TableCell>
-                            <TableCell>{row.studentId || '-'}</TableCell>
-                            <TableCell>
-                              {row.studentName || `${row.student?.firstName || ''} ${row.student?.lastName || ''}`.trim() || '-'}
-                            </TableCell>
-                            <TableCell>{formatDate(row.submissionDate)}</TableCell>
-                            <TableCell align="center">
+                        <TableRow hover role="checkbox" tabIndex={-1} key={row.id}>
+                          {hsdVisKeys.has('id') && <TableCell style={{ width: getHSDColWidth('id'), maxWidth: getHSDColWidth('id'), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{row.id}</TableCell>}
+                          {hsdVisKeys.has('studentId') && <TableCell style={{ width: getHSDColWidth('studentId'), maxWidth: getHSDColWidth('studentId'), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{row.studentId || '-'}</TableCell>}
+                          {hsdVisKeys.has('studentName') && <TableCell style={{ width: getHSDColWidth('studentName'), maxWidth: getHSDColWidth('studentName'), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{row.studentName || `${row.student?.firstName || ''} ${row.student?.lastName || ''}`.trim() || '-'}</TableCell>}
+                          {hsdVisKeys.has('submissionDate') && <TableCell style={{ width: getHSDColWidth('submissionDate'), maxWidth: getHSDColWidth('submissionDate'), overflow: 'hidden' }}>{formatDate(row.submissionDate)}</TableCell>}
+                          {hsdVisKeys.has('remarks') && (
+                            <TableCell style={{ width: getHSDColWidth('remarks'), maxWidth: getHSDColWidth('remarks'), overflow: 'hidden' }}>
                               {row.remarks ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setSelectedRemark(row.remarks || '');
-                                    setRemarkDialogOpen(true);
-                                  }}
-                                >
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View
+                                <Button size="sm" variant="outline" onClick={() => { setSelectedRemark(row.remarks || ''); setRemarkDialogOpen(true); }}>
+                                  <Eye className="h-4 w-4 mr-1" />View
                                 </Button>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
+                              ) : <span className="text-muted-foreground">-</span>}
                             </TableCell>
-                            <TableCell align="center">
+                          )}
+                          {hsdVisKeys.has('fileUrl') && (
+                            <TableCell style={{ width: getHSDColWidth('fileUrl'), maxWidth: getHSDColWidth('fileUrl'), overflow: 'hidden' }}>
                               {row.fileUrl ? (
-                                <Button
-                                  size="sm"
-                                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                                  onClick={() => window.open(row.fileUrl, '_blank')}
-                                >
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View
+                                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => window.open(row.fileUrl, '_blank')}>
+                                  <Eye className="h-4 w-4 mr-1" />View
                                 </Button>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
+                              ) : <span className="text-muted-foreground">-</span>}
                             </TableCell>
-                            <TableCell align="center">
+                          )}
+                          {hsdVisKeys.has('correctionUrl') && (
+                            <TableCell style={{ width: getHSDColWidth('correctionUrl'), maxWidth: getHSDColWidth('correctionUrl'), overflow: 'hidden' }}>
                               {row.teacherCorrectionFileUrl ? (
-                                <Button
-                                  size="sm"
-                                  className="bg-green-600 hover:bg-green-700 text-white"
-                                  onClick={() => window.open(row.teacherCorrectionFileUrl, '_blank')}
-                                >
-                                  <Eye className="h-4 w-4 mr-1" />
-                                  View
+                                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => window.open(row.teacherCorrectionFileUrl, '_blank')}>
+                                  <Eye className="h-4 w-4 mr-1" />View
                                 </Button>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
+                              ) : <span className="text-muted-foreground">-</span>}
                             </TableCell>
-                            <TableCell>
-                              <Badge variant={row.isActive ? 'default' : 'secondary'}>
-                                {row.isActive ? 'Active' : 'Inactive'}
-                              </Badge>
+                          )}
+                          {hsdVisKeys.has('isActive') && <TableCell style={{ width: getHSDColWidth('isActive'), maxWidth: getHSDColWidth('isActive'), overflow: 'hidden' }}><Badge variant={row.isActive ? 'default' : 'secondary'}>{row.isActive ? 'Active' : 'Inactive'}</Badge></TableCell>}
+                          {hsdVisKeys.has('createdAt') && <TableCell style={{ width: getHSDColWidth('createdAt'), maxWidth: getHSDColWidth('createdAt'), overflow: 'hidden' }}>{formatDate(row.createdAt)}</TableCell>}
+                          {hsdVisKeys.has('updatedAt') && <TableCell style={{ width: getHSDColWidth('updatedAt'), maxWidth: getHSDColWidth('updatedAt'), overflow: 'hidden' }}>{formatDate(row.updatedAt)}</TableCell>}
+                          {hsdVisKeys.has('actions') && canUploadCorrections && (
+                            <TableCell style={{ width: getHSDColWidth('actions'), maxWidth: getHSDColWidth('actions'), overflow: 'hidden' }}>
+                              <Button size="sm" variant="outline" className="border-red-600 text-red-600 hover:bg-red-600 hover:text-white" onClick={() => handleCorrectionClick(row)}>
+                                <Edit className="h-4 w-4 mr-1" />Correction
+                              </Button>
                             </TableCell>
-                            <TableCell>{formatDate(row.createdAt)}</TableCell>
-                            <TableCell>{formatDate(row.updatedAt)}</TableCell>
-                            {canUploadCorrections && (
-                              <TableCell align="center">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-red-600 text-red-600 hover:bg-red-600 hover:text-white"
-                                  onClick={() => handleCorrectionClick(row)}
-                                >
-                                  <Edit className="h-4 w-4 mr-1" />
-                                  Correction
-                                </Button>
-                              </TableCell>
-                            )}
-                          </TableRow>
-                        ))}
+                          )}
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </TableContainer>
@@ -428,53 +395,96 @@ const HomeworkSubmissionDetails = () => {
         {/* View Details Dialog */}
         {viewSubmission && (
           <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Submission Details</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Submission ID</label>
-                    <p className="mt-1">{viewSubmission.id}</p>
+            <DialogContent className="w-[95vw] max-w-3xl max-h-[88vh] overflow-y-auto">
+              <DialogHeader className="pb-2">
+                <DialogTitle className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-primary/10">
+                    <FileText className="h-4 w-4 text-primary" />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Student ID</label>
-                    <p className="mt-1">{viewSubmission.studentId}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Student Name</label>
-                    <p className="mt-1">{viewSubmission.studentName || `${viewSubmission.student?.firstName || ''} ${viewSubmission.student?.lastName || ''}`.trim() || '-'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Status</label>
-                    <p className="mt-1">
-                      <Badge variant={viewSubmission.isActive ? 'default' : 'secondary'}>
-                        {viewSubmission.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
+                    <p className="font-bold text-base leading-tight">Submission Details</p>
+                    <p className="text-xs text-muted-foreground font-normal">
+                      {viewSubmission.studentName || `${viewSubmission.student?.firstName || ''} ${viewSubmission.student?.lastName || ''}`.trim() || 'Student submission'}
                     </p>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Submission Date</label>
-                    <p className="mt-1">{formatDate(viewSubmission.submissionDate)}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Created At</label>
-                    <p className="mt-1">{formatDate(viewSubmission.createdAt)}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Updated At</label>
-                    <p className="mt-1">{formatDate(viewSubmission.updatedAt)}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Homework ID</label>
-                    <p className="mt-1">{viewSubmission.homeworkId}</p>
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-5">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Submission Overview</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15 col-span-2 sm:col-span-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Submission ID</span>
+                      <span className="text-xs font-mono font-bold text-primary break-all">{viewSubmission.id}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student ID</span>
+                      <span className="text-xs font-mono font-medium break-all">{viewSubmission.studentId}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50 col-span-2 sm:col-span-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student Name</span>
+                      <span className="text-xs font-medium">{viewSubmission.studentName || `${viewSubmission.student?.firstName || ''} ${viewSubmission.student?.lastName || ''}`.trim() || '-'}</span>
+                    </div>
+                    <div className={`flex flex-col gap-0.5 p-2.5 rounded-xl border ${viewSubmission.isActive ? 'bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800' : 'bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800'}`}>
+                      <span className={`text-[10px] font-semibold uppercase tracking-wide ${viewSubmission.isActive ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>Status</span>
+                      <span className={`text-xs font-semibold ${viewSubmission.isActive ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}>{viewSubmission.isActive ? 'Active' : 'Inactive'}</span>
+                    </div>
                   </div>
                 </div>
-                
+
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Remarks</label>
-                  <p className="mt-1 p-3 bg-muted/50 rounded-md">{viewSubmission.remarks || 'No remarks'}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Timeline</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Submission Date</span>
+                      <span className="text-xs font-medium">{formatDate(viewSubmission.submissionDate)}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Created At</span>
+                      <span className="text-xs font-medium">{formatDate(viewSubmission.createdAt)}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Updated At</span>
+                      <span className="text-xs font-medium">{formatDate(viewSubmission.updatedAt)}</span>
+                    </div>
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Homework ID</span>
+                      <span className="text-xs font-mono font-medium break-all">{viewSubmission.homeworkId}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {(viewSubmission.fileUrl || viewSubmission.teacherCorrectionFileUrl || viewSubmission.driveViewUrl) && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Files</p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      {viewSubmission.fileUrl && (
+                        <Button variant="outline" onClick={() => window.open(viewSubmission.fileUrl, '_blank', 'noopener,noreferrer')} className="sm:flex-1 justify-start">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Open Submission File
+                        </Button>
+                      )}
+                      {viewSubmission.driveViewUrl && (
+                        <Button variant="outline" onClick={() => window.open(viewSubmission.driveViewUrl, '_blank', 'noopener,noreferrer')} className="sm:flex-1 justify-start">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Open Drive File
+                        </Button>
+                      )}
+                      {viewSubmission.teacherCorrectionFileUrl && (
+                        <Button variant="outline" onClick={() => window.open(viewSubmission.teacherCorrectionFileUrl, '_blank', 'noopener,noreferrer')} className="sm:flex-1 justify-start">
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Open Correction File
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Teacher Note</p>
+                  <div className="p-3.5 rounded-xl bg-muted/60 border border-border/50">
+                    <p className="text-sm whitespace-pre-wrap">{viewSubmission.remarks || 'No remarks'}</p>
+                  </div>
                 </div>
               </div>
             </DialogContent>
@@ -483,12 +493,23 @@ const HomeworkSubmissionDetails = () => {
 
         {/* Remark Dialog */}
         <Dialog open={remarkDialogOpen} onOpenChange={setRemarkDialogOpen}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Teacher Note</DialogTitle>
+          <DialogContent className="w-[92vw] max-w-2xl">
+            <DialogHeader className="pb-2">
+              <DialogTitle className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-primary/10">
+                  <FileText className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="font-bold text-base leading-tight">Teacher Note</p>
+                  <p className="text-xs text-muted-foreground font-normal">Submission remark details</p>
+                </div>
+              </DialogTitle>
             </DialogHeader>
-            <div className="p-4 bg-muted/50 rounded-md">
-              <p className="whitespace-pre-wrap">{selectedRemark || 'No remarks'}</p>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Note</p>
+              <div className="p-3.5 rounded-xl bg-muted/60 border border-border/50">
+                <p className="text-sm whitespace-pre-wrap">{selectedRemark || 'No remarks'}</p>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

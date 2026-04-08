@@ -14,7 +14,6 @@ import {
   Calendar, 
   Clock, 
   ChevronDown, 
-  FileText, 
   Upload, 
   ExternalLink, 
   RefreshCw,
@@ -27,10 +26,7 @@ import {
   Filter,
   MessageSquare,
   CheckCircle,
-  XCircle,
-  Link as LinkIcon,
-  Film,
-  File
+  XCircle
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
@@ -38,7 +34,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useRefreshWithCooldown } from '@/hooks/useRefreshWithCooldown';
 import { homeworkApi, Homework } from '@/api/homework.api';
 // Removed: homeworkSubmissionsApi import - submissions are viewed on separate page
-import { homeworkReferencesApi, HomeworkReference } from '@/api/homeworkReferences.api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import CreateHomeworkForm from '@/components/forms/CreateHomeworkForm';
 import UpdateHomeworkForm from '@/components/forms/UpdateHomeworkForm';
@@ -46,6 +41,8 @@ import SubmitHomeworkForm from '@/components/forms/SubmitHomeworkForm';
 import { format } from 'date-fns';
 // Removed: Avatar, getImageUrl imports - not needed since submissions view is on separate page
 import { useNavigate } from 'react-router-dom';
+import { HomeworkReferencesSection } from '@/components/homework/index';
+import { getErrorMessage } from '@/api/apiError';
 
 interface HomeworkAccordionProps {
   apiLevel?: 'institute' | 'class' | 'subject';
@@ -133,7 +130,7 @@ const HomeworkAccordion: React.FC<HomeworkAccordionProps> = ({ apiLevel = 'subje
           description: `Successfully refreshed ${homework.length} homework assignments.`
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load homework:', error);
       toast({
         title: "Load Failed",
@@ -183,10 +180,10 @@ const HomeworkAccordion: React.FC<HomeworkAccordionProps> = ({ apiLevel = 'subje
         description: `"${homework.title}" has been deleted.`
       });
       await handleLoadData(true);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Delete Failed",
-        description: "Failed to delete homework.",
+        description: getErrorMessage(error, 'Failed to delete homework.'),
         variant: "destructive"
       });
     }
@@ -233,15 +230,6 @@ const HomeworkAccordion: React.FC<HomeworkAccordionProps> = ({ apiLevel = 'subje
     return <Badge variant="secondary" className="bg-green-500/10 text-green-600 dark:text-green-400">Active</Badge>;
   };
 
-  const getReferenceIcon = (type: string) => {
-    switch (type?.toUpperCase()) {
-      case 'PDF': return <FileText className="h-4 w-4" />;
-      case 'VIDEO': return <Film className="h-4 w-4" />;
-      case 'LINK': return <LinkIcon className="h-4 w-4" />;
-      default: return <File className="h-4 w-4" />;
-    }
-  };
-
   const getTitle = () => {
     const contexts = [];
     if (selectedInstitute) contexts.push(selectedInstitute.name);
@@ -252,7 +240,7 @@ const HomeworkAccordion: React.FC<HomeworkAccordionProps> = ({ apiLevel = 'subje
 
   if (!dataLoaded) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto p-4 sm:p-6">
         <div className="text-center py-12">
           <BookOpen className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
           <h2 className="text-2xl font-bold text-foreground mb-4">{getTitle()}</h2>
@@ -439,34 +427,10 @@ const HomeworkAccordion: React.FC<HomeworkAccordionProps> = ({ apiLevel = 'subje
                   </div>
 
                   {/* References */}
-                  {homework.references && homework.references.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Reference Materials ({homework.references.length})
-                      </h4>
-                      <div className="grid gap-2">
-                        {homework.references.map((ref) => (
-                          <a
-                            key={ref.id}
-                            href={ref.fileUrl || '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-3 p-2 rounded-lg border bg-background hover:bg-muted/50 transition-colors"
-                          >
-                            {getReferenceIcon(ref.referenceType)}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{ref.title}</p>
-                              {ref.description && (
-                                <p className="text-xs text-muted-foreground truncate">{ref.description}</p>
-                              )}
-                            </div>
-                            <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <HomeworkReferencesSection
+                    homeworkId={homework.id}
+                    editable={isTeacherOrAdmin && !isViewingAsParent}
+                  />
 
                   {/* Legacy Reference Link */}
                   {homework.referenceLink && (

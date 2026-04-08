@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import DataTable from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -6,60 +6,22 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { DataCardView } from '@/components/ui/data-card-view';
 import { RefreshCw, Filter, Eye, Edit, Trash2 } from 'lucide-react';
-import { useAuth, type UserRole } from '@/contexts/AuthContext';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
+import ScrollAnimationWrapper from '@/components/ScrollAnimationWrapper';
+import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { AccessControl } from '@/utils/permissions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import CreateTeacherForm from '@/components/forms/CreateTeacherForm';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
 import TeacherProfile from '@/components/TeacherProfile';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
-
-const mockTeachers = [
-  {
-    id: '1',
-    employeeId: 'EMP001',
-    name: 'Dr. Alice Johnson',
-    email: 'alice.johnson@institute.edu',
-    phone: '+1 (555) 111-2222',
-    subjects: 'Mathematics, Statistics',
-    classes: 'Grade 10-A, Grade 11-S',
-    qualification: 'PhD in Mathematics',
-    experience: '12 years',
-    joinDate: '2020-08-15',
-    status: 'Active'
-  },
-  {
-    id: '2',
-    employeeId: 'EMP002',
-    name: 'Prof. Robert Brown',
-    email: 'robert.brown@institute.edu',
-    phone: '+1 (555) 222-3333',
-    subjects: 'Physics, Chemistry',
-    classes: 'Grade 11-S, Grade 12-S',
-    qualification: 'MSc in Physics',
-    experience: '8 years',
-    joinDate: '2022-01-10',
-    status: 'Active'
-  },
-  {
-    id: '3',
-    employeeId: 'EMP003',
-    name: 'Ms. Emily Davis',
-    email: 'emily.davis@institute.edu',
-    phone: '+1 (555) 333-4444',
-    subjects: 'English Literature',
-    classes: 'Grade 10-A, Grade 10-B',
-    qualification: 'MA in English',
-    experience: '6 years',
-    joinDate: '2021-09-01',
-    status: 'On Leave'
-  }
-];
+import DeleteConfirmDialog from '@/components/forms/DeleteConfirmDialog';
 
 const Teachers = () => {
   const { user, selectedInstitute, selectedClass, selectedSubject, currentInstituteId, currentClassId, currentSubjectId } = useAuth();
@@ -71,147 +33,78 @@ const Teachers = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [subjectFilter, setSubjectFilter] = useState('all');
-
-  const getAuthToken = () => {
-    const token = localStorage.getItem('access_token') || 
-                  localStorage.getItem('token') || 
-                  localStorage.getItem('authToken');
-    return token;
-  };
-
-  const getApiHeaders = () => {
-    const token = getAuthToken();
-    
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    return headers;
-  };
-
-  const buildQueryParams = () => {
-    const params = new URLSearchParams();
-
-    // Add context-aware filtering
-    if (currentInstituteId) {
-      params.append('instituteId', currentInstituteId);
-    }
-
-    if (currentClassId) {
-      params.append('classId', currentClassId);
-    }
-
-    if (currentSubjectId) {
-      params.append('subjectId', currentSubjectId);
-    }
-
-    return params;
-  };
-
-  const buildRequestBody = (additionalData: any = {}) => {
-    const body: any = { ...additionalData };
-
-    if (currentInstituteId) {
-      body.instituteId = currentInstituteId;
-    }
-
-    if (currentClassId) {
-      body.classId = currentClassId;
-    }
-
-    if (currentSubjectId) {
-      body.subjectId = currentSubjectId;
-    }
-
-    return body;
-  };
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; item: any }>({ open: false, item: null });
+  const [isDeleting, setIsDeleting] = useState(false);
+  const userRole = useInstituteRole();
 
   const handleLoadData = async (forceRefresh = false) => {
+    if (!currentInstituteId) {
+      toast({
+        title: "No Institute Selected",
+        description: "Please select an institute first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsLoading(true);
     console.log('Loading teachers data...');
     console.log(`Current context - Institute: ${selectedInstitute?.name}, Class: ${selectedClass?.name}, Subject: ${selectedSubject?.name}`);
     
     try {
-      const userRole = useInstituteRole();
+      const apiData = await enhancedCachedClient.get(
+        `/institute-users/institute/${currentInstituteId}/teachers`,
+        {},
+        {
+          ttl: CACHE_TTL.TEACHERS,
+          forceRefresh,
+          userId: user?.id,
+          instituteId: currentInstituteId,
+          role: userRole
+        }
+      );
       
-      // For InstituteAdmin, use the new API endpoint to get institute teachers
-      if (userRole === 'InstituteAdmin' && currentInstituteId) {
-        console.log('Loading institute teachers for InstituteAdmin...');
-        
-        // Use enhanced cached client with context
-        const apiData = await enhancedCachedClient.get(
-          `/institute-users/institute/${currentInstituteId}/teachers`,
-          {},
-          {
-            ttl: CACHE_TTL.TEACHERS,
-            forceRefresh,
-            userId: user?.id,
-            instituteId: currentInstituteId,
-            role: userRole
-          }
-        );
-        
-        console.log('API Response:', apiData);
-        
-        // Transform the API data to match the expected format
-        const transformedData = apiData.map((item: any) => ({
-          id: item.userId,
-          employeeId: item.userIdByInstitute || `EMP${item.userId}`,
-          name: item.user.name,
-          email: item.user.email,
-          phone: item.user.phoneNumber || 'N/A',
-          subjects: 'N/A', // This would need to come from a different endpoint
-          classes: 'N/A', // This would need to come from a different endpoint
-          qualification: 'N/A', // This would need additional data
-          experience: 'N/A', // This would need additional data
-          joinDate: new Date(item.user.createdAt).toLocaleDateString() || 'N/A',
-          status: item.status,
-          imageUrl: item.user.imageUrl
-        }));
-        
-        setTeachersData(transformedData);
-        setDataLoaded(true);
-        
-        return;
-      }
+      console.log('API Response:', apiData);
       
-      // For other roles, use mock data with filters
-      const params = buildQueryParams();
+      const dataArray = Array.isArray(apiData) ? apiData : [];
       
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Filter mock data based on filters
-      let filteredData = mockTeachers;
+      // Transform the API data to match the expected format
+      const transformedData = dataArray.map((item: any) => ({
+        id: item.userId,
+        employeeId: item.userIdByInstitute || `EMP${item.userId}`,
+        name: item.user?.name ?? 'N/A',
+        email: item.user?.email ?? 'N/A',
+        phone: item.user?.phoneNumber || 'N/A',
+        subjects: 'N/A',
+        classes: 'N/A',
+        qualification: 'N/A',
+        experience: 'N/A',
+        joinDate: item.user?.createdAt ? new Date(item.user.createdAt).toLocaleDateString() : 'N/A',
+        status: item.status,
+        imageUrl: item.user?.imageUrl
+      }));
+
+      // Apply client-side filters
+      let filteredData = transformedData;
       
       if (searchTerm) {
-        filteredData = filteredData.filter(teacher =>
+        filteredData = filteredData.filter((teacher: any) =>
           teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          teacher.subjects.toLowerCase().includes(searchTerm.toLowerCase())
+          teacher.email.toLowerCase().includes(searchTerm.toLowerCase())
         );
       }
       
       if (statusFilter !== 'all') {
-        filteredData = filteredData.filter(teacher => teacher.status === statusFilter);
-      }
-      
-      if (subjectFilter !== 'all') {
-        filteredData = filteredData.filter(teacher =>
-          teacher.subjects.toLowerCase().includes(subjectFilter.toLowerCase())
-        );
+        filteredData = filteredData.filter((teacher: any) => teacher.status === statusFilter);
       }
       
       setTeachersData(filteredData);
       setDataLoaded(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading teachers:', error);
       toast({
         title: "Load Failed",
@@ -223,19 +116,22 @@ const Teachers = () => {
     }
   };
 
-  const teachersColumns = [
-    { key: 'employeeId', header: 'Employee ID' },
-    { key: 'name', header: 'Full Name' },
-    { key: 'email', header: 'Email' },
-    { key: 'phone', header: 'Phone' },
-    { key: 'subjects', header: 'Subjects' },
-    { key: 'classes', header: 'Classes' },
-    { key: 'qualification', header: 'Qualification' },
-    { key: 'experience', header: 'Experience' },
-    { key: 'joinDate', header: 'Join Date' },
+  const allColumnDefs: ColumnDef[] = useMemo(() => [
+    { key: 'employeeId', header: 'Employee ID', locked: true, defaultVisible: true, defaultWidth: 130, minWidth: 90 },
+    { key: 'name', header: 'Full Name', defaultVisible: true, defaultWidth: 180, minWidth: 120 },
+    { key: 'email', header: 'Email', defaultVisible: true, defaultWidth: 200, minWidth: 140 },
+    { key: 'phone', header: 'Phone', defaultVisible: true, defaultWidth: 150, minWidth: 110 },
+    { key: 'subjects', header: 'Subjects', defaultVisible: false, defaultWidth: 150, minWidth: 100 },
+    { key: 'classes', header: 'Classes', defaultVisible: false, defaultWidth: 150, minWidth: 100 },
+    { key: 'qualification', header: 'Qualification', defaultVisible: false, defaultWidth: 150, minWidth: 100 },
+    { key: 'experience', header: 'Experience', defaultVisible: false, defaultWidth: 130, minWidth: 90 },
+    { key: 'joinDate', header: 'Join Date', defaultVisible: false, defaultWidth: 130, minWidth: 100 },
     { 
       key: 'status', 
       header: 'Status',
+      defaultVisible: true,
+      defaultWidth: 120,
+      minWidth: 90,
       render: (value: any) => (
         <Badge variant={
           value === 'Active' || value === 'ACTIVE' ? 'default' : 
@@ -246,7 +142,26 @@ const Teachers = () => {
         </Badge>
       )
     }
-  ];
+  ], []);
+
+  const { colState, visibleColumns, toggleColumn, setColumnWidth, resetColumns } = useColumnConfig(allColumnDefs, 'teachers');
+
+  const columnWidths = useMemo(() => {
+    const widths: Record<string, number> = {};
+    for (const col of visibleColumns) {
+      widths[col.key] = colState[col.key]?.width || col.defaultWidth || 180;
+    }
+    return widths;
+  }, [visibleColumns, colState]);
+
+  const tableColumns = useMemo(() =>
+    visibleColumns.map(col => ({
+      key: col.key,
+      header: col.header,
+      render: col.render,
+    })),
+    [visibleColumns]
+  );
 
   const handleAddTeacher = () => {
     console.log('Add new teacher');
@@ -273,12 +188,17 @@ const Teachers = () => {
   };
 
   const handleDeleteTeacher = (teacher: any) => {
-    console.log('Delete teacher:', teacher);
-    toast({
-      title: "Teacher Deleted",
-      description: `Teacher ${teacher.name} has been deleted.`,
-      variant: "destructive"
-    });
+    setDeleteDialog({ open: true, item: teacher });
+  };
+  const confirmDeleteTeacher = async () => {
+    if (!deleteDialog.item) return;
+    setIsDeleting(true);
+    try {
+      toast({ title: "Teacher Deleted", description: `Teacher ${deleteDialog.item.name} has been deleted.`, variant: "destructive" });
+      setDeleteDialog({ open: false, item: null });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleViewTeacher = (teacher: any) => {
@@ -302,7 +222,6 @@ const Teachers = () => {
     setIsCreateDialogOpen(false);
   };
 
-  const userRole = useInstituteRole();
   const canAdd = AccessControl.hasPermission(userRole, 'create-teacher');
   const canEdit = AccessControl.hasPermission(userRole, 'edit-teacher');
   const canDelete = AccessControl.hasPermission(userRole, 'delete-teacher');
@@ -403,11 +322,69 @@ const Teachers = () => {
 
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
+              <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="md:hidden flex items-center gap-2"
+                  >
+                    <Filter className="h-4 w-4" />
+                    Filters
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="md:hidden flex flex-col max-h-[80vh] rounded-t-2xl">
+                  <SheetHeader>
+                    <SheetTitle>Filter Teachers</SheetTitle>
+                  </SheetHeader>
+                  <div className="flex-1 overflow-y-auto py-4">
+                    <div className="space-y-4 px-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                          Search Teachers
+                        </label>
+                        <Input
+                          placeholder="Search teachers..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                          Status
+                        </label>
+                        <Select value={statusFilter} onValueChange={setStatusFilter}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="All Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Status</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="inactive">Inactive</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSearchTerm('');
+                          setStatusFilter('all');
+                          setIsFilterSheetOpen(false);
+                        }}
+                        className="w-full"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center gap-2"
+                className="hidden md:flex items-center gap-2"
               >
                 <Filter className="h-4 w-4" />
                 Filters
@@ -490,7 +467,7 @@ const Teachers = () => {
           <div className="md:hidden">
             <DataCardView
               data={teachersData}
-              columns={teachersColumns}
+              columns={tableColumns}
               customActions={customActions}
               allowEdit={false}
               allowDelete={false}
@@ -502,7 +479,17 @@ const Teachers = () => {
             <DataTable
               title="Teachers"
               data={teachersData}
-              columns={teachersColumns}
+              columns={tableColumns}
+              columnWidths={columnWidths}
+              onColumnResize={setColumnWidth}
+              headerExtra={
+                <ColumnConfigurator
+                  allColumns={allColumnDefs}
+                  colState={colState}
+                  onToggle={toggleColumn}
+                  onReset={resetColumns}
+                />
+              }
               onAdd={canAdd ? () => setIsCreateDialogOpen(true) : undefined}
               onEdit={canEdit ? handleEditTeacher : undefined}
               onDelete={canDelete ? handleDeleteTeacher : undefined}
@@ -545,6 +532,15 @@ const Teachers = () => {
           />
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.item?.name || ''}
+        itemType="teacher"
+        onConfirm={confirmDeleteTeacher}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

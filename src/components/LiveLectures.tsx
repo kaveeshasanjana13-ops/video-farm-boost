@@ -107,7 +107,7 @@ const LiveLectures = ({ apiLevel = 'institute' }: LiveLecturesProps) => {
       setLastRefresh(new Date());
       
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load lectures:', error);
       toast({
         title: "Load Failed",

@@ -14,14 +14,12 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, ErrorBo
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     // You can log this to an error reporting service
-    // eslint-disable-next-line no-console
     console.error('App crashed with error:', error, info);
     this.setState({ info });
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: undefined, info: undefined });
-    // Try reloading the current route to recover
+    // Reload directly — avoid setState before reload to prevent a DOM reconciliation race
     window.location.reload();
   };
 

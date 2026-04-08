@@ -259,7 +259,10 @@ class InstitutePaymentsApi {
     sortBy?: string;
     sortOrder?: string;
   }): Promise<InstitutePaymentsResponse> {
-    return apiClient.get(`/institute-payments/institute/${instituteId}`, params);
+    return enhancedCachedClient.get(`/institute-payments/institute/${instituteId}/payments`, params, {
+      ttl: CACHE_TTL.INSTITUTE_PAYMENTS,
+      instituteId,
+    });
   }
 
   // Get student/parent's applicable payments
@@ -270,22 +273,31 @@ class InstitutePaymentsApi {
     status?: string;
     priority?: string;
   }): Promise<StudentPaymentsResponse> {
-    return apiClient.get(`/institute-payments/institute/${instituteId}/my-payments`, params);
+    return enhancedCachedClient.get(`/institute-payments/institute/${instituteId}/my-payments`, params, {
+      ttl: CACHE_TTL.INSTITUTE_PAYMENTS,
+      instituteId,
+    });
   }
 
   // Get payment statistics (admin/teacher)
   async getPaymentStats(instituteId: string): Promise<PaymentStatsResponse> {
-    return apiClient.get(`/institute-payments/institute/${instituteId}/stats`);
+    return enhancedCachedClient.get(`/institute-payments/institute/${instituteId}/stats`, undefined, {
+      ttl: CACHE_TTL.INSTITUTE_PAYMENTS,
+      instituteId,
+    });
   }
 
   // Get student/parent payment summary
   async getMySummary(instituteId: string): Promise<MySummaryResponse> {
-    return apiClient.get(`/institute-payments/institute/${instituteId}/my-summary`);
+    return enhancedCachedClient.get(`/institute-payments/institute/${instituteId}/my-summary`, undefined, {
+      ttl: CACHE_TTL.INSTITUTE_PAYMENTS,
+      instituteId,
+    });
   }
 
   // Update a payment
   async updatePayment(instituteId: string, paymentId: string, data: Partial<CreatePaymentRequest>): Promise<any> {
-    return apiClient.patch(`/institute-payments/institute/${instituteId}/payment/${paymentId}`, data);
+    return apiClient.patch(`/institute-payments/institute/${instituteId}/payments/${paymentId}`, data);
   }
 
   // Get payment submissions for a specific payment (admin/teacher)
@@ -311,7 +323,10 @@ class InstitutePaymentsApi {
       sortOrder?: string;
     }
   ): Promise<PaymentSubmissionsResponse> {
-    return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/payment/${paymentId}/submissions`, params);
+    return enhancedCachedClient.get(`/institute-payment-submissions/institute/${instituteId}/payment/${paymentId}/submissions`, params, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      instituteId,
+    });
   }
 
   // Get pending submissions across all payments (admin/teacher)
@@ -320,7 +335,10 @@ class InstitutePaymentsApi {
     limit?: number;
     search?: string;
   }): Promise<PendingSubmissionsResponse> {
-    return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/pending-submissions`, params);
+    return enhancedCachedClient.get(`/institute-payment-submissions/institute/${instituteId}/pending-submissions`, params, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      instituteId,
+    });
   }
 
   // Get student's own submissions
@@ -331,26 +349,37 @@ class InstitutePaymentsApi {
     search?: string;
     paymentDateFrom?: string;
     paymentDateTo?: string;
-  }): Promise<MySubmissionsResponse> {
-    return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/my-submissions`, params);
+  }, forceRefresh = false): Promise<MySubmissionsResponse> {
+    return enhancedCachedClient.get(`/institute-payment-submissions/institute/${instituteId}/my-submissions`, params, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      forceRefresh,
+      instituteId,
+    });
   }
 
   // Get submissions for a specific student (admin/parent)
   async getStudentSubmissions(instituteId: string, studentId: string, params?: {
     page?: number;
     limit?: number;
-  }): Promise<PaymentSubmissionsResponse> {
-    return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/student/${studentId}/submissions`, params);
+  }, forceRefresh = false): Promise<MySubmissionsResponse> {
+    return enhancedCachedClient.get(`/institute-payment-submissions/institute/${instituteId}/student/${studentId}/submissions`, params, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      forceRefresh,
+      instituteId,
+    });
   }
 
   // Get submission details
   async getSubmissionDetails(instituteId: string, submissionId: string): Promise<any> {
-    return apiClient.get(`/institute-payment-submissions/institute/${instituteId}/submission/${submissionId}`);
+    return enhancedCachedClient.get(`/institute-payment-submissions/institute/${instituteId}/submission/${submissionId}`, undefined, {
+      ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
+      instituteId,
+    });
   }
 
   // Create a new payment (admin/teacher)
   async createPayment(instituteId: string, data: CreatePaymentRequest): Promise<any> {
-    return apiClient.post(`/institute-payments/institute/${instituteId}`, data);
+    return apiClient.post(`/institute-payments/institute/${instituteId}/payments`, data);
   }
 
   // Verify/reject a payment submission (admin/teacher)
@@ -363,9 +392,14 @@ class InstitutePaymentsApi {
     return apiClient.post(`/institute-payment-submissions/institute/${instituteId}/payment/${paymentId}/submit`, data);
   }
 
-  // Legacy verify method (backward compatibility)
-  async verifySubmission(submissionId: string): Promise<any> {
-    return apiClient.patch(`/institute-payment-submissions/${submissionId}/verify`);
+  // Soft delete a payment (admin only, blocked if submissions exist)
+  async deletePayment(instituteId: string, paymentId: string): Promise<any> {
+    return apiClient.delete(`/institute-payments/institute/${instituteId}/payments/${paymentId}`);
+  }
+
+  // @deprecated Use verifySubmissionDetailed() instead — this legacy path has no matching backend route.
+  async verifySubmission(_submissionId: string): Promise<any> {
+    throw new Error('verifySubmission() is deprecated. Use verifySubmissionDetailed(instituteId, submissionId, data) instead.');
   }
 }
 

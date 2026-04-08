@@ -5,6 +5,7 @@
  */
 
 import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { parseApiError } from '@/api/apiError';
 
 // ============= TYPES =============
 
@@ -12,12 +13,15 @@ export type UserType = 'USER' | 'USER_WITHOUT_PARENT' | 'USER_WITHOUT_STUDENT';
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 export type Language = 'S' | 'E' | 'T';
 
+export type CardDeliveryRecipient = 'SELF' | 'FATHER' | 'MOTHER' | 'GUARDIAN';
+
 export interface StudentData {
   studentId?: string;
   emergencyContact?: string;
   medicalConditions?: string;
   allergies?: string;
   bloodGroup?: string;
+  cardDeliveryRecipient?: CardDeliveryRecipient;
   fatherId?: string;
   fatherPhoneNumber?: string;
   motherId?: string;
@@ -41,7 +45,7 @@ export interface CreateUserRequest {
   firstName: string;
   lastName: string;
   nameWithInitials?: string;
-  email: string;
+  email?: string;
   userType: UserType;
   gender: Gender;
   district: string;
@@ -140,22 +144,21 @@ export const registerUser = async (data: CreateUserRequest): Promise<Registratio
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
+      'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify(data),
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    if (response.status === 409) {
-      throw new Error(errorData.message || 'This email is already registered.');
-    }
-    if (response.status === 400) {
-      const messages = Array.isArray(errorData.message) ? errorData.message.join('. ') : errorData.message;
-      throw new Error(messages || 'Validation failed. Please check your input.');
-    }
-    throw new Error(errorData.message || `Registration failed: ${response.status}`);
+    const errorText = await response.text().catch(() => '');
+    throw parseApiError(response.status, errorText);
   }
 
-  return response.json();
+  const text = await response.text().catch(() => '');
+  if (!text) return {} as RegistrationResponse;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {} as RegistrationResponse;
+  }
 };

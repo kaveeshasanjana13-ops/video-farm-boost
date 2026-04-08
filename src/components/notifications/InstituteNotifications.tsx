@@ -1,7 +1,7 @@
 // src/components/notifications/InstituteNotifications.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useForceRefresh } from '@/hooks/useForceRefresh';
-import { Bell, CheckCheck, RefreshCw, Building2, Sparkles, Download } from 'lucide-react';
+import { Bell, CheckCheck, RefreshCw, Building2, Sparkles } from 'lucide-react';
 import { notificationApiService, Notification } from '@/services/notificationApiService';
 import { DateGroupedNotifications } from './DateGroupedNotifications';
 import { Button } from '@/components/ui/button';
@@ -23,14 +23,13 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
 }) => {
   const navigate = useNavigate();
   const { triggerForceRefresh } = useForceRefresh();
-  const { decrementUnread } = useNotificationStore();
+  const { decrementUnread, resetUnread, refreshUnreadCount } = useNotificationStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [filter, setFilter] = useState<FilterScope>('ALL');
-  const [initialized, setInitialized] = useState(false);
 
   const loadNotifications = useCallback(async () => {
     if (!instituteId) return;
@@ -43,7 +42,7 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
       });
       setNotifications(result.data || []);
       setTotalPages(result.totalPages || 1);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load notifications:', error);
       toast({ title: 'Error', description: 'Failed to load notifications', variant: 'destructive' });
     } finally {
@@ -56,21 +55,18 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
     try {
       const result = await notificationApiService.getInstituteUnreadCount(instituteId);
       setUnreadCount(result.unreadCount || 0);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load unread count:', error);
     }
   }, [instituteId]);
 
   useEffect(() => {
-    if (initialized) {
-      loadNotifications();
-      loadUnreadCount();
-    }
+    loadNotifications();
+    loadUnreadCount();
   }, [page, filter]);
 
   const handleRefresh = () => {
     triggerForceRefresh();
-    if (!initialized) setInitialized(true);
     loadNotifications();
     loadUnreadCount();
   };
@@ -81,7 +77,7 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
       setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
       decrementUnread();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to mark as read:', error);
     }
   };
@@ -92,8 +88,10 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
       await notificationApiService.markAllAsRead(instituteId);
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
+      resetUnread();
+      await refreshUnreadCount();
       toast({ title: 'Done', description: 'All notifications marked as read' });
-    } catch (error) {
+    } catch (error: any) {
       toast({ title: 'Error', description: 'Failed to mark all as read', variant: 'destructive' });
     }
   };
@@ -106,27 +104,6 @@ export const InstituteNotifications: React.FC<InstituteNotificationsProps> = ({
     setFilter(value as FilterScope);
     setPage(1);
   };
-
-  // Not initialized — show load prompt
-  if (!initialized) {
-    return (
-      <div className="rounded-2xl border border-border/50 bg-card overflow-hidden">
-        <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-          <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-            <Building2 className="h-8 w-8 text-primary" />
-          </div>
-          <h3 className="font-semibold text-foreground mb-1">Institute Notifications</h3>
-          <p className="text-sm text-muted-foreground mb-5">
-            Tap below to load notifications from {instituteName || 'your institute'}
-          </p>
-          <Button onClick={handleRefresh} className="rounded-xl gap-2">
-            <Download className="h-4 w-4" />
-            Load Notifications
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   if (loading && notifications.length === 0) {
     return (

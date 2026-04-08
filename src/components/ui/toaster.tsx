@@ -43,7 +43,7 @@ export function Toaster() {
           const variant = getToastVariant(status);
           
           return (
-            <Toast key={id} {...props} variant={variant} className="min-w-[350px] py-4 px-4">
+            <Toast key={id} {...props} duration={2500} variant={variant} className="min-w-[350px] py-4 px-4">
               <div className="flex items-center gap-4">
                 {/* User Image - Larger */}
                 {imageUrl && (
@@ -74,9 +74,9 @@ export function Toaster() {
 
       {/* Success Messages - Bottom Right */}
       <ToastProvider swipeDirection="right">
-        {successToasts.map(function ({ id, title, description, action, imageUrl, status, isAttendanceAlert, ...props }) {
+        {successToasts.map(function ({ id, title, description, action, imageUrl, status, isAttendanceAlert, variant: _variant, ...props }) {
           return (
-            <Toast key={id} {...props} variant="default" className="bg-green-500 text-white border-green-600">
+            <Toast key={id} {...props} duration={2500} variant="success">
               <div className="grid gap-0.5 flex-1">
                 {title && <ToastTitle className="text-sm font-semibold text-white">{title}</ToastTitle>}
                 {description && (
@@ -92,9 +92,9 @@ export function Toaster() {
 
       {/* Error Messages - Bottom Right */}
       <ToastProvider swipeDirection="right">
-        {errorToasts.map(function ({ id, title, description, action, imageUrl, status, isAttendanceAlert, ...props }) {
+        {errorToasts.map(function ({ id, title, description, action, imageUrl, status, isAttendanceAlert, variant: _variant, ...props }) {
           return (
-            <Toast key={id} {...props} variant="destructive">
+            <Toast key={id} {...props} duration={2500} variant="destructive">
               <div className="grid gap-0.5 flex-1">
                 {title && <ToastTitle className="text-xs font-medium">{title}</ToastTitle>}
                 {description && (

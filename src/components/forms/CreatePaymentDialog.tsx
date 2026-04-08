@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { institutePaymentsApi, CreatePaymentRequest } from '@/api/institutePayments.api';
+import { getErrorMessage } from '@/api/apiError';
 
 interface CreatePaymentDialogProps {
   open: boolean;
@@ -19,6 +20,7 @@ interface CreatePaymentDialogProps {
 const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: CreatePaymentDialogProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState<CreatePaymentRequest>({
     paymentType: '',
     description: '',
@@ -38,6 +40,7 @@ const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: Cre
   });
 
   const handleInputChange = (field: keyof CreatePaymentRequest, value: any) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -56,12 +59,13 @@ const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: Cre
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.paymentType || !formData.description || formData.amount <= 0 || !formData.dueDate) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
+    const errors: Record<string, string> = {};
+    if (!formData.paymentType) errors.paymentType = 'Payment type is required';
+    if (!formData.description) errors.description = 'Description is required';
+    if (!formData.amount || formData.amount <= 0) errors.amount = 'Amount must be greater than 0';
+    if (!formData.dueDate) errors.dueDate = 'Due date is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -89,6 +93,7 @@ const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: Cre
       });
       onOpenChange(false);
       onSuccess?.();
+      setFieldErrors({});
       // Reset form
       setFormData({
         paymentType: '',
@@ -107,11 +112,11 @@ const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: Cre
         lateFeeAfterDays: 5,
         reminderDaysBefore: 3
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create payment:', error);
       toast({
-        title: "Error",
-        description: "Failed to create payment",
+        title: "Failed to Create Payment",
+        description: getErrorMessage(error, 'Something went wrong. Please try again.'),
         variant: "destructive",
       });
     } finally {
@@ -141,7 +146,9 @@ const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: Cre
                     value={formData.paymentType}
                     onChange={(e) => handleInputChange('paymentType', e.target.value)}
                     placeholder="e.g., Tuition Fee"
+                    className={fieldErrors.paymentType ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   />
+                  {fieldErrors.paymentType && <p className="text-xs text-red-500 mt-1">{fieldErrors.paymentType}</p>}
                 </div>
                 <div>
                   <Label htmlFor="amount">Amount *</Label>
@@ -153,7 +160,9 @@ const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: Cre
                     value={formData.amount}
                     onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
                     placeholder="0.00"
+                    className={fieldErrors.amount ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   />
+                  {fieldErrors.amount && <p className="text-xs text-red-500 mt-1">{fieldErrors.amount}</p>}
                 </div>
               </div>
               
@@ -164,7 +173,9 @@ const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: Cre
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
                   placeholder="Describe the payment purpose"
+                  className={fieldErrors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 />
+                {fieldErrors.description && <p className="text-xs text-red-500 mt-1">{fieldErrors.description}</p>}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -175,7 +186,9 @@ const CreatePaymentDialog = ({ open, onOpenChange, instituteId, onSuccess }: Cre
                     type="datetime-local"
                     value={formData.dueDate}
                     onChange={(e) => handleInputChange('dueDate', e.target.value)}
+                    className={fieldErrors.dueDate ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   />
+                  {fieldErrors.dueDate && <p className="text-xs text-red-500 mt-1">{fieldErrors.dueDate}</p>}
                 </div>
                 <div>
                   <Label htmlFor="targetType">Target Type</Label>

@@ -36,7 +36,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         limit: 5,
       });
       setNotifications(result.data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load notifications:', error);
     } finally {
       setLoading(false);
@@ -56,7 +56,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
       );
       decrementUnread();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to mark as read:', error);
     }
   };

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import PageContainer from '@/components/layout/PageContainer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CreditCard, ArrowLeft, Download, Search, Eye, Plus, RefreshCw, Filter, CheckCircle } from 'lucide-react';
+import { CreditCard, ArrowLeft, Download, Search, Eye, Plus, RefreshCw, Filter, CheckCircle, AlertCircle, Calendar, LayoutGrid, Table2, Banknote, Trash2 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,17 @@ import MUITable from '@/components/ui/mui-table';
 import { useTableData } from '@/hooks/useTableData';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useViewMode } from '@/hooks/useViewMode';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const InstitutePayments = () => {
   console.log('🚀 InstitutePayments component rendering');
@@ -26,7 +38,7 @@ const InstitutePayments = () => {
     navigate = useNavigate();
     location = useLocation();
     console.log('✅ Router context available');
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Router context not available:', error);
     // Fallback navigation function
     navigate = (path: string | number) => {
@@ -39,12 +51,16 @@ const InstitutePayments = () => {
   }
   const {
     selectedInstitute,
-    user
+    user,
+    isViewingAsParent,
+    selectedChild
   } = useAuth();
   const {
     toast
   } = useToast();
   const effectiveRole = useInstituteRole();
+  // When parent is viewing as child, use the child's student ID for API calls
+  const effectiveUserId = isViewingAsParent && selectedChild ? selectedChild.id : user?.id;
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<InstitutePayment | null>(null);
@@ -55,8 +71,11 @@ const InstitutePayments = () => {
   const isInstituteAdmin = effectiveRole === 'InstituteAdmin';
   const isStudent = effectiveRole === 'Student';
   const isTeacher = effectiveRole === 'Teacher';
-
-  // Build endpoint strictly based on allowed roles (fallback to general list for students)
+  const { viewMode, setViewMode } = useViewMode();
+  const CARD_INITIAL_SHOW = 8;
+  const [showAllPaymentCards, setShowAllPaymentCards] = useState(false);
+  const [deleteConfirmPayment, setDeleteConfirmPayment] = useState<InstitutePayment | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const endpoint = (isInstituteAdmin || isTeacher || isStudent)
     ? `/institute-payments/institute/${selectedInstitute?.id}/payments`
     : '';
@@ -66,15 +85,15 @@ const InstitutePayments = () => {
     endpoint,
     defaultParams: {
       search: searchQuery,
-      userId: user?.id,
+      userId: effectiveUserId,
       role: effectiveRole
     },
     cacheOptions: {
-      userId: user?.id,
+      userId: effectiveUserId,
       role: effectiveRole,
       instituteId: selectedInstitute?.id
     },
-    dependencies: [selectedInstitute?.id, endpoint, searchQuery, user?.id, effectiveRole],
+    dependencies: [selectedInstitute?.id, endpoint, searchQuery, effectiveUserId, effectiveRole],
     pagination: {
       defaultLimit: 50,
       availableLimits: [25, 50, 100]
@@ -87,16 +106,26 @@ const InstitutePayments = () => {
     const loadMySubmissions = async () => {
       if (isStudent && selectedInstitute?.id && !submissionsLoaded) {
         try {
-          const response = await institutePaymentsApi.getMySubmissions(selectedInstitute.id);
-          setMySubmissions(response.data?.submissions || []);
+          let response;
+          if (isViewingAsParent && selectedChild) {
+            // Use parent/admin endpoint to get child's submissions
+            response = await institutePaymentsApi.getStudentSubmissions(selectedInstitute.id, selectedChild.id);
+            setMySubmissions((response.data?.submissions || []).map((s: any) => ({
+              ...s,
+              paymentId: s.paymentId || s.payment?.id
+            })));
+          } else {
+            response = await institutePaymentsApi.getMySubmissions(selectedInstitute.id);
+            setMySubmissions(response.data?.submissions || []);
+          }
           setSubmissionsLoaded(true);
-        } catch (error) {
+        } catch (error: any) {
           console.error('Failed to load submissions:', error);
         }
       }
     };
     loadMySubmissions();
-  }, [isStudent, selectedInstitute?.id, submissionsLoaded]);
+  }, [isStudent, selectedInstitute?.id, submissionsLoaded, isViewingAsParent, selectedChild?.id]);
 
   // Create a map of paymentId -> submission status
   const submissionStatusMap = useMemo(() => {
@@ -138,9 +167,40 @@ const InstitutePayments = () => {
   const handleViewSubmissions = (payment: InstitutePayment) => {
     try {
       navigate(`/payment-submissions/${payment.id}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Navigation error:', error);
       window.location.href = `/payment-submissions/${payment.id}`;
+    }
+  };
+
+  const handleViewPhysicalPayments = (payment: InstitutePayment) => {
+    try {
+      navigate(`/payment-submissions-pysical/${payment.id}`);
+    } catch (error: any) {
+      console.error('Navigation error:', error);
+      window.location.href = `/payment-submissions-pysical/${payment.id}`;
+    }
+  };
+
+  const handleDeletePayment = async () => {
+    if (!deleteConfirmPayment || !selectedInstitute?.id) return;
+    setDeleting(true);
+    try {
+      await institutePaymentsApi.deletePayment(selectedInstitute.id, deleteConfirmPayment.id);
+      toast({
+        title: "Payment Deleted",
+        description: `"${deleteConfirmPayment.paymentType}" has been deleted successfully.`,
+      });
+      setDeleteConfirmPayment(null);
+      tableData.actions.refresh();
+    } catch (error: any) {
+      toast({
+        title: "Cannot Delete Payment",
+        description: error.message || 'Failed to delete payment. It may have submissions.',
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
     }
   };
   
@@ -154,7 +214,7 @@ const InstitutePayments = () => {
         return {
           ...payment,
           hasSubmitted: submissionInfo?.hasSubmitted || false,
-          mySubmissionStatus: submissionInfo?.status || null
+          mySubmissionStatus: (submissionInfo?.status || null) as 'VERIFIED' | 'PENDING' | 'REJECTED' | null
         };
       })
       .filter(payment => {
@@ -260,7 +320,7 @@ const InstitutePayments = () => {
               <Button variant="ghost" onClick={() => {
                 try {
                   navigate(-1);
-                } catch (error) {
+                } catch (error: any) {
                   console.error('Navigation error:', error);
                   window.history.back();
                 }
@@ -313,6 +373,23 @@ const InstitutePayments = () => {
                   <span className="sm:hidden">Refresh</span>
                 </Button>
                 
+                {/* View Mode Toggle */}
+                <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+                  <button
+                    onClick={() => setViewMode('card')}
+                    className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    title="Card View"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('table')}
+                    className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    title="Table View"
+                  >
+                    <Table2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -345,27 +422,27 @@ const InstitutePayments = () => {
           </Card>}
 
         {/* Load Data Section */}
-        {!Array.isArray(tableData.state.data) || tableData.state.data.length === 0 ? <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              Institute Payments
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              {!selectedInstitute?.id
-                ? 'Please select an institute first.'
-                : (!endpoint
-                    ? "You don't have permission to view payments for this institute with your current role."
-                    : 'Click the button below to load payments data')}
-            </p>
-            <Button onClick={() => tableData.actions.refresh()} disabled={tableData.state.loading || !selectedInstitute?.id || !endpoint} className="bg-blue-600 hover:bg-blue-700">
-              {tableData.state.loading ? <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Loading Data...
-                </> : <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Load Data
-                </>}
+        {!Array.isArray(tableData.state.data) || tableData.state.data.length === 0 ?
+          <EmptyState
+            icon={CreditCard}
+            title="Institute Payments"
+            description={!selectedInstitute?.id
+              ? 'Please select an institute first.'
+              : (!endpoint
+                  ? "You don't have permission to view payments for this institute with your current role."
+                  : 'Click the button below to load payments data')}
+          >
+            <Button
+              onClick={() => tableData.actions.refresh()}
+              disabled={tableData.state.loading || !selectedInstitute?.id || !endpoint}
+            >
+              {tableData.state.loading ? (
+                <><RefreshCw className="h-4 w-4 mr-2 animate-spin" />Loading Data...</>
+              ) : (
+                <><RefreshCw className="h-4 w-4 mr-2" />Load Data</>
+              )}
             </Button>
-          </div> : <>
+          </EmptyState> : <>
             {/* Payments Table */}
             {!tableData.state.loading && !tableData.state.error && <Card>
             <CardHeader>
@@ -382,23 +459,147 @@ const InstitutePayments = () => {
             <CardContent className="p-0">
               <div className="w-full overflow-auto">
                 <div className="min-w-full">
-                  <MUITable title="" columns={columns} data={filteredData} page={tableData.pagination.page} rowsPerPage={tableData.pagination.limit} totalCount={filteredData.length} onPageChange={tableData.actions.setPage} onRowsPerPageChange={tableData.actions.setLimit} rowsPerPageOptions={tableData.availableLimits} customActions={[
-                  // Student actions
-                  ...(isStudent ? [{
-                    label: 'Submit Payment',
-                    action: handleSubmitPayment,
-                    icon: <CreditCard className="h-4 w-4" />,
-                    variant: 'default' as const,
-                    disabledCondition: (row: InstitutePayment) => row.hasSubmitted === true,
-                    disabledLabel: 'Already Submitted'
-                  }] : []),
-                  // InstituteAdmin/Teacher actions  
-                  ...(isInstituteAdmin || isTeacher ? [{
-                    label: 'View Submissions',
-                    action: handleViewSubmissions,
-                    icon: <Eye className="h-4 w-4" />,
-                    variant: 'default' as const
-                  }] : [])]} />
+                  {viewMode === 'card' ? (
+                    <div className="p-4 grid grid-cols-1 gap-4">
+                      {(showAllPaymentCards ? filteredData : filteredData.slice(0, CARD_INITIAL_SHOW)).map(payment => {
+                        const dueDate = payment.dueDate ? new Date(payment.dueDate) : null;
+                        const isOverdue = dueDate ? dueDate < new Date() && dueDate.toDateString() !== new Date().toDateString() : false;
+                        const statusActive = (payment.status || 'ACTIVE') === 'ACTIVE';
+                        const total = payment.totalSubmissions ?? 0;
+                        const verified = payment.verifiedSubmissions ?? 0;
+                        const progressPct = total > 0 ? Math.round((verified / total) * 100) : 0;
+                        return (
+                          <Card key={payment.id} className={`hover:shadow-lg transition-all duration-200 overflow-hidden ${
+                            isOverdue ? 'border-destructive shadow-destructive/10' : 'border-border'
+                          }`}>
+                            {/* Accent bar */}
+                            <div className={`h-1.5 w-full ${
+                              isOverdue ? 'bg-destructive' : statusActive ? 'bg-primary' : 'bg-muted-foreground/40'
+                            }`} />
+                            {/* Header - always visible */}
+                            <div className="p-3 flex items-start gap-3">
+                              <div className={`p-2 rounded-xl shrink-0 ${
+                                isOverdue ? 'bg-destructive/10' : 'bg-primary/10'
+                              }`}>
+                                <CreditCard className={`h-4 w-4 ${
+                                  isOverdue ? 'text-destructive' : 'text-primary'
+                                }`} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{payment.paymentType}</p>
+                                <div className="text-xl font-extrabold text-foreground leading-tight mt-0.5">Rs {Number(payment.amount || 0).toLocaleString()}</div>
+                                {dueDate && (
+                                  <p className={`text-xs mt-1 flex items-center gap-1 ${
+                                    isOverdue ? 'text-destructive font-semibold' : 'text-muted-foreground'
+                                  }`}>
+                                    {isOverdue ? <AlertCircle className="h-3 w-3" /> : <Calendar className="h-3 w-3" />}
+                                    {isOverdue ? 'Overdue · ' : 'Due '}{dueDate.toLocaleDateString()}
+                                  </p>
+                                )}
+                              </div>
+                              <Badge className={`text-xs shrink-0 ${
+                                isOverdue
+                                  ? 'bg-destructive/10 text-destructive border-destructive/30'
+                                  : statusActive
+                                  ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/20 dark:text-green-400'
+                                  : 'bg-muted text-muted-foreground'
+                              }`} variant="outline">{payment.status || 'ACTIVE'}</Badge>
+                            </div>
+                            {/* Always-visible body */}
+                            <div className="px-3 pb-3 border-t pt-2 space-y-2">
+                              {payment.description && (
+                                <p className="text-xs text-muted-foreground leading-relaxed">{payment.description}</p>
+                              )}
+                              {(isInstituteAdmin || isTeacher) && total > 0 && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>Submissions</span>
+                                    <span className="font-medium">{verified}/{total} verified</span>
+                                  </div>
+                                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+                                  </div>
+                                </div>
+                              )}
+                              {isStudent && payment.mySubmissionStatus && (
+                                <div className="text-xs">
+                                  <Badge className={
+                                    payment.mySubmissionStatus === 'VERIFIED' ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/20 dark:text-green-400' :
+                                    payment.mySubmissionStatus === 'PENDING' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                                    payment.mySubmissionStatus === 'REJECTED' ? 'bg-red-100 text-red-800 border-red-200' :
+                                    'bg-blue-100 text-blue-800 border-blue-200'
+                                  }>{payment.mySubmissionStatus}</Badge>
+                                </div>
+                              )}
+                              <div className="flex gap-1.5 pt-1">
+                                {isStudent && (
+                                  <Button size="sm" className={`flex-1 h-7 text-xs px-2 ${payment.hasSubmitted ? 'opacity-60' : ''}`} disabled={payment.hasSubmitted} onClick={() => !payment.hasSubmitted && handleSubmitPayment(payment)}>
+                                    <CreditCard className="h-3 w-3 mr-1" />{payment.hasSubmitted ? 'Submitted' : 'Submit'}
+                                  </Button>
+                                )}
+                                {(isInstituteAdmin || isTeacher) && (
+                                  <>
+                                    <Button variant="outline" size="sm" className="flex-1 h-7 text-xs px-2" onClick={() => handleViewSubmissions(payment)}>
+                                      <Eye className="h-3 w-3 mr-1" />Online Payments
+                                    </Button>
+                                    <Button variant="outline" size="sm" className="flex-1 h-7 text-xs px-2 border-green-500 text-green-700 hover:bg-green-50" onClick={() => handleViewPhysicalPayments(payment)}>
+                                      <Banknote className="h-3 w-3 mr-1" />Physical Payment
+                                    </Button>
+                                    {isInstituteAdmin && payment.totalSubmissions === 0 && (
+                                      <Button variant="outline" size="sm" className="h-7 text-xs px-2 border-destructive text-destructive hover:bg-destructive/10" onClick={() => setDeleteConfirmPayment(payment)}>
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </Card>
+                        );
+                      })}
+                      {filteredData.length > CARD_INITIAL_SHOW && (
+                        <div className="col-span-full">
+                          <Button variant="outline" className="w-full" onClick={() => setShowAllPaymentCards(v => !v)}>
+                            {showAllPaymentCards ? 'Show less' : `Show all ${filteredData.length} payments`}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <MUITable title="" columns={columns} data={filteredData} page={tableData.pagination.page} rowsPerPage={tableData.pagination.limit} totalCount={filteredData.length} onPageChange={tableData.actions.setPage} onRowsPerPageChange={tableData.actions.setLimit} rowsPerPageOptions={tableData.availableLimits} customActions={[
+                    // Student actions
+                    ...(isStudent ? [{
+                      label: 'Submit Payment',
+                      action: handleSubmitPayment,
+                      icon: <CreditCard className="h-4 w-4" />,
+                      variant: 'default' as const,
+                      disabledCondition: (row: InstitutePayment) => row.hasSubmitted === true,
+                      disabledLabel: 'Already Submitted'
+                    }] : []),
+                    // InstituteAdmin/Teacher actions  
+                    ...(isInstituteAdmin || isTeacher ? [
+                      {
+                        label: 'Online Payments',
+                        action: handleViewSubmissions,
+                        icon: <Eye className="h-4 w-4" />,
+                        variant: 'default' as const
+                      },
+                      {
+                        label: 'Physical Payment',
+                        action: handleViewPhysicalPayments,
+                        icon: <Banknote className="h-4 w-4" />,
+                        variant: 'outline' as const
+                      }
+                    ] : []),
+                    ...(isInstituteAdmin ? [{
+                      label: 'Delete',
+                      action: (row: InstitutePayment) => setDeleteConfirmPayment(row),
+                      icon: <Trash2 className="h-4 w-4" />,
+                      variant: 'destructive' as const,
+                      disabledCondition: (row: InstitutePayment) => (row.totalSubmissions ?? 0) > 0,
+                      disabledLabel: 'Has Submissions'
+                    }] : [])]} />
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -466,6 +667,29 @@ const InstitutePayments = () => {
             });
           }} />
           </>}
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!deleteConfirmPayment} onOpenChange={(open) => { if (!open) setDeleteConfirmPayment(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Payment</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete the payment <strong>"{deleteConfirmPayment?.paymentType}"</strong> (Rs {Number(deleteConfirmPayment?.amount || 0).toLocaleString()})?
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeletePayment}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </PageContainer>;
   };
   return renderComponent();

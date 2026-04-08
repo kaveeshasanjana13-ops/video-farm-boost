@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { examResultsApi, type ExamResult, type ExamResultsQueryParams } from '@/api/examResults.api';
 import { useApiRequest } from '@/hooks/useApiRequest';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const ChildResults = () => {
   const { selectedChild, selectedInstitute, selectedClass, selectedSubject, user } = useAuth();
@@ -34,6 +35,7 @@ const ChildResults = () => {
       const params: ExamResultsQueryParams = {
         page: currentPage,
         limit: 10,
+        studentId: selectedChild.id,
         userId: user?.id,
         role: userRole || 'User'
       };
@@ -45,17 +47,14 @@ const ChildResults = () => {
 
       const response = await fetchResults(params);
       
-      // Filter results for the selected child
-      const childResults = response.data.filter(result => result.studentId === selectedChild.id);
-      
-      setExamResults(childResults);
-      setTotalResults(childResults.length);
+      setExamResults(response.data);
+      setTotalResults(response.meta?.total ?? response.data.length);
       
       toast({
         title: "Results Loaded",
-        description: `Loaded ${childResults.length} exam results`,
+        description: `Loaded ${response.data.length} exam results`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading child results:', error);
       toast({
         title: "Error",
@@ -294,13 +293,11 @@ const ChildResults = () => {
               </Table>
             </div>
           ) : (
-            <div className="text-center py-8">
-              <Award className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Exam Results</h3>
-              <p className="text-muted-foreground">
-                No exam results found for this child.
-              </p>
-            </div>
+            <EmptyState
+              icon={Award}
+              title="No Exam Results"
+              description="No exam results found for this child."
+            />
           )}
         </CardContent>
       </Card>

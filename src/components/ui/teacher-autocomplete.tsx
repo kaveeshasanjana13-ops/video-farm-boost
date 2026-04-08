@@ -104,7 +104,7 @@ export const TeacherAutocomplete: React.FC<TeacherAutocompleteProps> = ({
       
       const teacherList = response?.data || response || [];
       setTeachers(teacherList);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching teachers:', error);
     } finally {
       setLoading(false);

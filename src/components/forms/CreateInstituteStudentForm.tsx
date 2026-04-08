@@ -5,12 +5,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, CalendarIcon, Eye, Upload } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Upload, Search, CheckCircle, X, UserCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { studentsApi, StudentCreateData } from '@/api/students.api';
 import { usersApi, BasicUser } from '@/api/users.api';
-import UserInfoDialog from './UserInfoDialog';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
+import { apiClient } from '@/api/client';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { getBaseUrl, getApiHeadersAsync } from '@/contexts/utils/auth.api';
+import { getErrorMessage } from '@/api/apiError';
 interface CreateInstituteStudentFormProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,9 +27,22 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [userInfoDialog, setUserInfoDialog] = useState<{ open: boolean; user: BasicUser | null }>({
-    open: false,
-    user: null
+
+  // Parent verification state
+  const [parentSearch, setParentSearch] = useState<Record<string, string>>({
+    father: '', mother: '', guardian: ''
+  });
+  const [parentSearchType, setParentSearchType] = useState<Record<string, 'phone' | 'email' | 'id'>>({
+    father: 'phone', mother: 'phone', guardian: 'phone'
+  });
+  const [parentPreview, setParentPreview] = useState<Record<string, BasicUser | null>>({
+    father: null, mother: null, guardian: null
+  });
+  const [parentVerified, setParentVerified] = useState<Record<string, boolean>>({
+    father: false, mother: false, guardian: false
+  });
+  const [parentSearchLoading, setParentSearchLoading] = useState<Record<string, boolean>>({
+    father: false, mother: false, guardian: false
   });
   const [formData, setFormData] = useState({
     // User data
@@ -49,6 +65,8 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
     fatherId: '',
     motherId: '',
     guardianId: '',
+    // Notification delivery preference
+    notificationDeliveryTo: '' as '' | 'father' | 'mother' | 'guardian',
     // Student data
     studentId: '',
     emergencyContact: '',
@@ -56,34 +74,94 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
     allergies: '',
     bloodGroup: ''
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const handleInputChange = (field: string, value: string) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
   };
 
-  const handleViewUser = async (userId: string) => {
-    if (!userId) {
+  const handleSearchParent = async (role: string) => {
+    const searchValue = parentSearch[role]?.trim();
+    const searchType = parentSearchType[role];
+    if (!searchValue) {
       toast({
-        title: "Missing ID",
-        description: "Please enter a user ID first",
+        title: "Missing Input",
+        description: `Please enter a ${searchType} to search`,
         variant: "destructive",
       });
       return;
     }
 
+    setParentSearchLoading(prev => ({ ...prev, [role]: true }));
     try {
-      const user = await usersApi.getBasicInfo(userId);
-      setUserInfoDialog({ open: true, user });
+      let user: BasicUser;
+      if (searchType === 'phone') {
+        user = await apiClient.get(`/users/basic/phone/${searchValue}`);
+      } else if (searchType === 'email') {
+        user = await apiClient.get(`/users/basic/email/${searchValue}`);
+      } else {
+        user = await usersApi.getBasicInfo(searchValue);
+      }
+      setParentPreview(prev => ({ ...prev, [role]: user }));
+      setParentVerified(prev => ({ ...prev, [role]: false }));
     } catch (error: any) {
-      console.error('Error fetching user info:', error);
       toast({
-        title: "Error",
-        description: error?.message || 'Failed to fetch user information',
+        title: "Not Found",
+        description: getErrorMessage(error, `No user found with this ${searchType}`),
         variant: "destructive",
       });
+      setParentPreview(prev => ({ ...prev, [role]: null }));
+      setParentVerified(prev => ({ ...prev, [role]: false }));
+    } finally {
+      setParentSearchLoading(prev => ({ ...prev, [role]: false }));
     }
+  };
+
+  const handleAcceptParent = (role: string) => {
+    const user = parentPreview[role];
+    if (!user) return;
+    const field = role === 'father' ? 'fatherId' : role === 'mother' ? 'motherId' : 'guardianId';
+    setFormData(prev => {
+      const updated = { ...prev, [field]: user.id };
+      // Auto-set notification delivery if this is the only linked parent
+      const linkedCount = [updated.fatherId, updated.motherId, updated.guardianId].filter(Boolean).length;
+      if (linkedCount === 1) {
+        updated.notificationDeliveryTo = role as 'father' | 'mother' | 'guardian';
+      }
+      return updated;
+    });
+    setParentVerified(prev => ({ ...prev, [role]: true }));
+    toast({
+      title: "Parent Accepted",
+      description: `${user.fullName} has been linked as ${role}`,
+    });
+  };
+
+  const handleRemoveParent = (role: string) => {
+    const field = role === 'father' ? 'fatherId' : role === 'mother' ? 'motherId' : 'guardianId';
+    setFormData(prev => {
+      const updated = { ...prev, [field]: '' };
+      // Clear notification delivery if this parent was selected
+      if (prev.notificationDeliveryTo === role) {
+        updated.notificationDeliveryTo = '' as '' | 'father' | 'mother' | 'guardian';
+      }
+      // Auto-set to remaining parent if only one left
+      const remaining = (['father', 'mother', 'guardian'] as const).filter(r => {
+        const f = r === 'father' ? 'fatherId' : r === 'mother' ? 'motherId' : 'guardianId';
+        return !!updated[f];
+      });
+      if (remaining.length === 1) {
+        updated.notificationDeliveryTo = remaining[0];
+      }
+      return updated;
+    });
+    setParentPreview(prev => ({ ...prev, [role]: null }));
+    setParentVerified(prev => ({ ...prev, [role]: false }));
+    setParentSearch(prev => ({ ...prev, [role]: '' }));
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,14 +173,39 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
       });
       return;
     }
+
+    const hasContactInfo = !!(formData.email?.trim() || formData.phone?.trim());
+    const hasParent = !!(formData.fatherId || formData.motherId || formData.guardianId);
+
+    // If no phone and no email, at least one parent must be assigned
+    if (!hasContactInfo && !hasParent) {
+      toast({
+        title: "Parent Required",
+        description: "When no email or phone number is provided, at least one parent must be assigned to receive notifications.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // If no contact info and multiple parents linked, must select notification delivery target
+    const linkedParentCount = [formData.fatherId, formData.motherId, formData.guardianId].filter(Boolean).length;
+    if (!hasContactInfo && linkedParentCount > 1 && !formData.notificationDeliveryTo) {
+      toast({
+        title: "Select Notification Recipient",
+        description: "Please select which parent should receive notifications for this student.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const studentData: StudentCreateData = {
         user: {
           firstName: formData.firstName,
           lastName: formData.lastName,
-          email: formData.email,
-          phone: formData.phone,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
           userType: 'STUDENT',
           dateOfBirth: formData.dateOfBirth,
           gender: formData.gender,
@@ -141,13 +244,10 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
           );
           
           // Step 2: Update student with relativePath
-          const token = localStorage.getItem('access_token');
+          const headers = await getApiHeadersAsync();
           const imageResponse = await fetch(`${getBaseUrl()}/students/${newStudent.userId}/image-url`, {
             method: 'PATCH',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
+            headers,
             body: JSON.stringify({ imageUrl: relativePath })
           });
           
@@ -189,6 +289,7 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
         fatherId: '',
         motherId: '',
         guardianId: '',
+        notificationDeliveryTo: '' as '' | 'father' | 'mother' | 'guardian',
         studentId: '',
         emergencyContact: '',
         medicalConditions: '',
@@ -196,9 +297,12 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
         bloodGroup: ''
       });
       setSelectedImage(null);
+      setParentSearch({ father: '', mother: '', guardian: '' });
+      setParentPreview({ father: null, mother: null, guardian: null });
+      setParentVerified({ father: false, mother: false, guardian: false });
       onSuccess();
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating student:', error);
       toast({
         title: "Error",
@@ -224,34 +328,38 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="firstName">First Name *</Label>
-                  <Input id="firstName" value={formData.firstName} onChange={e => handleInputChange('firstName', e.target.value)} required />
+                  <Input id="firstName" value={formData.firstName} onChange={e => handleInputChange('firstName', e.target.value)} required
+              className={`${fieldErrors.firstName ? 'border-red-500 focus-visible:ring-red-500' : ''}`} />
+ {fieldErrors.firstName && <p className="text-xs text-red-500 mt-1">{fieldErrors.firstName}</p>}
                 </div>
                 <div>
                   <Label htmlFor="lastName">Last Name *</Label>
-                  <Input id="lastName" value={formData.lastName} onChange={e => handleInputChange('lastName', e.target.value)} required />
+                  <Input id="lastName" value={formData.lastName} onChange={e => handleInputChange('lastName', e.target.value)} required
+              className={`${fieldErrors.lastName ? 'border-red-500 focus-visible:ring-red-500' : ''}`} />
+ {fieldErrors.lastName && <p className="text-xs text-red-500 mt-1">{fieldErrors.lastName}</p>}
                 </div>
               </div>
 
               <div>
-                <Label htmlFor="email">Email *</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input 
                   id="email" 
                   type="email" 
                   value={formData.email} 
                   onChange={e => handleInputChange('email', e.target.value)} 
                   className="h-16 text-lg"
-                  required 
+                  placeholder="Optional - for student login"
                 />
               </div>
 
               <div>
-                <Label htmlFor="phone">Phone Number *</Label>
+                <Label htmlFor="phone">Phone Number</Label>
                 <Input 
                   id="phone" 
                   value={formData.phone} 
                   onChange={e => handleInputChange('phone', e.target.value)} 
                   className="h-16 text-lg"
-                  required 
+                  placeholder="Optional"
                 />
               </div>
 
@@ -263,10 +371,12 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
                     type="date"
                     value={formData.dateOfBirth}
                     onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                    className="h-16 text-lg"
+                    className={`h-16 text-lg${fieldErrors.dateOfBirth ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                     placeholder="mm/dd/yyyy"
                     required
                   />
+
+                  {fieldErrors.dateOfBirth && <p className="text-xs text-red-500 mt-1">{fieldErrors.dateOfBirth}</p>}
                   <CalendarIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
                 </div>
               </div>
@@ -402,74 +512,159 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
 
               <h3 className="text-lg font-semibold mt-6">Parent Information</h3>
               
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="fatherId">Father ID</Label>
-                  <div className="flex gap-1 mt-2">
-                    <Input 
-                      id="fatherId" 
-                      value={formData.fatherId} 
-                      onChange={e => handleInputChange('fatherId', e.target.value)} 
-                      className="h-16 text-lg"
-                      placeholder="Enter father's user ID"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-16 w-12 shrink-0"
-                      onClick={() => handleViewUser(formData.fatherId)}
-                      disabled={!formData.fatherId}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
+              {(['father', 'mother', 'guardian'] as const).map((role) => (
+                <div key={role} className="border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-medium capitalize">{role}</Label>
+                    {parentVerified[role] && (
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        <CheckCircle className="h-3 w-3 mr-1" /> Verified
+                      </Badge>
+                    )}
                   </div>
+
+                  {parentVerified[role] && parentPreview[role] ? (
+                    // Show accepted parent summary
+                    <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={parentPreview[role]!.imageUrl} alt={parentPreview[role]!.fullName} />
+                        <AvatarFallback>{parentPreview[role]!.fullName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <p className="font-medium">{parentPreview[role]!.fullName}</p>
+                        <p className="text-xs text-muted-foreground">ID: {parentPreview[role]!.id}</p>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveParent(role)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Search type selector + input */}
+                      <div className="flex gap-2">
+                        <Select
+                          value={parentSearchType[role]}
+                          onValueChange={(v) => setParentSearchType(prev => ({ ...prev, [role]: v as 'phone' | 'email' | 'id' }))}
+                        >
+                          <SelectTrigger className="w-28 h-12">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="phone">Phone</SelectItem>
+                            <SelectItem value="email">Email</SelectItem>
+                            <SelectItem value="id">User ID</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          value={parentSearch[role]}
+                          onChange={(e) => setParentSearch(prev => ({ ...prev, [role]: e.target.value }))}
+                          placeholder={
+                            parentSearchType[role] === 'phone' ? '+94771234567' :
+                            parentSearchType[role] === 'email' ? 'parent@email.com' :
+                            'Enter user ID'
+                          }
+                          className="h-12 flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-12 px-4"
+                          onClick={() => handleSearchParent(role)}
+                          disabled={parentSearchLoading[role] || !parentSearch[role]?.trim()}
+                        >
+                          {parentSearchLoading[role] ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Search className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+
+                      {/* Parent preview card with accept button */}
+                      {parentPreview[role] && !parentVerified[role] && (
+                        <div className="border rounded-lg p-4 bg-muted/50 space-y-3">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-14 w-14">
+                              <AvatarImage src={parentPreview[role]!.imageUrl} alt={parentPreview[role]!.fullName} />
+                              <AvatarFallback>{parentPreview[role]!.fullName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="font-semibold text-lg">{parentPreview[role]!.fullName}</p>
+                              <Badge variant="outline" className="mt-1">{parentPreview[role]!.userType}</Badge>
+                              <p className="text-xs text-muted-foreground mt-1">ID: {parentPreview[role]!.id}</p>
+                            </div>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Is this the correct {role} of the student? Please verify before accepting.
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              onClick={() => handleAcceptParent(role)}
+                              className="flex-1"
+                            >
+                              <UserCheck className="h-4 w-4 mr-2" />
+                              Accept as {role.charAt(0).toUpperCase() + role.slice(1)}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => setParentPreview(prev => ({ ...prev, [role]: null }))}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-                <div>
-                  <Label htmlFor="motherId">Mother ID</Label>
-                  <div className="flex gap-1 mt-2">
-                    <Input 
-                      id="motherId" 
-                      value={formData.motherId} 
-                      onChange={e => handleInputChange('motherId', e.target.value)} 
-                      className="h-16 text-lg"
-                      placeholder="Enter mother's user ID"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-16 w-12 shrink-0"
-                      onClick={() => handleViewUser(formData.motherId)}
-                      disabled={!formData.motherId}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </div>
+              ))}
+
+              {/* Notice: parent required when no contact info */}
+              {!formData.email?.trim() && !formData.phone?.trim() && (
+                <div className={`rounded-lg p-4 text-sm ${
+                  formData.fatherId || formData.motherId || formData.guardianId
+                    ? 'bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+                    : 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                }`}>
+                  {formData.fatherId || formData.motherId || formData.guardianId ? (
+                    <p>No email or phone provided. Notifications will be delivered to the assigned parent(s).</p>
+                  ) : (
+                    <p className="font-medium">⚠ No email or phone number provided. You must assign at least one parent so they can receive notifications for this student.</p>
+                  )}
                 </div>
-                <div>
-                  <Label htmlFor="guardianId">Guardian ID</Label>
-                  <div className="flex gap-1 mt-2">
-                    <Input 
-                      id="guardianId" 
-                      value={formData.guardianId} 
-                      onChange={e => handleInputChange('guardianId', e.target.value)} 
-                      className="h-16 text-lg"
-                      placeholder="Enter guardian's user ID"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-16 w-12 shrink-0"
-                      onClick={() => handleViewUser(formData.guardianId)}
-                      disabled={!formData.guardianId}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </div>
+              )}
+
+              {/* Notification delivery selector - when no direct contact and multiple parents linked */}
+              {!formData.email?.trim() && !formData.phone?.trim() && 
+               [formData.fatherId, formData.motherId, formData.guardianId].filter(Boolean).length > 1 && (
+                <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                  <Label className="text-base font-semibold">Deliver Notifications To *</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Multiple parents are linked. Select who should primarily receive SMS and push notifications.
+                  </p>
+                  <Select 
+                    value={formData.notificationDeliveryTo} 
+                    onValueChange={value => handleInputChange('notificationDeliveryTo', value)}
+                  >
+                    <SelectTrigger className="h-14 text-base">
+                      <SelectValue placeholder="Select parent for notifications" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formData.fatherId && parentPreview.father && (
+                        <SelectItem value="father">Father — {parentPreview.father.fullName}</SelectItem>
+                      )}
+                      {formData.motherId && parentPreview.mother && (
+                        <SelectItem value="mother">Mother — {parentPreview.mother.fullName}</SelectItem>
+                      )}
+                      {formData.guardianId && parentPreview.guardian && (
+                        <SelectItem value="guardian">Guardian — {parentPreview.guardian.fullName}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
+              )}
 
               <h3 className="text-lg font-semibold mt-6">Student Information</h3>
               
@@ -479,9 +674,11 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
                   id="studentId" 
                   value={formData.studentId} 
                   onChange={e => handleInputChange('studentId', e.target.value)} 
-                  className="h-16 text-lg"
+                  className={`h-16 text-lg${fieldErrors.studentId ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   required 
                 />
+ 
+                {fieldErrors.studentId && <p className="text-xs text-red-500 mt-1">{fieldErrors.studentId}</p>}
               </div>
 
               <div>
@@ -490,9 +687,11 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
                   id="emergencyContact" 
                   value={formData.emergencyContact} 
                   onChange={e => handleInputChange('emergencyContact', e.target.value)} 
-                  className="h-16 text-lg"
+                  className={`h-16 text-lg${fieldErrors.emergencyContact ? ' border-red-500 focus-visible:ring-red-500' : ''}`}
                   required 
                 />
+ 
+                {fieldErrors.emergencyContact && <p className="text-xs text-red-500 mt-1">{fieldErrors.emergencyContact}</p>}
               </div>
 
               <div>
@@ -548,12 +747,6 @@ const CreateInstituteStudentForm: React.FC<CreateInstituteStudentFormProps> = ({
             </Button>
           </div>
         </form>
-
-        <UserInfoDialog 
-          open={userInfoDialog.open}
-          onClose={() => setUserInfoDialog({ open: false, user: null })}
-          user={userInfoDialog.user}
-        />
       </DialogContent>
     </Dialog>;
 };

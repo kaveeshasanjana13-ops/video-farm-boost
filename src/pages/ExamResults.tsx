@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { examResultsApi, type ExamResult, type ExamResultsQueryParams } from '@/api/examResults.api';
 import { useApiRequest } from '@/hooks/useApiRequest';
+import { EmptyState } from '@/components/ui/EmptyState';
 import MUITable from '@/components/ui/mui-table';
 import { cn } from '@/lib/utils';
 
@@ -117,7 +118,7 @@ const ExamResults = () => {
         setExamDetails({ title: firstResult.exam.title, examType: firstResult.exam.examType });
       }
       toast({ title: "Results Loaded", description: `Loaded ${response.data.length} exam results` });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading exam results:', error);
       toast({ title: "Error", description: "Failed to load exam results", variant: "destructive" });
     }
@@ -508,11 +509,11 @@ const ExamResults = () => {
                       />
                     )
                   ) : (
-                    <div className="text-center py-8">
-                      <Award className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">{searchTerm ? 'No results match your search' : 'No Exam Results'}</h3>
-                      <p className="text-muted-foreground">{searchTerm ? 'Try adjusting your search criteria.' : 'No exam results found.'}</p>
-                    </div>
+                    <EmptyState
+                      icon={Award}
+                      title={searchTerm ? 'No results match your search' : 'No Exam Results'}
+                      description={searchTerm ? 'Try adjusting your search criteria.' : 'No exam results found.'}
+                    />
                   )}
                 </CardContent>
               </Card>

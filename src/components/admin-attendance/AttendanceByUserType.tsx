@@ -3,11 +3,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import adminAttendanceApi, { AdminAttendanceRecord, AdminUserType } from '@/api/adminAttendance.api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RefreshCw, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { renderAttendanceStatusBadge } from '@/components/calendar/calendarTheme';
+import { getImageUrl } from '@/utils/imageUrlHelper';
 
 const USER_TYPES: { value: AdminUserType; label: string; icon: string }[] = [
   { value: 'STUDENT', label: 'Students', icon: '' },
@@ -118,7 +120,15 @@ const AttendanceByUserType: React.FC = () => {
                   {records.map((r, i) => (
                     <TableRow key={i}>
                       <TableCell className="text-xs font-medium">
-                        {r.studentName || r.userName || r.studentId || r.userId}
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-7 w-7">
+                            <AvatarImage src={getImageUrl(r.studentImageUrl || r.imageUrl || '')} alt={r.studentName || r.userName || r.studentId || r.userId} />
+                            <AvatarFallback className="text-[10px]">
+                              {(r.studentName || r.userName || r.studentId || r.userId || '?').charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{r.studentName || r.userName || r.studentId || r.userId}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs">
                         {(r.date || r.markedAt?.split('T')[0]) &&

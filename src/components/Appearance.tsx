@@ -1,24 +1,20 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { cn } from '@/lib/utils';
 import { 
   Sun, 
+  Moon,
+  Monitor,
   LayoutGrid, 
   List,
   Palette,
   Eye
 } from 'lucide-react';
-
-interface ThemeOption {
-  value: 'light';
-  label: string;
-  icon: React.ReactNode;
-  description: string;
-}
 
 interface ViewModeOption {
   value: 'card' | 'table';
@@ -27,21 +23,18 @@ interface ViewModeOption {
   description: string;
 }
 
+const themeOptions = [
+  { id: 'light'  as const, label: 'Light',  icon: Sun,     description: 'Clean and bright interface' },
+  { id: 'dark'   as const, label: 'Dark',   icon: Moon,    description: 'Easy on the eyes in low light' },
+  { id: 'system' as const, label: 'System', icon: Monitor, description: 'Follows your device settings' },
+];
+
 const Appearance = () => {
   const { user } = useAuth();
-  const [currentTheme] = useState<'light'>('light');
+  const { theme, setTheme } = useTheme();
   const [viewMode, setViewMode] = useState<'card' | 'table'>(() => {
     return (localStorage.getItem('viewMode') as 'card' | 'table') || 'card';
   });
-
-  const themeOptions: ThemeOption[] = [
-    {
-      value: 'light',
-      label: 'Light Mode',
-      icon: <Sun className="h-5 w-5" />,
-      description: 'Clean and bright interface'
-    }
-  ];
 
   const viewModeOptions: ViewModeOption[] = [
     {
@@ -58,23 +51,11 @@ const Appearance = () => {
     }
   ];
 
-  const handleThemeChange = () => {
-    // Always use light mode
-    const root = window.document.documentElement;
-    root.classList.remove('dark');
-    root.classList.add('light');
-    localStorage.setItem('theme', 'light');
-  };
-
   const handleViewModeChange = (mode: 'card' | 'table') => {
     setViewMode(mode);
     localStorage.setItem('viewMode', mode);
+    window.dispatchEvent(new CustomEvent('viewModeChange', { detail: mode }));
   };
-
-  // Initialize theme on component mount
-  useEffect(() => {
-    handleThemeChange();
-  }, []);
 
   return (
     <div className="space-y-6">
@@ -101,31 +82,37 @@ const Appearance = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 gap-4">
-            <Card 
-              className="ring-2 ring-primary border-primary"
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 rounded-full bg-primary text-primary-foreground">
-                    <Sun className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium">Light Mode</div>
-                    <div className="text-xs text-muted-foreground">
-                      Clean and bright interface
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {themeOptions.map((opt) => {
+              const Icon = opt.icon;
+              const isActive = theme === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setTheme(opt.id)}
+                  className={cn(
+                    'relative p-4 rounded-xl border-2 transition-all duration-200 text-left',
+                    isActive
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                      : 'border-border hover:border-primary/40 hover:bg-muted/50',
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      'p-2 rounded-full transition-colors',
+                      isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                    )}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm">{opt.label}</div>
+                      <div className="text-xs text-muted-foreground">{opt.description}</div>
                     </div>
                   </div>
-                  <div className="h-2 w-2 rounded-full bg-primary" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          
-          <div className="bg-muted/50 p-3 rounded-lg">
-            <p className="text-sm text-muted-foreground">
-              <strong>Current Theme:</strong> Light Mode - Clean and bright interface
-            </p>
+                  {isActive && <div className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />}
+                </button>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
@@ -140,7 +127,7 @@ const Appearance = () => {
             <CardTitle>Display Mode</CardTitle>
           </div>
           <CardDescription>
-            Choose how content sections are displayed throughout the application
+            Choose how content sections are displayed throughout the entire application — Homework, Lectures, Exams, Results, Submissions, Attendance &amp; more
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

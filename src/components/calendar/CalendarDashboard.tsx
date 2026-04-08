@@ -24,6 +24,14 @@ const DAY_TYPE_COLORS: Record<string, string> = {
   WEEKEND: 'bg-blue-400',
 };
 
+interface DashboardCache {
+  todayData: CalendarDay | null;
+  operatingConfig: OperatingConfig[];
+  dayStats: Record<string, number>;
+  calendarGenerated: boolean;
+}
+const _dashboardCache = new Map<string, DashboardCache>(); // keyed by `${instituteId}-${year}`
+
 const CalendarDashboard: React.FC<CalendarDashboardProps> = ({ onNavigate }) => {
   const { currentInstituteId } = useAuth();
   const [todayData, setTodayData] = useState<CalendarDay | null>(null);
@@ -33,7 +41,19 @@ const CalendarDashboard: React.FC<CalendarDashboardProps> = ({ onNavigate }) => 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (currentInstituteId) loadDashboard();
+    if (!currentInstituteId) return;
+    const year = new Date().getFullYear().toString();
+    const cacheKey = `${currentInstituteId}-${year}`;
+    const cached = _dashboardCache.get(cacheKey);
+    if (cached) {
+      setTodayData(cached.todayData);
+      setOperatingConfig(cached.operatingConfig);
+      setDayStats(cached.dayStats);
+      setCalendarGenerated(cached.calendarGenerated);
+      setLoading(false);
+      return;
+    }
+    loadDashboard();
   }, [currentInstituteId]);
 
   const loadDashboard = async () => {
@@ -64,8 +84,17 @@ const CalendarDashboard: React.FC<CalendarDashboardProps> = ({ onNavigate }) => 
           cancelled: dayList.filter((d: CalendarDay) => d.dayType === 'CANCELLED').length,
         };
         setDayStats(stats);
+
+        // Store in module-level cache
+        const year = new Date().getFullYear().toString();
+        _dashboardCache.set(`${currentInstituteId}-${year}`, {
+          todayData: todayRes.status === 'fulfilled' ? todayRes.value?.data || null : null,
+          operatingConfig: configRes.status === 'fulfilled' ? configRes.value?.data || [] : [],
+          dayStats: stats,
+          calendarGenerated: dayList.length > 0,
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load dashboard:', error);
     } finally {
       setLoading(false);

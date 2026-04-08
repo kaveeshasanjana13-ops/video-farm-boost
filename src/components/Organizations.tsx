@@ -41,7 +41,9 @@ const Organizations = () => {
   const { setSelectedOrganization, user } = useAuth();
   const userRole = useInstituteRole();
   const { toast } = useToast();
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>(() =>
+    (localStorage.getItem('viewMode') as 'card' | 'table') || 'card'
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -89,7 +91,7 @@ const Organizations = () => {
       setOrganizations(response.data);
       setTotalPages(response.pagination.totalPages);
       setTotalOrganizations(response.pagination.total);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching organizations:', error);
       toast({
         title: 'Error',
@@ -155,7 +157,7 @@ const Organizations = () => {
         title: 'Success',
         description: 'Organization deleted successfully',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting organization:', error);
       toast({
         title: 'Error',

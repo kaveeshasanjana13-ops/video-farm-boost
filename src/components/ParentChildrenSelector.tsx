@@ -7,108 +7,66 @@ import { Badge } from '@/components/ui/badge';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { Users, User, Calendar, Phone, Heart, AlertTriangle } from 'lucide-react';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
-import { enhancedCachedClient } from '@/api/enhancedCachedClient';
-import { CACHE_TTL } from '@/config/cacheTTL';
-import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { Users, User, Phone, AlertTriangle, RefreshCw } from 'lucide-react';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 import { useNavigate } from 'react-router-dom';
-
-interface Child {
-  id: string;
-  name: string;
-  nameWithInitials?: string;
-  phoneNumber: string;
-  relationship: string;
-  imageUrl?: string;
-  profileImageUrl?: string;
-  instituteUserImageUrl?: string;
-}
+import type { Child } from '@/contexts/types/auth.types';
 
 interface ParentData {
   parentId: string;
   parentName: string;
-  children: Child[];
 }
 
 const ParentChildrenSelector = () => {
-  const { user, setSelectedChild } = useAuth();
+  const { user, setSelectedChild, children: cachedChildren, fetchChildren } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [parentData, setParentData] = useState<ParentData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [parentMeta, setParentMeta] = useState<ParentData | null>(null);
 
-
-  const getApiHeaders = () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) return {};
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    };
-  };
-
-  const fetchParentChildren = async (forceRefresh = false) => {
+  const loadChildren = async (forceRefresh = false) => {
     if (!user?.id) return;
-
     try {
       setIsLoading(true);
-      const userRole = useInstituteRole();
-      
-      // Use enhanced cached client
-      const data = await enhancedCachedClient.get(
-        `/parents/${user.id}/children`,
-        {},
-        {
-          ttl: CACHE_TTL.STUDENTS,  // Children data cached like students
-          forceRefresh,
-          userId: user?.id,
-          role: userRole || 'Parent'
-        }
-      );
-
-      console.log('Parent children data:', data);
-      setParentData(data);
-    } catch (error) {
-      console.error('Error fetching parent children:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch children');
-      toast({
-        title: "Error",
-        description: "Failed to load children information",
-        variant: "destructive",
-      });
+      setError('');
+      const result = await fetchChildren(forceRefresh);
+      setParentMeta({ parentId: user.id, parentName: user.name || user.nameWithInitials || '' });
+      if (result.length === 0 && forceRefresh) {
+        setError('No children found');
+      }
+    } catch (err: any) {
+      console.error('Error fetching children:', err);
+      setError(err?.message || 'Failed to fetch children');
+      toast({ title: "Error", description: "Failed to load children", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchParentChildren(false); // Use cache on mount
+    // Use cached children if available, otherwise fetch fresh
+    if (cachedChildren.length > 0) {
+      setParentMeta({ parentId: user?.id || '', parentName: user?.name || user?.nameWithInitials || '' });
+      setIsLoading(false);
+    } else {
+      loadChildren(false);
+    }
   }, [user?.id]);
 
   const handleChildSelect = (child: Child) => {
     console.log('Selected child:', child);
-    // CRITICAL: set viewAsParent = true so AppContent renders the SAME system UI in view-only mode
-    setSelectedChild(child as any, true);
-
-    // CRITICAL: use React Router navigation (keeps history/back button correct)
+    // Child from AuthContext already has userId set correctly
+    setSelectedChild(child, true);
     navigate(`/child/${child.id}/select-institute`);
-    
     toast({
       title: "Child Selected",
-      description: `Now viewing ${child.name}'s information`,
+      description: `Now viewing ${child.name || child.nameWithInitials || 'child'}'s information`,
     });
   };
 
-  const getAllChildren = () => {
-    if (!parentData) return [];
-    return parentData.children;
-  };
-
   const getRelationshipLabel = (child: Child) => {
-    return child.relationship.charAt(0).toUpperCase() + child.relationship.slice(1);
+    return (child.relationship || 'child').charAt(0).toUpperCase() + (child.relationship || 'child').slice(1);
   };
 
   const formatDate = (dateString: string) => {
@@ -136,7 +94,7 @@ const ParentChildrenSelector = () => {
     );
   }
 
-  if (error || !parentData) {
+  if (error && cachedChildren.length === 0) {
     return (
       <div className="container mx-auto p-6">
         <Card>
@@ -149,7 +107,7 @@ const ParentChildrenSelector = () => {
               <p className="text-gray-600 dark:text-gray-400 mb-4">
                 {error || 'Failed to load children information'}
               </p>
-              <Button onClick={() => fetchParentChildren(true)}>
+              <Button onClick={() => loadChildren(true)}>
                 Try Again
               </Button>
             </div>
@@ -159,20 +117,31 @@ const ParentChildrenSelector = () => {
     );
   }
 
-  const allChildren = getAllChildren();
-
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          Select Your Child
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Choose a child to view their academic information, attendance, and results.
-        </p>
+      <div className="flex items-start justify-between mb-6 gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            Select Your Child
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Choose a child to view their academic information, attendance, and results.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => loadChildren(true)}
+          disabled={isLoading}
+          className="shrink-0 gap-2"
+        >
+          <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
       {/* Parent Info */}
+      {parentMeta && (
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -182,13 +151,14 @@ const ParentChildrenSelector = () => {
         </CardHeader>
         <CardContent>
           <div className="text-center">
-            <p className="text-lg font-medium">{parentData.parentName}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Parent ID: {parentData.parentId}</p>
+            <p className="text-lg font-medium">{parentMeta.parentName}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Parent ID: {parentMeta.parentId}</p>
           </div>
         </CardContent>
       </Card>
+      )}
 
-      {allChildren.length === 0 ? (
+      {cachedChildren.length === 0 ? (
         <Card>
           <CardContent className="p-8">
             <div className="text-center">
@@ -204,7 +174,7 @@ const ParentChildrenSelector = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {allChildren.map((child) => (
+          {cachedChildren.map((child) => (
             <Card 
               key={child.id} 
               className="hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-blue-200 dark:hover:border-blue-800"
@@ -214,24 +184,24 @@ const ParentChildrenSelector = () => {
                 <div className="flex items-center space-x-4">
                   <div className="h-16 w-16 rounded-full overflow-hidden ring-2 ring-primary/10 flex-shrink-0">
                     <SafeImage
-                      src={getImageUrl(child.instituteUserImageUrl || child.profileImageUrl || child.imageUrl)}
-                      alt={`${child.name} profile photo`}
+                      src={getImageUrl(child.imageUrl)}
+                      alt={`${child.name || child.nameWithInitials || 'Child'} profile photo`}
                       className="h-full w-full object-cover"
                       fallback={
                         <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-bold text-lg">
-                          {child.name.split(' ').map(n => n.charAt(0)).join('').toUpperCase()}
+                          {(child.name || child.nameWithInitials || 'C').split(' ').map(n => n.charAt(0)).join('').toUpperCase()}
                         </div>
                       }
                     />
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-foreground">
-                      {child.nameWithInitials || (() => {
-                        const parts = child.name.split(' ');
+                      {child.nameWithInitials || child.name || (() => {
+                        const parts = (child.name || '').split(' ');
                         if (parts.length >= 2) {
                           return generateNameWithInitials(parts.slice(0, -1).join(' '), parts[parts.length - 1]);
                         }
-                        return child.name;
+                        return child.name || '';
                       })()}
                     </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -245,15 +215,17 @@ const ParentChildrenSelector = () => {
               </CardHeader>
               
               <CardContent className="space-y-3">
+                {child.email && (
                 <div className="flex items-center gap-2 text-sm">
                   <Phone className="h-4 w-4 text-green-600" />
                   <span className="text-gray-600 dark:text-gray-400">
-                    Phone: {child.phoneNumber}
+                    {child.email}
                   </span>
                 </div>
+                )}
                 
                 <Button className="w-full mt-4">
-                  View {(child.nameWithInitials || child.name).split(' ')[0]}'s Dashboard
+                  View {((child.nameWithInitials || child.name || '')).split(' ')[0]}'s Dashboard
                 </Button>
               </CardContent>
             </Card>

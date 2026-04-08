@@ -66,6 +66,8 @@ export interface Class {
   specialty: string;
 }
 
+export type SubjectVerificationStatus = 'verified' | 'pending' | 'rejected' | 'pending_payment' | 'payment_rejected' | 'enrolled_free_card' | 'not_enrolled';
+
 export interface Subject {
   id: string;
   name: string;
@@ -80,26 +82,33 @@ export interface Subject {
   imgUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+  /** Enrollment verification status for the current student (only relevant for Student role) */
+  verificationStatus?: SubjectVerificationStatus;
 }
 
 export interface Child {
-  id: string;
-  userId: string;
-  studentId: string;
-  emergencyContact: string;
-  medicalConditions: string;
-  allergies: string;
-  bloodGroup: string;
-  user: {
+  id: string;                    // For navigation routes (userId from parent-children endpoint)
+  userId: string;                // User table PK — always required
+  studentId?: string;            // Student ID number
+  name?: string;                 // Display name (from parent-children endpoint)
+  nameWithInitials?: string;     // Name with initials
+  email?: string;                // Email
+  imageUrl?: string;             // Profile image URL
+  relationship?: string;         // father/mother/guardian
+  emergencyContact?: string;
+  medicalConditions?: string;
+  allergies?: string;
+  bloodGroup?: string;
+  user?: {
     id: string;
     nameWithInitials?: string;
-    firstName?: string; // Deprecated
-    lastName?: string; // Deprecated
-    email: string;
-    imageUrl: string;
-    dateOfBirth: string;
-    gender: string;
-    userType: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    imageUrl?: string;
+    dateOfBirth?: string;
+    gender?: string;
+    userType?: string;
   };
 }
 
@@ -122,6 +131,12 @@ export interface LoginCredentials {
   password?: string;
   /** When true, backend should issue long-lived refresh token (e.g. 30 days) */
   rememberMe?: boolean;
+  /** Subdomain if logging in from abc.suraksha.lk */
+  subdomain?: string;
+  /** Custom domain if logging in from custom domain */
+  customDomain?: string;
+  /** Login method (auto-detected) */
+  loginMethod?: 'SURAKSHA_WEB' | 'SURAKSHA_APP' | 'SUBDOMAIN' | 'CUSTOM_DOMAIN';
 }
 
 export interface AuthContextType {
@@ -141,6 +156,8 @@ export interface AuthContextType {
   currentOrganizationId: string | null;
   currentTransportId: string | null;
   isViewingAsParent: boolean;
+  children: Child[];                                       // Cached children list (for parents)
+  fetchChildren: (forceRefresh?: boolean) => Promise<Child[]>; // Fetch children from backend
   login: (credentials: LoginCredentials) => Promise<void>;
   logout: () => void;
   setSelectedInstitute: (institute: Institute | null) => void;
@@ -149,7 +166,7 @@ export interface AuthContextType {
   setSelectedChild: (child: Child | null, viewAsParent?: boolean) => void;
   setSelectedOrganization: (organization: Organization | null) => void;
   setSelectedTransport: (transport: { id: string; vehicleNumber: string; bookhireId: string } | null) => void;
-  loadUserInstitutes: () => Promise<Institute[]>;
+  loadUserInstitutes: (forceRefresh?: boolean) => Promise<Institute[]>;
   refreshUserData?: (forceRefresh?: boolean) => Promise<void>;
   validateUserToken?: () => Promise<void>;
   isAuthenticated: boolean;

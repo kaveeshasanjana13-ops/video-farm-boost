@@ -135,7 +135,7 @@ export const NotificationManagement: React.FC<NotificationManagementProps> = ({
       setNotifications(result.data || []);
       setTotalPages(result.totalPages || 1);
       setTotal(result.total || 0);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load notifications:', error);
       toast.error('Failed to load notifications');
     } finally {
@@ -153,7 +153,7 @@ export const NotificationManagement: React.FC<NotificationManagementProps> = ({
       await adminNotificationService.resendNotification(notification.id);
       toast.success('Notification resent successfully');
       loadNotifications();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to resend notification:', error);
       toast.error('Failed to resend notification');
     } finally {
@@ -171,7 +171,7 @@ export const NotificationManagement: React.FC<NotificationManagementProps> = ({
       setCancelDialogOpen(false);
       setSelectedNotification(null);
       loadNotifications();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to cancel notification:', error);
       toast.error('Failed to cancel notification');
     } finally {
@@ -189,7 +189,7 @@ export const NotificationManagement: React.FC<NotificationManagementProps> = ({
       setDeleteDialogOpen(false);
       setSelectedNotification(null);
       loadNotifications();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete notification:', error);
       toast.error('Failed to delete notification');
     } finally {
@@ -202,7 +202,7 @@ export const NotificationManagement: React.FC<NotificationManagementProps> = ({
       const details = await adminNotificationService.getNotificationDetails(notification.id);
       setSelectedNotification(details);
       setDetailsDialogOpen(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load notification details:', error);
       toast.error('Failed to load notification details');
     }

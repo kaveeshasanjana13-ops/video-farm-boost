@@ -6,20 +6,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { getImageUrl } from '@/utils/imageUrlHelper';
-import { Card, CardContent } from '@/components/ui/card';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Calendar, 
-  Heart, 
+import {
+  Mail,
+  Phone,
+  Calendar,
+  Heart,
   AlertCircle,
-  Briefcase,
-  Building,
-  Users
+  Hash
 } from 'lucide-react';
 
 interface ParentInfo {
@@ -70,6 +64,16 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({
 }) => {
   if (!student) return null;
 
+  // Shows all words except the last as initials, last word in full
+  // e.g. "HEENKENDA MUDIYANSELAGE KAVEESHA KARUNARATHNA" → "H. M. K. Karunarathna"
+  const formatNameWithInitials = (name: string): string => {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length <= 1) return name;
+    const initials = parts.slice(0, -1).map(p => p.charAt(0).toUpperCase() + '.').join(' ');
+    const last = parts[parts.length - 1].charAt(0).toUpperCase() + parts[parts.length - 1].slice(1).toLowerCase();
+    return `${initials} ${last}`;
+  };
+
   // Debug logging to see what parent data we're actually receiving
   React.useEffect(() => {
     if (student) {
@@ -81,248 +85,156 @@ const StudentDetailsDialog: React.FC<StudentDetailsDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-2">
           <DialogTitle className="flex items-center gap-3">
-            <Avatar className="h-12 w-12">
+            <Avatar className="h-14 w-14 ring-4 ring-primary/10">
               <AvatarImage src={getImageUrl(student.imageUrl)} alt={student.name} />
-              <AvatarFallback>
-                {student.name.split(' ').map(n => n.charAt(0)).join('')}
+              <AvatarFallback className="text-lg font-bold bg-primary/10 text-primary">
+                {student.name.split(' ').map(n => n.charAt(0)).join('').slice(0,2)}
               </AvatarFallback>
             </Avatar>
             <div>
-              <div className="text-xl font-bold">{student.name}</div>
-              <div className="text-sm text-muted-foreground font-normal">
+              <div className="text-base font-bold leading-tight">{student.name}</div>
+              <div className="text-xs text-muted-foreground font-mono mt-0.5">
                 {student.studentId || student.userIdByInstitute || student.id}
               </div>
             </div>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Personal Information */}
-          <Card>
-            <CardContent className="pt-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <User className="h-5 w-5" />
-                Personal Information
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {student.email && (
-                  <div className="flex items-start gap-3">
-                    <Mail className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Email</p>
-                      <p className="font-medium">{student.email}</p>
-                    </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Personal Information</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15 col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60 flex items-center gap-1"><Hash className="h-2.5 w-2.5" />System ID</span>
+                <span className="text-xs font-bold font-mono text-primary">{student.id}</span>
+              </div>
+              {student.userIdByInstitute && (
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Hash className="h-2.5 w-2.5" />Institute ID</span>
+                  <span className="text-xs font-medium font-mono">{student.userIdByInstitute}</span>
+                </div>
+              )}
+              {student.studentId && (
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Hash className="h-2.5 w-2.5" />Student ID</span>
+                  <span className="text-xs font-medium font-mono">{student.studentId}</span>
+                </div>
+              )}
+              {student.email && (
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50 col-span-2 sm:col-span-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Mail className="h-2.5 w-2.5" />Email</span>
+                  <span className="text-xs font-medium break-all">{student.email}</span>
+                </div>
+              )}
+              {student.phoneNumber && (
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Phone className="h-2.5 w-2.5" />Phone</span>
+                  <span className="text-xs font-medium">{student.phoneNumber}</span>
+                </div>
+              )}
+              {student.dateOfBirth && (
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />Date of Birth</span>
+                  <span className="text-xs font-medium">{new Date(student.dateOfBirth).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                </div>
+              )}
+              {student.emergencyContact && (
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" />Emergency</span>
+                  <span className="text-xs font-medium text-red-700 dark:text-red-300">{student.emergencyContact}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Address */}
+          {(student.addressLine1 || student.addressLine2) && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Address</p>
+              <div className="p-3 rounded-xl bg-muted/60 border border-border/50">
+                {student.addressLine1 && <p className="text-sm font-medium">{student.addressLine1}</p>}
+                {student.addressLine2 && <p className="text-xs text-muted-foreground mt-0.5">{student.addressLine2}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Medical */}
+          {(student.medicalConditions || student.allergies) && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Medical Information</p>
+              <div className="grid grid-cols-2 gap-2">
+                {student.medicalConditions && (
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-orange-50 border border-orange-200 dark:bg-orange-950/30 dark:border-orange-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400 flex items-center gap-1"><Heart className="h-2.5 w-2.5" />Medical Conditions</span>
+                    <span className="text-xs font-medium text-orange-700 dark:text-orange-300">{student.medicalConditions}</span>
                   </div>
                 )}
-                {student.phoneNumber && (
-                  <div className="flex items-start gap-3">
-                    <Phone className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Phone</p>
-                      <p className="font-medium">{student.phoneNumber}</p>
-                    </div>
-                  </div>
-                )}
-                {student.dateOfBirth && (
-                  <div className="flex items-start gap-3">
-                    <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Date of Birth</p>
-                      <p className="font-medium">
-                        {new Date(student.dateOfBirth).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {student.emergencyContact && (
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Emergency Contact</p>
-                      <p className="font-medium">{student.emergencyContact}</p>
-                    </div>
+                {student.allergies && (
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 flex items-center gap-1"><AlertCircle className="h-2.5 w-2.5" />Allergies</span>
+                    <span className="text-xs font-medium text-red-700 dark:text-red-300">{student.allergies}</span>
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Address Information */}
-          {(student.addressLine1 || student.addressLine2) && (
-            <Card>
-              <CardContent className="pt-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  Address
-                </h3>
-                <div className="space-y-1">
-                  {student.addressLine1 && (
-                    <p className="text-foreground">{student.addressLine1}</p>
-                  )}
-                  {student.addressLine2 && (
-                    <p className="text-muted-foreground">{student.addressLine2}</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            </div>
           )}
 
-          {/* Medical Information */}
-          {(student.medicalConditions || student.allergies) && (
-            <Card>
-              <CardContent className="pt-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <Heart className="h-5 w-5" />
-                  Medical Information
-                </h3>
-                <div className="space-y-3">
-                  {student.medicalConditions && (
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Medical Conditions</p>
-                      <Badge variant="outline" className="text-sm">
-                        {student.medicalConditions}
-                      </Badge>
-                    </div>
-                  )}
-                  {student.allergies && (
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Allergies</p>
-                      <Badge variant="outline" className="text-sm">
-                        {student.allergies}
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Parent Information */}
+          {/* Parents */}
           {(student.father || student.mother || student.parentDetails) && (
-            <Card>
-              <CardContent className="pt-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Parent Information
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Father Information */}
-                  {(student.father || student.parentDetails?.father) && (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3 pb-3 border-b">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={getImageUrl((student.father || student.parentDetails?.father)?.imageUrl)} alt="Father" />
-                          <AvatarFallback>
-                            {(student.father || student.parentDetails?.father)?.name?.split(' ').map(n => n.charAt(0)).join('') || 'F'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Father</p>
-                          <p className="font-semibold">{(student.father || student.parentDetails?.father)?.name}</p>
-                        </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Parent Information</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { data: student.father || student.parentDetails?.father, label: 'Father' },
+                  { data: student.mother || student.parentDetails?.mother, label: 'Mother' },
+                ].filter(p => p.data).map(({ data: parent, label }) => (
+                  <div key={label} className="p-3 rounded-xl border bg-muted/30 space-y-2">
+                    <div className="flex items-center gap-2.5 pb-2 border-b">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={getImageUrl(parent?.imageUrl)} alt={label} />
+                        <AvatarFallback className="text-xs font-bold bg-primary/10 text-primary">
+                          {parent?.name?.split(' ').map((n: string) => n.charAt(0)).join('').slice(0,2) || label[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+                        <p className="text-sm font-semibold leading-tight">{formatNameWithInitials(parent?.name || '')}</p>
                       </div>
-                      {(student.father || student.parentDetails?.father)?.email && (
-                        <div className="flex items-start gap-3">
-                          <Mail className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground">Email</p>
-                            <p className="font-medium text-sm break-all">{(student.father || student.parentDetails?.father)?.email}</p>
-                          </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {parent?.email && (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Email</span>
+                          <span className="text-xs font-medium break-all">{parent.email}</span>
                         </div>
                       )}
-                      {(student.father || student.parentDetails?.father)?.phoneNumber && (
-                        <div className="flex items-start gap-3">
-                          <Phone className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-xs text-muted-foreground">Phone</p>
-                            <p className="font-medium text-sm">{(student.father || student.parentDetails?.father)?.phoneNumber}</p>
-                          </div>
+                      {parent?.phoneNumber && (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Phone</span>
+                          <span className="text-xs font-medium">{parent.phoneNumber}</span>
                         </div>
                       )}
-                      {(student.father || student.parentDetails?.father)?.occupation && (
-                        <div className="flex items-start gap-3">
-                          <Briefcase className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-xs text-muted-foreground">Occupation</p>
-                            <p className="font-medium text-sm">{(student.father || student.parentDetails?.father)?.occupation}</p>
-                          </div>
+                      {parent?.occupation && (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Occupation</span>
+                          <span className="text-xs font-medium">{parent.occupation}</span>
                         </div>
                       )}
-                      {((student.father || student.parentDetails?.father)?.workPlace || (student.father || student.parentDetails?.father)?.workplace) && (
-                        <div className="flex items-start gap-3">
-                          <Building className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-xs text-muted-foreground">Work Place</p>
-                            <p className="font-medium text-sm">{(student.father || student.parentDetails?.father)?.workPlace || (student.father || student.parentDetails?.father)?.workplace}</p>
-                          </div>
+                      {(parent?.workPlace || parent?.workplace) && (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Workplace</span>
+                          <span className="text-xs font-medium">{parent.workPlace || parent.workplace}</span>
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Mother Information */}
-                  {(student.mother || student.parentDetails?.mother) && (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3 pb-3 border-b">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={getImageUrl((student.mother || student.parentDetails?.mother)?.imageUrl)} alt="Mother" />
-                          <AvatarFallback>
-                            {(student.mother || student.parentDetails?.mother)?.name?.split(' ').map(n => n.charAt(0)).join('') || 'M'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-xs text-muted-foreground">Mother</p>
-                          <p className="font-semibold">{(student.mother || student.parentDetails?.mother)?.name}</p>
-                        </div>
-                      </div>
-                      {(student.mother || student.parentDetails?.mother)?.email && (
-                        <div className="flex items-start gap-3">
-                          <Mail className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground">Email</p>
-                            <p className="font-medium text-sm break-all">{(student.mother || student.parentDetails?.mother)?.email}</p>
-                          </div>
-                        </div>
-                      )}
-                      {(student.mother || student.parentDetails?.mother)?.phoneNumber && (
-                        <div className="flex items-start gap-3">
-                          <Phone className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-xs text-muted-foreground">Phone</p>
-                            <p className="font-medium text-sm">{(student.mother || student.parentDetails?.mother)?.phoneNumber}</p>
-                          </div>
-                        </div>
-                      )}
-                      {(student.mother || student.parentDetails?.mother)?.occupation && (
-                        <div className="flex items-start gap-3">
-                          <Briefcase className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-xs text-muted-foreground">Occupation</p>
-                            <p className="font-medium text-sm">{(student.mother || student.parentDetails?.mother)?.occupation}</p>
-                          </div>
-                        </div>
-                      )}
-                      {((student.mother || student.parentDetails?.mother)?.workPlace || (student.mother || student.parentDetails?.mother)?.workplace) && (
-                        <div className="flex items-start gap-3">
-                          <Building className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-xs text-muted-foreground">Work Place</p>
-                            <p className="font-medium text-sm">{(student.mother || student.parentDetails?.mother)?.workPlace || (student.mother || student.parentDetails?.mother)?.workplace}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </DialogContent>

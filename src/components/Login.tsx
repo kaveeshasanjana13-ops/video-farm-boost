@@ -7,16 +7,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { type UserRole } from '@/contexts/AuthContext';
-import { Eye, EyeOff, GraduationCap, Wifi, WifiOff, Settings, Mail, Key, UserCheck, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, GraduationCap, Wifi, WifiOff, Settings, Mail, Key, UserCheck, RotateCcw, Building2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getBaseUrl, getBaseUrl2 } from '@/contexts/utils/auth.api';
+import { getBaseUrl, getBaseUrl2, instituteLogin, initiateInstitutePasswordReset, verifyInstitutePasswordReset } from '@/contexts/utils/auth.api';
+import { getErrorMessage } from '@/api/apiError';
 import { Capacitor } from '@capacitor/core';
 // FirstLogin is now rendered via /activate/* routes
+import { useTenant } from '@/contexts/TenantContext';
 import surakshaLogo from '@/assets/suraksha-logo.png';
 import loginIllustration from '@/assets/login-illustration.png';
+import type { LoginCredentials } from '@/contexts/types/auth.types';
 
-// Mock user credentials for different roles
-const mockUsers = [{
+// Mock user credentials for different roles - ONLY available in development
+const mockUsers = import.meta.env.DEV ? [{
   email: 'institute@cambridge.edu',
   password: 'institute123',
   role: 'InstituteAdmin' as UserRole,
@@ -118,21 +121,27 @@ const mockUsers = [{
     description: 'Excellence in learning management',
     isActive: true
   }]
-}];
+}] : [];
 interface LoginProps {
   onLogin: (user: any) => void;
-  loginFunction: (credentials: {
-    identifier: string;
-    password: string;
-    rememberMe?: boolean;
-  }) => Promise<void>;
+  loginFunction: (credentials: LoginCredentials) => Promise<void>;
 }
-type LoginStep = 'login' | 'first-login-email' | 'first-login-otp' | 'first-login-password' | 'forgot-password' | 'reset-password';
+type LoginStep = 'login' | 'first-login-email' | 'first-login-otp' | 'first-login-password' | 'forgot-password' | 'reset-password' | 'institute-login' | 'institute-forgot' | 'institute-reset';
 const Login = ({
   onLogin,
   loginFunction
 }: LoginProps) => {
   const loginNavigate = useNavigate();
+  const { isTenantLogin, subdomain, customDomain, loginMethod, branding, isLoading: tenantLoading, error: tenantError } = useTenant();
+
+  // Resolved branding values (tenant overrides → defaults)
+  const displayLogo = branding?.loginLogoUrl || branding?.logoUrl || surakshaLogo;
+  const displayIllustration = branding?.loginIllustrationUrl || branding?.loginBackgroundUrl || loginIllustration;
+  const displayAppName = branding?.customAppName || (isTenantLogin && branding?.name) || 'SurakshaLMS';
+  const displayWelcome = branding?.loginWelcomeTitle || 'Welcome back';
+  const displaySubtitle = branding?.loginWelcomeSubtitle || 'Please enter your details';
+  const showPoweredBy = isTenantLogin && (branding?.poweredByVisible !== false);
+
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   // On mobile app, always enable rememberMe for persistent login
@@ -151,6 +160,7 @@ const Login = ({
   const [showFirstLoginV2, setShowFirstLoginV2] = useState(false);
 
   // First login and forgot password states
+  // 🏢 Multi-tenant: always start at 'login', then switch to 'institute-login' AFTER branding is confirmed valid
   const [loginStep, setLoginStep] = useState<LoginStep>('login');
   const [otp, setOtp] = useState('');
   const [verificationToken, setVerificationToken] = useState('');
@@ -164,6 +174,14 @@ const Login = ({
     const stored = getBaseUrl2();
     return stored || getBaseUrl() || 'https://your-attendance-backend-url.com';
   });
+
+  // Institute login states
+  const [instituteId, setInstituteId] = useState('');
+  const [instituteUserId, setInstituteUserId] = useState('');
+  const [instituteResetChannel, setInstituteResetChannel] = useState<'EMAIL' | 'PHONE'>('EMAIL');
+  const [useParentContact, setUseParentContact] = useState(false);
+  const [instituteResetSentTo, setInstituteResetSentTo] = useState('');
+
   const {
     toast
   } = useToast();
@@ -199,6 +217,15 @@ const Login = ({
     }
   }, [otpTimer]);
 
+  // 🏢 Multi-tenant: Once tenant branding is confirmed valid (loading done, no error),
+  // switch the login step to institute-login mode. This prevents the 'institute-login'
+  // step from showing before we know the subdomain is actually valid.
+  useEffect(() => {
+    if (isTenantLogin && !tenantLoading && !tenantError) {
+      setLoginStep('institute-login');
+    }
+  }, [isTenantLogin, tenantLoading, tenantError]);
+
   // Mock login handler
   const handleMockLogin = async (email: string, password: string, role: UserRole) => {
     const user = mockUsers.find((u) => u.email === email && u.password === password && u.role === role);
@@ -223,11 +250,11 @@ const Login = ({
       } else {
         throw new Error(`Backend returned status: ${response.status}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Connection test failed:', error);
       toast({
         title: "Connection Failed",
-        description: error instanceof Error ? error.message : "Cannot reach backend",
+        description: getErrorMessage(error, 'Cannot reach backend'),
         variant: "destructive"
       });
     } finally {
@@ -245,7 +272,7 @@ const Login = ({
         const data = await response.json();
         return data.requiresFirstLogin || false;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.log('First login status check failed, proceeding with regular login');
     }
     return false;
@@ -273,9 +300,9 @@ const Login = ({
       } else {
         throw new Error(data.message || 'Failed to send OTP');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Initiate first login error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to send OTP');
+      setError(getErrorMessage(error, 'Failed to send OTP'));
       return false;
     }
   };
@@ -301,9 +328,9 @@ const Login = ({
       } else {
         throw new Error(data.message || 'Invalid OTP');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('OTP verification error:', error);
-      setError(error instanceof Error ? error.message : 'OTP verification failed');
+      setError(getErrorMessage(error, 'OTP verification failed'));
       return false;
     }
   };
@@ -338,7 +365,7 @@ const Login = ({
         });
 
         // Reset to login step and clear form
-        setLoginStep('login');
+        setLoginStep(isTenantLogin ? 'institute-login' : 'login');
         setPassword(newPassword);
         setNewPassword('');
         setConfirmPassword('');
@@ -349,9 +376,9 @@ const Login = ({
       } else {
         throw new Error(data.message || 'Failed to set password');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Set password error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to set password');
+      setError(getErrorMessage(error, 'Failed to set password'));
       return false;
     }
   };
@@ -376,9 +403,9 @@ const Login = ({
       } else {
         throw new Error(data.message || 'Failed to resend OTP');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Resend OTP error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to resend OTP');
+      setError(getErrorMessage(error, 'Failed to resend OTP'));
       return false;
     }
   };
@@ -413,9 +440,9 @@ const Login = ({
       } else {
         throw new Error(data.message || 'Failed to send reset code');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Forgot password error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to send reset code');
+      setError(getErrorMessage(error, 'Failed to send reset code'));
       return false;
     }
   };
@@ -449,7 +476,7 @@ const Login = ({
         });
 
         // Reset to login step and clear form
-        setLoginStep('login');
+        setLoginStep(isTenantLogin ? 'institute-login' : 'login');
         setPassword(newPassword);
         setNewPassword('');
         setConfirmPassword('');
@@ -459,9 +486,9 @@ const Login = ({
       } else {
         throw new Error(data.message || 'Failed to reset password');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Reset password error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to reset password');
+      setError(getErrorMessage(error, 'Failed to reset password'));
       return false;
     }
   };
@@ -486,9 +513,9 @@ const Login = ({
       } else {
         throw new Error(data.message || 'Failed to resend reset code');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Resend reset code error:', error);
-      setError(error instanceof Error ? error.message : 'Failed to resend reset code');
+      setError(getErrorMessage(error, 'Failed to resend reset code'));
       return false;
     }
   };
@@ -508,9 +535,9 @@ const Login = ({
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Forgot password flow error:', error);
-      setError(error instanceof Error ? error.message : 'Process failed');
+      setError(getErrorMessage(error, 'Process failed'));
     } finally {
       setIsLoading(false);
     }
@@ -540,7 +567,9 @@ const Login = ({
         await loginFunction({
           identifier,
           password,
-          rememberMe
+          rememberMe,
+          ...(subdomain && { subdomain, loginMethod: 'SUBDOMAIN' as const }),
+          ...(customDomain && { customDomain, loginMethod: 'CUSTOM_DOMAIN' as const }),
         });
         toast({
           title: "Success",
@@ -553,11 +582,9 @@ const Login = ({
           title: "Success",
           description: `Logged in successfully as ${user.role}`
         });
-        console.log('User logged in:', user);
-        console.log('User role:', user.role);
         onLogin(user);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
       setError(errorMessage);
@@ -570,6 +597,76 @@ const Login = ({
       setIsLoading(false);
     }
   };
+
+  // ============ INSTITUTE LOGIN HANDLERS ============
+  const handleInstituteLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      const result = await instituteLogin({
+        instituteId: isTenantLogin && branding ? branding.id : instituteId,
+        userIdByInstitute: instituteUserId,
+        password,
+        rememberMe,
+      });
+      toast({ title: 'Success', description: `Logged in to ${result.user.instituteName}` });
+      onLogin({
+        id: result.user.userId,
+        name: `${result.user.firstName || ''} ${result.user.lastName || ''}`.trim() || result.user.userIdByInstitute,
+        email: '',
+        role: result.user.instituteUserType,
+        imageUrl: result.user.imageUrl,
+        institutes: [{ id: result.user.instituteId, name: result.user.instituteName }],
+      });
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : 'Institute login failed';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInstitutePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      if (loginStep === 'institute-forgot') {
+        const result = await initiateInstitutePasswordReset({
+          instituteId: isTenantLogin && branding ? branding.id : instituteId,
+          userIdByInstitute: instituteUserId,
+          channel: instituteResetChannel,
+          useParentContact,
+        });
+        setInstituteResetSentTo(result.sentTo);
+        setLoginStep('institute-reset');
+        toast({ title: 'OTP Sent', description: `Code sent to ${result.sentTo}${result.isParentContact ? ' (parent contact)' : ''}` });
+      } else if (loginStep === 'institute-reset') {
+        if (newPassword !== confirmPassword) {
+          setError('Passwords do not match');
+          setIsLoading(false);
+          return;
+        }
+        await verifyInstitutePasswordReset({
+          instituteId: isTenantLogin && branding ? branding.id : instituteId,
+          userIdByInstitute: instituteUserId,
+          otpCode: otp,
+          newPassword,
+        });
+        toast({ title: 'Success', description: 'Password reset successfully. You can now login.' });
+        setLoginStep('institute-login');
+        setOtp('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (error: any) {
+      setError(error instanceof Error ? error.message : 'Password reset failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleFirstLoginAPIFlow = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -588,15 +685,15 @@ const Login = ({
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('First login API flow error:', error);
-      setError(error instanceof Error ? error.message : 'Process failed');
+      setError(getErrorMessage(error, 'Process failed'));
     } finally {
       setIsLoading(false);
     }
   };
   const resetToLogin = () => {
-    setLoginStep('login');
+    setLoginStep(isTenantLogin ? 'institute-login' : 'login');
     setError('');
     setOtp('');
     setVerificationToken('');
@@ -615,35 +712,71 @@ const Login = ({
     setShowFirstLogin(true);
   };
 
+  // Track keyboard visibility: with adjustResize the window shrinks when keyboard opens
+  const [origHeight] = React.useState(() =>
+    typeof window !== 'undefined' ? window.innerHeight : 812
+  );
+  const [keyboardVisible, setKeyboardVisible] = React.useState(false);
+  React.useEffect(() => {
+    const onResize = () => setKeyboardVisible(window.innerHeight < origHeight - 150);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [origHeight]);
+
+  const scrollInputIntoView = (e: React.FocusEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLElement;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+      setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 350);
+    }
+  };
+
   return <div className="min-h-[100dvh] flex flex-col md:flex-row overflow-x-hidden bg-background md:bg-none">
-      {/* Top Illustration - Mobile Only */}
-      <div className="block md:hidden w-full relative h-[25vh] shrink-0 overflow-hidden">
+      {/* Top Illustration - Mobile Only: hidden when keyboard is open */}
+      <div className={`block md:hidden w-full relative h-[25vh] shrink-0 overflow-hidden transition-all duration-200${keyboardVisible ? ' hidden' : ''}`}>
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5" />
-        <img src={loginIllustration} alt="AI-powered education illustration" className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={(e) => {
+        <img src={displayIllustration} alt="Education illustration" className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={(e) => {
         (e.currentTarget as HTMLImageElement).style.display = 'none';
       }} />
       </div>
 
       {/* Left Side - Form */}
-      <div className="w-full md:w-3/5 lg:w-1/2 flex flex-col items-center justify-center px-5 py-7 sm:p-7 md:p-10 bg-background -mt-8 md:mt-0 rounded-t-[3rem] md:rounded-none relative z-10 flex-1 md:min-h-screen overflow-y-auto">
+      <div className="w-full md:w-3/5 lg:w-1/2 flex flex-col items-center justify-center px-5 py-7 sm:p-7 md:p-10 bg-background -mt-8 md:mt-0 rounded-t-[3rem] md:rounded-none relative z-10 flex-1 md:min-h-screen overflow-y-auto" onFocusCapture={scrollInputIntoView}>
         <div className="w-full max-w-md md:max-w-lg space-y-6 md:space-y-7">
           {/* Logo and Header */}
           <div className="text-center space-y-1">
             <div className="flex justify-center mb-2 md:mb-4">
               <div className="w-12 h-12 md:w-20 md:h-20 rounded-lg overflow-hidden">
-                <img src={surakshaLogo} alt="SurakshaLMS logo" className="w-full h-full object-contain" loading="lazy" />
+                <img src={displayLogo} alt={`${displayAppName} logo`} className="w-full h-full object-contain" loading="lazy" />
               </div>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">SurakshaLMS</h1>
-            <p className="text-base md:text-lg font-semibold text-foreground">Welcome back</p>
-            <p className="text-sm md:text-sm text-muted-foreground">Please enter your details</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">{displayAppName}</h1>
+            <p className="text-base md:text-lg font-normal text-foreground">{displayWelcome}</p>
+            <p className="text-sm md:text-sm text-muted-foreground">{displaySubtitle}</p>
           </div>
 
           {/* Main Login/First Login/Forgot Password Card */}
           <Card className="border-border/50 shadow-md lg:shadow-lg">
             <CardContent className="p-5 md:p-8 lg:p-10">
-            {/* Regular Login Form */}
-            {loginStep === 'login' && <form onSubmit={handleLogin} className="space-y-4 md:space-y-6">
+            {tenantLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+                <p className="text-sm text-muted-foreground">Loading institute...</p>
+              </div>
+            ) : tenantError ? (
+              <div className="text-center space-y-4 py-8">
+                <div className="mx-auto w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                  <WifiOff className="h-6 w-6 text-destructive" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground">Institute Not Found</h3>
+                <p className="text-sm text-muted-foreground">{tenantError}</p>
+                <Button onClick={() => window.location.href = window.location.protocol + '//' + window.location.host.replace(/^[^.]+\./, '')} variant="outline" className="mt-4 w-full h-11 text-sm md:text-base">
+                  Go to Main Portal
+                </Button>
+              </div>
+            ) : (
+              <>
+                {/* Regular Login Form */}
+                {loginStep === 'login' && <form onSubmit={handleLogin} className="space-y-4 md:space-y-6">
                 {/* Role Selection - Only show for mock login */}
                 {!useApiLogin && <div className="space-y-1.5">
                     <Label htmlFor="role" className="text-sm">Role</Label>
@@ -664,13 +797,13 @@ const Login = ({
 
                 {/* Identifier Input */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="identifier" className="text-sm font-medium text-foreground">Email, Phone, ID or Birth Certificate</Label>
+                  <Label htmlFor="identifier" className="text-sm text-foreground">Email, Phone, ID or Birth Certificate</Label>
                   <Input id="identifier" type="text" placeholder="Enter email, phone, ID..." value={identifier} onChange={(e) => setIdentifier(e.target.value)} required className="h-11 md:h-11 text-sm md:text-base rounded-lg" autoComplete="username" autoCapitalize="none" autoCorrect="off" />
                 </div>
 
                 {/* Password Input */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="password" className="text-sm font-medium text-foreground">Password</Label>
+                  <Label htmlFor="password" className="text-sm text-foreground">Password</Label>
                   <div className="relative">
                     <Input id="password" type={showPassword ? 'text' : 'password'} placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-11 md:h-11 text-sm md:text-base pr-12 rounded-lg" autoComplete="current-password" />
                     <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent touch-manipulation" onClick={() => setShowPassword(!showPassword)}>
@@ -723,13 +856,164 @@ const Login = ({
                         Create Account
                       </Button>
                     </div>
-                    <div>
-                      <span className="text-xs md:text-sm text-muted-foreground">Have an institute? </span>
-                      <Button type="button" variant="link" onClick={() => loginNavigate('/register/institute')} className="text-xs md:text-sm text-primary hover:text-primary/80 p-0 h-auto font-medium">
-                        Register Institute
-                      </Button>
-                    </div>
                   </div>}
+              </form>}
+
+            {/* Institute Login Form */}
+            {loginStep === 'institute-login' && <form onSubmit={handleInstituteLogin} className="space-y-4 md:space-y-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <Building2 className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-semibold">Institute Login</h3>
+                </div>
+
+                {!isTenantLogin && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="instituteId" className="text-sm">Institute ID</Label>
+                    <Input id="instituteId" type="text" placeholder="Enter institute ID" value={instituteId} onChange={(e) => setInstituteId(e.target.value)} required={!isTenantLogin} className="h-11 text-sm rounded-lg" autoComplete="off" />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="instituteUserId" className="text-sm">Your Institute User ID</Label>
+                  <Input id="instituteUserId" type="text" placeholder="e.g., STU2024001" value={instituteUserId} onChange={(e) => setInstituteUserId(e.target.value)} required className="h-11 text-sm rounded-lg" autoComplete="username" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="instPassword" className="text-sm">Password</Label>
+                  <div className="relative">
+                    <Input id="instPassword" type={showPassword ? 'text' : 'password'} placeholder="Enter your institute password" value={password} onChange={(e) => setPassword(e.target.value)} required className="h-11 text-sm pr-12 rounded-lg" autoComplete="current-password" />
+                    <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent" onClick={() => setShowPassword(!showPassword)}>
+                      {showPassword ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  {!Capacitor.isNativePlatform() && <div className="flex items-center space-x-2">
+                    <input type="checkbox" id="instRemember" className="rounded border-border w-4 h-4 accent-primary" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+                    <label htmlFor="instRemember" className="text-xs md:text-sm text-foreground cursor-pointer select-none">Remember me</label>
+                  </div>}
+                  <Button type="button" variant="link" onClick={() => { setLoginStep('institute-forgot'); setError(''); }} className="text-xs md:text-sm text-primary p-0 h-auto font-medium">
+                    Forgot password?
+                  </Button>
+                </div>
+
+                {error && <div className="text-xs md:text-sm text-destructive bg-destructive/10 p-2.5 rounded-lg">{error}</div>}
+
+                <Button type="submit" className="w-full h-11 text-sm font-semibold rounded-lg" disabled={isLoading}>
+                  {isLoading ? 'Signing in...' : 'Sign in with Institute ID'}
+                </Button>
+
+                {!isTenantLogin && (
+                  <Button type="button" variant="ghost" onClick={() => { setLoginStep('login'); setError(''); }} className="w-full h-9 text-sm">
+                    Back to regular login
+                  </Button>
+                )}
+              </form>}
+
+            {/* Institute Forgot Password */}
+            {loginStep === 'institute-forgot' && <form onSubmit={handleInstitutePasswordReset} className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Key className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-semibold">Reset Institute Password</h3>
+                </div>
+
+                {!isTenantLogin && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Institute ID</Label>
+                    <Input type="text" placeholder="Enter institute ID" value={instituteId} onChange={(e) => setInstituteId(e.target.value)} required={!isTenantLogin} className="h-10 text-sm rounded-lg" />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Your Institute User ID</Label>
+                  <Input type="text" placeholder="e.g., STU2024001" value={instituteUserId} onChange={(e) => setInstituteUserId(e.target.value)} required className="h-10 text-sm rounded-lg" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Send OTP via</Label>
+                  <Select value={instituteResetChannel} onValueChange={(v: 'EMAIL' | 'PHONE') => setInstituteResetChannel(v)}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="EMAIL">Email</SelectItem>
+                      <SelectItem value="PHONE">Phone (SMS)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input type="checkbox" id="useParent" className="rounded border-border w-4 h-4 accent-primary" checked={useParentContact} onChange={(e) => setUseParentContact(e.target.checked)} />
+                  <label htmlFor="useParent" className="text-xs md:text-sm text-foreground cursor-pointer select-none">
+                    Use parent/guardian contact (for students)
+                  </label>
+                </div>
+
+                {error && <div className="text-xs text-destructive bg-destructive/10 p-2.5 rounded-lg">{error}</div>}
+
+                <Button type="submit" className="w-full h-10 text-sm font-semibold rounded-lg" disabled={isLoading}>
+                  {isLoading ? 'Sending...' : 'Send OTP'}
+                </Button>
+
+                <Button type="button" variant="ghost" onClick={() => { setLoginStep('institute-login'); setError(''); }} className="w-full h-9 text-sm">
+                  Back to Institute Login
+                </Button>
+              </form>}
+
+            {/* Institute Reset Password (OTP + New Password) */}
+            {loginStep === 'institute-reset' && <form onSubmit={handleInstitutePasswordReset} className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Key className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-semibold">Enter OTP & New Password</h3>
+                </div>
+
+                <div className="text-xs text-muted-foreground bg-primary/10 p-2.5 rounded-lg">
+                  OTP sent to {instituteResetSentTo}
+                </div>
+
+                <div className="flex justify-center py-2">
+                  <InputOTP maxLength={6} value={otp} onChange={setOtp} className="gap-1.5">
+                    <InputOTPGroup className="gap-1.5">
+                      <InputOTPSlot index={0} className="w-10 h-12 text-lg" />
+                      <InputOTPSlot index={1} className="w-10 h-12 text-lg" />
+                      <InputOTPSlot index={2} className="w-10 h-12 text-lg" />
+                      <InputOTPSlot index={3} className="w-10 h-12 text-lg" />
+                      <InputOTPSlot index={4} className="w-10 h-12 text-lg" />
+                      <InputOTPSlot index={5} className="w-10 h-12 text-lg" />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm">New Password</Label>
+                  <div className="relative">
+                    <Input type={showNewPassword ? 'text' : 'password'} placeholder="Min 8 characters" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} className="h-10 text-sm pr-12 rounded-lg" />
+                    <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 hover:bg-transparent" onClick={() => setShowNewPassword(!showNewPassword)}>
+                      {showNewPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Confirm Password</Label>
+                  <div className="relative">
+                    <Input type={showConfirmPassword ? 'text' : 'password'} placeholder="Repeat new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} className="h-10 text-sm pr-12 rounded-lg" />
+                    <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3 hover:bg-transparent" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                    </Button>
+                  </div>
+                </div>
+
+                {error && <div className="text-xs text-destructive bg-destructive/10 p-2.5 rounded-lg">{error}</div>}
+
+                <Button type="submit" className="w-full h-10 text-sm font-semibold rounded-lg" disabled={isLoading || otp.length < 6}>
+                  {isLoading ? 'Resetting...' : 'Reset Password'}
+                </Button>
+
+                <Button type="button" variant="ghost" onClick={() => { setLoginStep('institute-forgot'); setError(''); setOtp(''); }} className="w-full h-9 text-sm">
+                  Back
+                </Button>
               </form>}
 
             {/* First Login Email Form */}
@@ -945,6 +1229,8 @@ const Login = ({
                   </Button>
                 </div>
               </form>}
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -995,17 +1281,38 @@ const Login = ({
               <div><strong>Organization Manager:</strong> orgmanager@company.com / orgmanager123</div>
             </CardContent>
           </Card>}
+          
+          {/* Mobile/Left column Powered by Suraksha */}
+          {showPoweredBy && (
+            <div className="md:hidden text-center m-6 text-xs text-muted-foreground font-medium">
+              Powered by Suraksha
+            </div>
+          )}
         </div>
       </div>
 
       {/* Right Side - Illustration */}
       <div className="hidden md:flex md:w-1/2 lg:w-3/5 relative min-h-[300px] md:min-h-screen">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
-        <img src={loginIllustration} alt="AI-powered education illustration" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={(e) => {
-        (e.currentTarget as HTMLImageElement).style.display = 'none';
-      }} />
+        {branding?.loginBackgroundType === 'VIDEO' && branding?.loginBackgroundUrl ? (
+          <video
+            autoPlay muted loop playsInline
+            poster={branding.loginVideoPosterUrl || undefined}
+            className="absolute inset-0 w-full h-full object-cover mix-blend-multiply"
+          >
+            <source src={branding.loginBackgroundUrl} type="video/mp4" />
+          </video>
+        ) : (
+          <img src={displayIllustration} alt="Education illustration" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = 'none';
+          }} />
+        )}
         <div className="absolute inset-0 flex items-center justify-center p-8">
-          
+          {showPoweredBy && (
+            <div className="absolute bottom-4 right-4 text-white/70 text-xs font-medium">
+              Powered by Suraksha
+            </div>
+          )}
         </div>
       </div>
     </div>;

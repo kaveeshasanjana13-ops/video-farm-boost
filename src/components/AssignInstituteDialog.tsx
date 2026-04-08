@@ -1,7 +1,6 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -11,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import InstituteSelect from '@/components/ui/InstituteSelect';
 import { organizationSpecificApi } from '@/api/organization.api';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,6 +22,7 @@ interface AssignInstituteDialogProps {
 
 const AssignInstituteDialog = ({ open, onOpenChange, organizationId }: AssignInstituteDialogProps) => {
   const [instituteId, setInstituteId] = useState('');
+  const [instituteName, setInstituteName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -31,7 +32,7 @@ const AssignInstituteDialog = ({ open, onOpenChange, organizationId }: AssignIns
     if (!instituteId.trim()) {
       toast({
         title: "Validation Error",
-        description: "Institute ID is required",
+        description: "Please select an institute",
         variant: "destructive",
       });
       return;
@@ -40,19 +41,20 @@ const AssignInstituteDialog = ({ open, onOpenChange, organizationId }: AssignIns
     setIsLoading(true);
     
     try {
-      const response = await organizationSpecificApi.put(
-        `/organization/api/v1/organizations/${organizationId}/assign-institute`,
+      await organizationSpecificApi.post(
+        `/organizations/${organizationId}/assign-institute`,
         { instituteId: instituteId.trim() }
       );
       
       toast({
         title: "Success",
-        description: "Organization successfully assigned to institute",
+        description: `Organization successfully assigned to ${instituteName || 'institute'}`,
       });
       
       setInstituteId('');
+      setInstituteName('');
       onOpenChange(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error assigning institute:', error);
       toast({
         title: "Error",
@@ -70,21 +72,17 @@ const AssignInstituteDialog = ({ open, onOpenChange, organizationId }: AssignIns
         <DialogHeader>
           <DialogTitle>Assign to Institute</DialogTitle>
           <DialogDescription>
-            Assign this organization to an institute by providing the institute ID.
+            Select the institute to assign this organization to.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="instituteId">Institute ID</Label>
-              <Input
-                id="instituteId"
-                placeholder="Enter institute ID"
-                value={instituteId}
-                onChange={(e) => setInstituteId(e.target.value)}
-                required
-              />
-            </div>
+            <InstituteSelect
+              value={instituteId}
+              onChange={(id, name) => { setInstituteId(id); setInstituteName(name); }}
+              label="Institute"
+              required
+            />
           </div>
           <DialogFooter>
             <Button
@@ -95,7 +93,7 @@ const AssignInstituteDialog = ({ open, onOpenChange, organizationId }: AssignIns
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !instituteId}>
               {isLoading ? "Assigning..." : "Assign"}
             </Button>
           </DialogFooter>

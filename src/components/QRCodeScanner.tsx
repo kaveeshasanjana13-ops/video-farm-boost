@@ -16,6 +16,7 @@ import { getAttendanceUrl, getBaseUrl } from '@/contexts/utils/auth.api';
 import { Capacitor } from '@capacitor/core';
 import { useTodayCalendarEvents, DEFAULT_EVENT_ID } from '@/hooks/useTodayCalendarEvents';
 import EventSelector from '@/components/attendance/EventSelector';
+import { AddressCoordinates } from '@/types/attendance.types';
 
 interface MarkAttendanceRequest {
   instituteId: string;
@@ -23,6 +24,8 @@ interface MarkAttendanceRequest {
   subjectId?: string;
   studentId: string;
   status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED";
+  // ✅ NEW: Consolidated coordinates
+  address?: AddressCoordinates;
   location?: string;
 }
 
@@ -131,7 +134,7 @@ const QRCodeScanner = () => {
         const address = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
         setLocation({ latitude, longitude, address });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.log('Location access error (optional):', error);
       setLocation(null);
     } finally {
@@ -148,7 +151,7 @@ const QRCodeScanner = () => {
         return data.display_name;
       }
       throw new Error('No address found');
-    } catch (error) {
+    } catch (error: any) {
       console.log('Reverse geocoding failed:', error);
       return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
     }
@@ -289,7 +292,7 @@ const QRCodeScanner = () => {
         description: "Point camera at QR code to scan automatically"
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Camera start error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown camera error';
       setCameraError(errorMessage);
@@ -339,7 +342,7 @@ const QRCodeScanner = () => {
       setIsScanning(false);
       setCameraError(null);
       console.log('Camera stopped successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error stopping camera:', error);
     }
   };
@@ -379,10 +382,21 @@ const QRCodeScanner = () => {
 
       const headers = getApiHeaders();
       
+      // ✅ NEW: Build address coordinates object
+      const addressCoordinates: AddressCoordinates | undefined = location
+        ? {
+            latitude: location.latitude,
+            longitude: location.longitude,
+          }
+        : undefined;
+      
       const requestBody: MarkAttendanceRequest & { eventId?: string; date?: string } = {
         instituteId: currentInstituteId,
         studentId: studentIdValue.trim(),
         status: status,
+        // ✅ NEW: Use address object instead of separate latitude/longitude
+        address: addressCoordinates,
+        // Location display name (human-readable address)
         location: location?.address,
         date: calendarInfo.currentDate,
       };
@@ -492,7 +506,7 @@ const QRCodeScanner = () => {
       } else {
         throw new Error(result.message || 'Failed to mark attendance');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to mark attendance:', error);
       toast({
         title: "Mark Failed",

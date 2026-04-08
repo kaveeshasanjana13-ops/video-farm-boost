@@ -13,12 +13,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
 import { toast } from 'sonner';
 import SubjectImageUpload from '@/components/SubjectImageUpload';
-import { 
-  subjectsApi, 
-  SUBJECT_TYPE_OPTIONS, 
-  BASKET_CATEGORY_OPTIONS, 
-  requiresBasketCategory
-} from '@/api/subjects.api';
+import { getErrorMessage } from '@/api/apiError';
+import { subjectsApi, SUBJECT_TYPE_OPTIONS, BASKET_CATEGORY_OPTIONS, requiresBasketCategory } from '@/api/subjects.api';
 
 const subjectSchema = z.object({
   name: z.string().min(2, 'Subject name must be at least 2 characters').max(255),
@@ -134,7 +130,7 @@ const CreateSubjectForm = ({ onSubmit, onCancel, initialData }: CreateSubjectFor
       }
     } catch (error: any) {
       console.error('Error saving subject:', error);
-      toast.error(error?.message || 'Failed to save subject');
+      toast.error(getErrorMessage(error, 'Failed to save subject'));
     } finally {
       setIsLoading(false);
     }

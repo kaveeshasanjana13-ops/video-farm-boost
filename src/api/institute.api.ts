@@ -1,6 +1,143 @@
 
 import { enhancedCachedClient } from './enhancedCachedClient';
-import { ApiResponse } from './client';
+import { apiClient, ApiResponse } from './client';
+
+// =================== INSTITUTE USER CREATION TYPES ===================
+
+export type InstituteUserType = 'STUDENT' | 'TEACHER' | 'INSTITUTE_ADMIN' | 'ATTENDANCE_MARKER';
+export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
+export type Language = 'ENGLISH' | 'SINHALA' | 'TAMIL';
+export type ProfileCompletionStatus = 'INCOMPLETE' | 'BASIC' | 'COMPLETE';
+
+export interface SubjectEnrollmentInput {
+  subjectId: string;
+}
+
+export interface ClassEnrollmentInput {
+  classId: string;
+  subjectEnrollments?: SubjectEnrollmentInput[];
+}
+
+export type CardDeliveryRecipient = 'SELF' | 'FATHER' | 'MOTHER' | 'GUARDIAN';
+
+export interface InstituteStudentData {
+  studentId?: string;
+  emergencyContact?: string;
+  bloodGroup?: string;
+  medicalConditions?: string;
+  allergies?: string;
+  cardDeliveryRecipient?: CardDeliveryRecipient;
+}
+
+export interface ParentInput {
+  firstName?: string;
+  lastName?: string;
+  nameWithInitials?: string;
+  email?: string;
+  phoneNumber?: string;
+  gender?: Gender;
+  dateOfBirth?: string;
+  nic?: string;
+  birthCertificateNo?: string;
+  occupation?: string;
+  workplace?: string;
+  password?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  district?: string;
+  province?: string;
+  postalCode?: string;
+  educationLevel?: string;
+  /** 'USER' if parent is also a teacher, 'USER_WITHOUT_STUDENT' otherwise */
+  userType?: string;
+}
+
+export interface CreateInstituteUserDto {
+  // Identity (at least one of email / phoneNumber required)
+  firstName?: string;
+  lastName?: string;
+  nameWithInitials?: string;
+  email?: string;
+  phoneNumber?: string;
+  gender?: Gender;
+  dateOfBirth?: string;
+  nic?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  district?: string;
+  province?: string;
+  postalCode?: string;
+  language?: Language;
+  password?: string;
+
+  // Role
+  instituteUserType: InstituteUserType;
+
+  // Institute tracking
+  userIdByInstitute?: string;
+  instituteCardId?: string;
+
+  // Images
+  /** Relative path from signed URL — auto-VERIFIED (scope=INSTITUTE) */
+  instituteUserImageUrl?: string;
+  /** Relative path from signed URL — requires SUPER_ADMIN approval (scope=GLOBAL, status=PENDING) */
+  globalImageUrl?: string;
+
+  // Class & subject enrollment (STUDENT only)
+  classEnrollments?: ClassEnrollmentInput[];
+
+  // Student-specific data
+  studentData?: InstituteStudentData;
+
+  // Parent info (STUDENT only)
+  father?: ParentInput;
+  mother?: ParentInput;
+  guardian?: ParentInput;
+
+  // Notifications
+  sendWelcomeNotifications?: boolean;
+}
+
+export interface ImageCreationResult {
+  scope: 'INSTITUTE' | 'GLOBAL';
+  status: 'VERIFIED' | 'PENDING';
+  imageUrl: string;
+  note: string;
+}
+
+export interface SubjectEnrollmentResult {
+  subjectId: string;
+  enrolled: boolean;
+}
+
+export interface ClassEnrollmentResult {
+  classId: string;
+  className?: string;
+  success: boolean;
+  subjectEnrollments?: SubjectEnrollmentResult[];
+}
+
+export interface CreateInstituteUserResponse {
+  success: boolean;
+  message: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  nameWithInitials?: string;
+  email?: string;
+  phoneNumber?: string;
+  instituteUserType: InstituteUserType;
+  profileCompletionStatus: ProfileCompletionStatus;
+  profileCompletionPercentage: number;
+  requiresFirstLogin: boolean;
+  studentId?: string;
+  instituteImage?: ImageCreationResult;
+  globalImage?: ImageCreationResult;
+  classEnrollments?: ClassEnrollmentResult[];
+  welcomeNotificationSent?: boolean;
+}
 
 export interface Institute {
   id: string;
@@ -358,7 +495,7 @@ class InstituteApi {
           role: params?.role
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Error checking cached data:', error);
     }
 
@@ -408,7 +545,7 @@ class InstituteApi {
           role: params?.role
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Error getting cached institute data:', error);
     }
 
@@ -453,9 +590,27 @@ class InstituteApi {
 
       await Promise.allSettled(preloadPromises);
       console.log('Institute data preloading completed');
-    } catch (error) {
+    } catch (error: any) {
       console.warn('Error preloading institute data:', error);
     }
+  }
+
+  /**
+   * Create a new user directly within an institute.
+   * POST /institutes/:instituteId/users
+   * Caller must be an active INSTITUTE_ADMIN of the target institute.
+   *
+   * - `instituteUserImageUrl` → auto-VERIFIED (scope=INSTITUTE)
+   * - `globalImageUrl`        → PENDING until approved by SUPER_ADMIN
+   */
+  async createUser(
+    instituteId: string,
+    dto: CreateInstituteUserDto
+  ): Promise<CreateInstituteUserResponse> {
+    return apiClient.post<CreateInstituteUserResponse>(
+      `/institutes/${instituteId}/users`,
+      dto
+    );
   }
 
   // Method to force refresh all institute data

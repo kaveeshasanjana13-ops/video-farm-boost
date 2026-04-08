@@ -22,6 +22,7 @@ interface SubmitPaymentDialogProps {
 const SubmitPaymentDialog = ({ open, onOpenChange, payment, instituteId, onSuccess }: SubmitPaymentDialogProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [uploadMessage, setUploadMessage] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [formData, setFormData] = useState<Omit<SubmitPaymentRequest, 'receiptUrl'>>({
@@ -42,21 +43,12 @@ const SubmitPaymentDialog = ({ open, onOpenChange, payment, instituteId, onSucce
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payment || !receiptFile) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields and upload a receipt",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (formData.paymentAmount <= 0 || !formData.paymentDate) {
-      toast({
-        title: "Error",
-        description: "Please enter valid payment amount and date",
-        variant: "destructive",
-      });
+    const errors: Record<string, string> = {};
+    if (!formData.paymentAmount || formData.paymentAmount <= 0) errors.paymentAmount = 'Amount must be greater than 0';
+    if (!formData.paymentDate) errors.paymentDate = 'Payment date is required';
+    if (!receiptFile) errors.receiptFile = 'Receipt upload is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -86,6 +78,7 @@ const SubmitPaymentDialog = ({ open, onOpenChange, payment, instituteId, onSucce
       });
       onOpenChange(false);
       onSuccess?.();
+      setFieldErrors({});
       // Reset form
       setFormData({
         paymentAmount: 0,
@@ -95,11 +88,11 @@ const SubmitPaymentDialog = ({ open, onOpenChange, payment, instituteId, onSucce
         paymentRemarks: ''
       });
       setReceiptFile(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to submit payment:', error);
       toast({
-        title: "Error",
-        description: "Failed to submit payment",
+        title: "Payment Submission Failed",
+        description: getErrorMessage(error, 'Something went wrong. Please try again.'),
         variant: "destructive",
       });
     } finally {
@@ -187,9 +180,11 @@ const SubmitPaymentDialog = ({ open, onOpenChange, payment, instituteId, onSucce
                 min="0"
                 step="0.01"
                 value={formData.paymentAmount}
-                onChange={(e) => setFormData(prev => ({ ...prev, paymentAmount: parseFloat(e.target.value) || 0 }))}
+                onChange={(e) => { setFieldErrors(prev => ({ ...prev, paymentAmount: '' })); setFormData(prev => ({ ...prev, paymentAmount: parseFloat(e.target.value) || 0 })); }}
                 placeholder="0.00"
+                className={fieldErrors.paymentAmount ? 'border-red-500 focus-visible:ring-red-500' : ''}
               />
+              {fieldErrors.paymentAmount && <p className="text-xs text-red-500 mt-1">{fieldErrors.paymentAmount}</p>}
             </div>
             <div>
               <Label htmlFor="paymentMethod">Payment Method *</Label>
@@ -227,8 +222,10 @@ const SubmitPaymentDialog = ({ open, onOpenChange, payment, instituteId, onSucce
                 id="paymentDate"
                 type="datetime-local"
                 value={formData.paymentDate}
-                onChange={(e) => setFormData(prev => ({ ...prev, paymentDate: e.target.value }))}
+                onChange={(e) => { setFieldErrors(prev => ({ ...prev, paymentDate: '' })); setFormData(prev => ({ ...prev, paymentDate: e.target.value })); }}
+                className={fieldErrors.paymentDate ? 'border-red-500 focus-visible:ring-red-500' : ''}
               />
+              {fieldErrors.paymentDate && <p className="text-xs text-red-500 mt-1">{fieldErrors.paymentDate}</p>}
             </div>
           </div>
 
@@ -244,8 +241,9 @@ const SubmitPaymentDialog = ({ open, onOpenChange, payment, instituteId, onSucce
 
           <div>
             <Label htmlFor="receipt">Receipt Upload *</Label>
+            {fieldErrors.receiptFile && <p className="text-xs text-red-500 mt-1">{fieldErrors.receiptFile}</p>}
             <div className="mt-1">
-              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4">
+              <div className={`border-2 border-dashed rounded-lg p-4 ${fieldErrors.receiptFile ? 'border-red-500' : 'border-muted-foreground/25'}`}>
                 {!receiptFile ? (
                   <div className="text-center">
                     <Upload className="mx-auto h-10 w-10 text-muted-foreground/50 mb-2" />
@@ -261,7 +259,7 @@ const SubmitPaymentDialog = ({ open, onOpenChange, payment, instituteId, onSucce
                       id="receipt"
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={handleFileChange}
+                      onChange={(e) => { setFieldErrors(prev => ({ ...prev, receiptFile: '' })); handleFileChange(e); }}
                       className="hidden"
                     />
                   </div>

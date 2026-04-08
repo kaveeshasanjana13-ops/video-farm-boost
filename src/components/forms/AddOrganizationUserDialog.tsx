@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/api/client';
+import { getErrorMessage } from '@/api/apiError';
 
 interface AddOrganizationUserDialogProps {
   open: boolean;
@@ -62,7 +63,7 @@ const AddOrganizationUserDialog: React.FC<AddOrganizationUserDialogProps> = ({
       console.error('Error adding user to organization:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to add user to organization',
+        description: getErrorMessage(error, 'Failed to add user to organization'),
         variant: 'destructive',
       });
     } finally {

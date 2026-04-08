@@ -60,7 +60,7 @@ const AdminFilters = () => {
             </label>
             <Select value={selectedInstitute} onValueChange={setSelectedInstitute}>
               <SelectTrigger>
-                <SelectValue placeholder="Select Institute" />
+                <SelectValue placeholder="Institutes" />
               </SelectTrigger>
               <SelectContent>
                 {mockInstitutes.map((institute) => (

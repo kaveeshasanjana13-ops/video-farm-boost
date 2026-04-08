@@ -34,6 +34,7 @@ export interface ExamResultsQueryParams {
   classId?: string;
   subjectId?: string;
   examId?: string;
+  studentId?: string;
   userId?: string;
   role?: string;
 }
@@ -112,19 +113,45 @@ class ExamResultsApi {
       subjectId: data.subjectId
     });
   }
+
+  async getStudentsWithMarks(params: {
+    instituteId: string;
+    classId: string;
+    subjectId: string;
+    examId: string;
+  }): Promise<StudentExamMark[]> {
+    return enhancedCachedClient.get<StudentExamMark[]>(
+      '/institute-class-subject-resaults/students-with-marks',
+      params,
+      { forceRefresh: true, ttl: 0, instituteId: params.instituteId, classId: params.classId, subjectId: params.subjectId }
+    );
+  }
 }
 
 export interface BulkResultsCreateData {
   instituteId: string;
   classId: string;
   subjectId: string;
-  examId: string;
+  examId?: string;
   results: {
     studentId: string;
-    score: string;
-    grade: string;
-    remarks: string;
+    score?: string;
+    grade?: Grade;
+    remarks?: string;
   }[];
+}
+
+export type Grade = 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'S' | 'F';
+
+export interface StudentExamMark {
+  userId: string;
+  firstName: string | null;
+  lastName: string | null;
+  imageUrl: string | null;
+  instituteId: string;
+  examId: string;
+  score: string;
+  grade: Grade | null;
 }
 
 export const examResultsApi = new ExamResultsApi();

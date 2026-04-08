@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,6 +20,9 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
 import { getImageUrl } from '@/utils/imageUrlHelper';
@@ -114,67 +117,28 @@ interface SubmissionsResponse {
     hasPreviousPage: boolean;
   };
 }
-interface Column {
-  id: string;
-  label: string;
-  minWidth?: number;
-  align?: 'right' | 'left' | 'center';
-  format?: (value: any) => string;
-}
-const columns: readonly Column[] = [{
-  id: 'paymentTitle',
-  label: 'Payment Title',
-  minWidth: 150
-}, {
-  id: 'description',
-  label: 'Description',
-  minWidth: 150
-}, {
-  id: 'submittedAmount',
-  label: 'Amount',
-  minWidth: 120,
-  align: 'right'
-}, {
-  id: 'transactionId',
-  label: 'Transaction ID',
-  minWidth: 150
-}, {
-  id: 'paymentDate',
-  label: 'Payment Date',
-  minWidth: 120
-}, {
-  id: 'status',
-  label: 'Status',
-  minWidth: 100,
-  align: 'center'
-}, {
-  id: 'priority',
-  label: 'Priority',
-  minWidth: 100
-}, {
-  id: 'uploadedAt',
-  label: 'Submitted At',
-  minWidth: 120
-}, {
-  id: 'verifiedAt',
-  label: 'Verified At',
-  minWidth: 120
-}, {
-  id: 'notes',
-  label: 'Notes',
-  minWidth: 150
-}, {
-  id: 'receipt',
-  label: 'Receipt',
-  minWidth: 120,
-  align: 'center'
-}];
+const SPS_COL_DEFS: ColumnDef[] = [
+  { key: 'paymentTitle', header: 'Payment Title', defaultWidth: 150, minWidth: 120 },
+  { key: 'description', header: 'Description', defaultVisible: false, defaultWidth: 150, minWidth: 100 },
+  { key: 'submittedAmount', header: 'Amount', defaultWidth: 120, minWidth: 90 },
+  { key: 'transactionId', header: 'Transaction ID', defaultWidth: 150, minWidth: 120 },
+  { key: 'paymentDate', header: 'Payment Date', defaultWidth: 130, minWidth: 100 },
+  { key: 'status', header: 'Status', defaultWidth: 120, minWidth: 90 },
+  { key: 'priority', header: 'Priority', defaultWidth: 100, minWidth: 80 },
+  { key: 'uploadedAt', header: 'Submitted At', defaultWidth: 130, minWidth: 100 },
+  { key: 'verifiedAt', header: 'Verified At', defaultVisible: false, defaultWidth: 130, minWidth: 100 },
+  { key: 'notes', header: 'Notes', defaultVisible: false, defaultWidth: 160, minWidth: 100 },
+  { key: 'receipt', header: 'Receipt', defaultWidth: 120, minWidth: 80 },
+];
+
 const SubjectPaymentSubmissions = () => {
   const {
     user,
     selectedInstitute,
     selectedClass,
-    selectedSubject
+    selectedSubject,
+    isViewingAsParent,
+    selectedChild
   } = useAuth();
   const instituteRole = useInstituteRole();
   const {
@@ -186,17 +150,27 @@ const SubjectPaymentSubmissions = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(50);
 
+  const spsColIds = useMemo(() => SPS_COL_DEFS.map(c => c.key), []);
+  const spsColDefaultWidths = useMemo(() => Object.fromEntries(SPS_COL_DEFS.map(c => [c.key, c.defaultWidth ?? 150])), []);
+  const { getWidth: getSpsColWidth, setHoveredCol: setSpsHoveredCol, ResizeHandle: SpsResizeHandle } = useResizableColumns(spsColIds, spsColDefaultWidths);
+  const { colState: spsColState, visibleColumns: spsVisDefs, toggleColumn: toggleSpsCol, resetColumns: resetSpsCols } = useColumnConfig(SPS_COL_DEFS, 'subject-payment-submissions');
+  const spsVisKeys = useMemo(() => new Set(spsVisDefs.map(c => c.key)), [spsVisDefs]);
+
   const loadSubmissions = async (currentPage: number = 1, limit: number = 50, forceRefresh = false) => {
     if (!selectedInstitute || !selectedClass || !selectedSubject) return;
     setLoading(true);
+    const effectiveStudentId = isViewingAsParent && selectedChild ? selectedChild.id : undefined;
     try {
+      const queryString = effectiveStudentId
+        ? `?page=${currentPage}&limit=${limit}&studentId=${effectiveStudentId}`
+        : `?page=${currentPage}&limit=${limit}`;
       const result = await enhancedCachedClient.get(
-        `/institute-class-subject-payment-submissions/institute/${selectedInstitute.id}/class/${selectedClass.id}/subject/${selectedSubject.id}/my-submissions?page=${currentPage}&limit=${limit}`,
+        `/institute-class-subject-payment-submissions/institute/${selectedInstitute.id}/class/${selectedClass.id}/subject/${selectedSubject.id}/my-submissions${queryString}`,
         {},
         {
           ttl: CACHE_TTL.PAYMENT_SUBMISSIONS,
           forceRefresh,
-          userId: user?.id,
+          userId: effectiveStudentId || user?.id,
           role: instituteRole,
           instituteId: selectedInstitute.id,
           classId: selectedClass.id,
@@ -209,7 +183,7 @@ const SubjectPaymentSubmissions = () => {
         title: "Success",
         description: `Loaded ${result.data.length} payment submissions`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load submissions:', error);
       toast({
         title: "Error",
@@ -334,87 +308,59 @@ const SubjectPaymentSubmissions = () => {
     link.download = filename;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
   };
-  const renderTableContent = (submissions: PaymentSubmission[]) => <Paper sx={{
-    width: '100%',
-    overflow: 'hidden'
-  }}>
-      <TableContainer sx={{
-      height: 'calc(100vh - 450px)',
-      minHeight: 400
-    }}>
-        <Table stickyHeader aria-label="submissions table">
+  const renderTableContent = (submissions: PaymentSubmission[]) => (
+    <Paper sx={{ width: '100%', height: 'calc(100vh - 500px)', display: 'flex', flexDirection: 'column' }}>
+      <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+        <Table stickyHeader aria-label="submissions table" sx={{ tableLayout: 'fixed', minWidth: spsVisDefs.reduce((s, c) => s + getSpsColWidth(c.key), 0) }}>
           <TableHead>
             <TableRow>
-              {columns.map(column => <TableCell key={column.id} align={column.align} style={{
-              minWidth: column.minWidth
-            }}>
-                  {column.label}
-                </TableCell>)}
+              {spsVisDefs.map(col => (
+                <TableCell
+                  key={col.key}
+                  sx={{ position: 'relative', width: getSpsColWidth(col.key), maxWidth: getSpsColWidth(col.key), overflow: 'hidden', whiteSpace: 'nowrap' }}
+                  onMouseEnter={() => setSpsHoveredCol(col.key)}
+                  onMouseLeave={() => setSpsHoveredCol(null)}
+                >
+                  <div style={{ paddingRight: 12 }}>{col.header}</div>
+                  <SpsResizeHandle colId={col.key} />
+                </TableCell>
+              ))}
             </TableRow>
           </TableHead>
           <TableBody>
-            {submissions.length === 0 ? <TableRow>
-                <TableCell colSpan={columns.length} align="center" sx={{
-              py: 8
-            }}>
+            {submissions.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={spsVisDefs.length} align="center" sx={{ py: 8 }}>
                   <div className="text-center">
                     <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground text-lg mb-2">
-                      No submissions found
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Payment submissions will appear here when available.
-                    </p>
+                    <p className="text-muted-foreground text-lg mb-2">No submissions found</p>
+                    <p className="text-sm text-muted-foreground">Payment submissions will appear here when available.</p>
                   </div>
                 </TableCell>
-              </TableRow> : submissions.map(submission => <TableRow hover role="checkbox" tabIndex={-1} key={submission.id}>
-                  <TableCell>{submission.paymentPreview.title}</TableCell>
-                  <TableCell>{submission.paymentPreview.description}</TableCell>
-                  <TableCell align="right">
-                    Rs {parseFloat(submission.submittedAmount).toLocaleString()}
-                  </TableCell>
-                  <TableCell>{submission.transactionId}</TableCell>
-                  <TableCell>
-                    {new Date(submission.paymentDate).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell align="center">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(submission.status)}`}>
-                      {getStatusIcon(submission.status)}
-                      <span className="ml-1">{submission.status}</span>
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={submission.paymentPreview.priority === 'MANDATORY' ? 'destructive' : 'secondary'}>
-                      {submission.paymentPreview.priority}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(submission.uploadedAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell>
-                    {submission.verifiedAt ? new Date(submission.verifiedAt).toLocaleDateString() : '-'}
-                  </TableCell>
-                  <TableCell>
-                    {submission.notes ? <div className="max-w-32 truncate" title={submission.notes}>
-                        {submission.notes}
-                      </div> : '-'}
-                  </TableCell>
-                  <TableCell align="center">
-                    <div className="flex items-center space-x-1">
-                      {submission.availableActions.canView && <Button size="sm" variant="outline" onClick={() => handleViewReceipt(submission.receiptUrl)}>
-                          <Eye className="h-3 w-3" />
-                        </Button>}
-                      {submission.availableActions.canDownloadReceipt}
-                    </div>
-                  </TableCell>
-                </TableRow>)}
+              </TableRow>
+            ) : submissions.map(submission => (
+              <TableRow hover role="checkbox" tabIndex={-1} key={submission.id}>
+                {spsVisKeys.has('paymentTitle') && <TableCell style={{ width: getSpsColWidth('paymentTitle'), maxWidth: getSpsColWidth('paymentTitle'), overflow: 'hidden' }}>{submission.paymentPreview.title}</TableCell>}
+                {spsVisKeys.has('description') && <TableCell style={{ width: getSpsColWidth('description'), maxWidth: getSpsColWidth('description'), overflow: 'hidden' }}>{submission.paymentPreview.description}</TableCell>}
+                {spsVisKeys.has('submittedAmount') && <TableCell style={{ width: getSpsColWidth('submittedAmount'), maxWidth: getSpsColWidth('submittedAmount'), overflow: 'hidden' }}>Rs {parseFloat(submission.submittedAmount).toLocaleString()}</TableCell>}
+                {spsVisKeys.has('transactionId') && <TableCell style={{ width: getSpsColWidth('transactionId'), maxWidth: getSpsColWidth('transactionId'), overflow: 'hidden' }}>{submission.transactionId}</TableCell>}
+                {spsVisKeys.has('paymentDate') && <TableCell style={{ width: getSpsColWidth('paymentDate'), maxWidth: getSpsColWidth('paymentDate'), overflow: 'hidden' }}>{new Date(submission.paymentDate).toLocaleDateString()}</TableCell>}
+                {spsVisKeys.has('status') && <TableCell style={{ width: getSpsColWidth('status'), maxWidth: getSpsColWidth('status'), overflow: 'hidden' }}><span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(submission.status)}`}>{getStatusIcon(submission.status)}<span className="ml-1">{submission.status}</span></span></TableCell>}
+                {spsVisKeys.has('priority') && <TableCell style={{ width: getSpsColWidth('priority'), maxWidth: getSpsColWidth('priority'), overflow: 'hidden' }}><Badge variant={submission.paymentPreview.priority === 'MANDATORY' ? 'destructive' : 'secondary'}>{submission.paymentPreview.priority}</Badge></TableCell>}
+                {spsVisKeys.has('uploadedAt') && <TableCell style={{ width: getSpsColWidth('uploadedAt'), maxWidth: getSpsColWidth('uploadedAt'), overflow: 'hidden' }}>{new Date(submission.uploadedAt).toLocaleDateString()}</TableCell>}
+                {spsVisKeys.has('verifiedAt') && <TableCell style={{ width: getSpsColWidth('verifiedAt'), maxWidth: getSpsColWidth('verifiedAt'), overflow: 'hidden' }}>{submission.verifiedAt ? new Date(submission.verifiedAt).toLocaleDateString() : '-'}</TableCell>}
+                {spsVisKeys.has('notes') && <TableCell style={{ width: getSpsColWidth('notes'), maxWidth: getSpsColWidth('notes'), overflow: 'hidden' }}>{submission.notes ? <div className="truncate" title={submission.notes}>{submission.notes}</div> : '-'}</TableCell>}
+                {spsVisKeys.has('receipt') && <TableCell style={{ width: getSpsColWidth('receipt'), maxWidth: getSpsColWidth('receipt'), overflow: 'hidden' }}><div className="flex items-center space-x-1">{submission.availableActions.canView && submission.receiptUrl && <Button size="sm" variant="outline" onClick={() => handleViewReceipt(submission.receiptUrl)}><Eye className="h-3 w-3" /></Button>}{submission.availableActions.canDownloadReceipt}</div></TableCell>}
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       </TableContainer>
       <TablePagination rowsPerPageOptions={[25, 50, 100]} component="div" count={submissionsData?.pagination.total || 0} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} />
-    </Paper>;
+    </Paper>
+  );
   const subjectLabel = getSubjectLabel(selectedInstitute?.type);
 
   return (
@@ -429,9 +375,12 @@ const SubjectPaymentSubmissions = () => {
             <p><strong>{subjectLabel}:</strong> {selectedSubject.name}</p>
           </div>
         </div>
-        <Button onClick={() => loadSubmissions(1, rowsPerPage, true)} disabled={loading}>
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <ColumnConfigurator allColumns={SPS_COL_DEFS} colState={spsColState} onToggle={toggleSpsCol} onReset={resetSpsCols} />
+          <Button onClick={() => loadSubmissions(1, rowsPerPage, true)} disabled={loading}>
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </Button>
+        </div>
       </div>
 
       {/* Summary Stats */}

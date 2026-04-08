@@ -10,11 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { RefreshCw, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { getDayTypeMeta, renderAttendanceStatusBadge } from '@/components/calendar/calendarTheme';
+import { getImageUrl } from '@/utils/imageUrlHelper';
 
 function toSriLankaTime(utcStr: string): string {
   try {
@@ -258,7 +260,17 @@ const CalendarDayAttendanceView: React.FC = () => {
                           {group.records.map((r, i) => (
                             <TableRow key={i}>
                               <TableCell className="text-xs">{i + 1}</TableCell>
-                              <TableCell className="text-xs font-medium">{r.studentName || r.userName || r.studentId}</TableCell>
+                              <TableCell className="text-xs font-medium">
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-7 w-7">
+                                    <AvatarImage src={getImageUrl(r.studentImageUrl || r.imageUrl || '')} alt={r.studentName || r.userName || r.studentId} />
+                                    <AvatarFallback className="text-[10px]">
+                                      {(r.studentName || r.userName || r.studentId || '?').charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span>{r.studentName || r.userName || r.studentId}</span>
+                                </div>
+                              </TableCell>
                               <TableCell className="text-xs text-center">{renderAttendanceStatusBadge(r.status)}</TableCell>
                               <TableCell className="text-xs">{r.markedAt ? toSriLankaTime(r.markedAt) : '—'}</TableCell>
                             </TableRow>

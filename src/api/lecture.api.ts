@@ -131,8 +131,9 @@ class LectureApi {
   }
 
   async deleteLecture(id: string, context?: { instituteId?: string; classId?: string; subjectId?: string }): Promise<void> {
-    console.log('🗑️ Deleting lecture (will invalidate cache):', id);
-    return enhancedCachedClient.delete<void>(`/institute-class-subject-lectures/${id}`, context);
+    console.log('🗑️ Soft-deactivating lecture (will invalidate cache):', id);
+    // Backend DELETE /:id is SUPERADMIN-only. Use PATCH to deactivate instead.
+    await enhancedCachedClient.patch<any>(`/institute-class-subject-lectures/${id}`, { isActive: false }, context);
   }
 
   async deleteInstituteLecturePermanent(id: string, context?: { instituteId?: string }): Promise<any> {

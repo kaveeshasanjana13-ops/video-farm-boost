@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner';
 import { ArrowLeft, ArrowRight, Plus, Trash2, Rocket, AlertTriangle } from 'lucide-react';
 import ResponsiveDatePicker from './ResponsiveDatePicker';
+import { getErrorMessage } from '@/api/apiError';
 
 // Sri Lanka 2026 public holidays preset
 const SRI_LANKA_2026_HOLIDAYS: PublicHoliday[] = [
@@ -122,7 +123,7 @@ const GenerateCalendarWizard: React.FC = () => {
       if (error.message?.includes('409') || error.message?.includes('already exists')) {
         toast.error('Calendar already exists for this year. Delete it first to regenerate.');
       } else {
-        toast.error(error.message || 'Failed to generate calendar');
+        toast.error(getErrorMessage(error, 'Failed to generate calendar'));
       }
     } finally {
       setGenerating(false);

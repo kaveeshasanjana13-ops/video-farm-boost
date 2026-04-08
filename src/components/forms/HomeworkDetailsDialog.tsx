@@ -26,162 +26,120 @@ const HomeworkDetailsDialog = ({ isOpen, onClose, homework }: HomeworkDetailsDia
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold flex items-center gap-2">
-            <BookOpen className="h-5 w-5" />
-            Homework Details
+      <DialogContent className="max-w-2xl max-h-[90vh]">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-primary/10">
+              <BookOpen className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-base font-bold leading-tight">{homework.title}</p>
+              <p className="text-xs text-muted-foreground font-normal">Homework Details</p>
+            </div>
           </DialogTitle>
         </DialogHeader>
         
-        <ScrollArea className="max-h-[calc(90vh-120px)] pr-4">
-        <div className="space-y-6">
-          {/* Basic Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {homework.title}
-            </h3>
-            
-            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-              <h4 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Description</h4>
-              <p className="text-gray-600 dark:text-gray-400">
-                {homework.description || 'No description provided'}
-              </p>
+        <ScrollArea className="max-h-[calc(90vh-110px)] pr-4">
+        <div className="space-y-5">
+
+          {/* Description & Instructions */}
+          {(homework.description || homework.instructions) && (
+            <div className="space-y-2">
+              {homework.description && (
+                <div className="p-3.5 rounded-xl bg-muted/50 border border-border/50">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">Description</p>
+                  <p className="text-sm leading-relaxed">{homework.description}</p>
+                </div>
+              )}
+              {homework.instructions && (
+                <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-1">Instructions</p>
+                  <p className="text-sm leading-relaxed text-blue-800 dark:text-blue-300">{homework.instructions}</p>
+                </div>
+              )}
             </div>
+          )}
 
-            {homework.instructions && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-700 dark:text-blue-300 mb-2">Instructions</h4>
-                <p className="text-blue-600 dark:text-blue-400">
-                  {homework.instructions}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Context Information */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {homework.institute && (
-              <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <Building className="h-4 w-4 text-gray-500" />
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Institute</p>
-                  <p className="font-medium text-gray-700 dark:text-gray-300">
-                    {homework.institute.name}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {homework.class && (
-              <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <GraduationCap className="h-4 w-4 text-gray-500" />
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Class</p>
-                  <p className="font-medium text-gray-700 dark:text-gray-300">
-                    {homework.class.name}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {homework.subject && (
-              <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <BookOpen className="h-4 w-4 text-gray-500" />
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Subject</p>
-                  <p className="font-medium text-gray-700 dark:text-gray-300">
-                    {homework.subject.name}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Teacher Information */}
-          {homework.teacher && (
-            <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <User className="h-4 w-4 text-gray-500" />
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Teacher</p>
-                <p className="font-medium text-gray-700 dark:text-gray-300">
-                  {homework.teacher.name || homework.teacher.email}
-                </p>
+          {/* Context */}
+          {(homework.institute || homework.class || homework.subject || homework.teacher) && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Context</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {homework.institute && (
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Building className="h-2.5 w-2.5" />Institute</span>
+                    <span className="text-xs font-medium truncate">{homework.institute.name}</span>
+                  </div>
+                )}
+                {homework.class && (
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><GraduationCap className="h-2.5 w-2.5" />Class</span>
+                    <span className="text-xs font-medium truncate">{homework.class.name}</span>
+                  </div>
+                )}
+                {homework.subject && (
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60 flex items-center gap-1"><BookOpen className="h-2.5 w-2.5" />Subject</span>
+                    <span className="text-xs font-semibold text-primary truncate">{homework.subject.name}</span>
+                  </div>
+                )}
+                {homework.teacher && (
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><User className="h-2.5 w-2.5" />Teacher</span>
+                    <span className="text-xs font-medium truncate">{homework.teacher.name || homework.teacher.email}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Dates */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-              <Calendar className="h-4 w-4 text-green-600" />
-              <div>
-                <p className="text-xs text-green-600 dark:text-green-400">Start Date</p>
-                <p className="font-medium text-green-700 dark:text-green-300">
-                  {formatDate(homework.startDate)}
-                </p>
+          {/* Schedule & Marks */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Schedule &amp; Marks</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400 flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />Start Date</span>
+                <span className="text-xs font-semibold text-green-700 dark:text-green-300">{formatDate(homework.startDate)}</span>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-              <Clock className="h-4 w-4 text-red-600" />
-              <div>
-                <p className="text-xs text-red-600 dark:text-red-400">Due Date</p>
-                <p className="font-medium text-red-700 dark:text-red-300">
-                  {formatDate(homework.endDate)}
-                </p>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-800">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 flex items-center gap-1"><Clock className="h-2.5 w-2.5" />Due Date</span>
+                <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">{formatDate(homework.endDate)}</span>
+              </div>
+              {homework.maxMarks && (
+                <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Max Marks</span>
+                  <span className="text-sm font-bold">{homework.maxMarks}</span>
+                </div>
+              )}
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Status</span>
+                <Badge variant={homework.isActive ? 'default' : 'secondary'} className="w-fit text-[10px] px-1.5 py-0">
+                  {homework.isActive ? 'Active' : 'Inactive'}
+                </Badge>
               </div>
             </div>
           </div>
 
-          {/* Additional Information */}
-          <div className="space-y-3">
-            {homework.maxMarks && (
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Maximum Marks:</span>
-                <Badge variant="outline">{homework.maxMarks}</Badge>
+          {/* Resources */}
+          {(homework.referenceLink || homework.attachmentUrl) && (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Resources</p>
+              <div className="flex flex-wrap gap-2">
+                {homework.referenceLink && (
+                  <Button size="sm" variant="outline" className="h-8 text-xs border-blue-300 text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-700" onClick={() => window.open(homework.referenceLink, '_blank')}>
+                    <ExternalLink className="h-3 w-3 mr-1.5" />Reference Link
+                  </Button>
+                )}
+                {homework.attachmentUrl && (
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => window.open(homework.attachmentUrl, '_blank')}>
+                    <ExternalLink className="h-3 w-3 mr-1.5" />Attachment
+                  </Button>
+                )}
               </div>
-            )}
-
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600 dark:text-gray-400">Status:</span>
-              <Badge variant={homework.isActive ? 'default' : 'secondary'}>
-                {homework.isActive ? 'Active' : 'Inactive'}
-              </Badge>
             </div>
+          )}
 
-            {homework.referenceLink && (
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Reference Link:</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => window.open(homework.referenceLink, '_blank')}
-                  className="flex items-center gap-1"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Open Link
-                </Button>
-              </div>
-            )}
-
-            {homework.attachmentUrl && (
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Attachment:</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => window.open(homework.attachmentUrl, '_blank')}
-                  className="flex items-center gap-1"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Download
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Reference Materials Section */}
+          {/* Reference Materials */}
           {homework.id && (
             <HomeworkReferencesSection 
               homeworkId={homework.id} 
@@ -191,20 +149,20 @@ const HomeworkDetailsDialog = ({ isOpen, onClose, homework }: HomeworkDetailsDia
           )}
 
           {/* Timestamps */}
-          <div className="border-t pt-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-muted-foreground">
-              <div>
-                <span className="font-medium">Created:</span>
-                <br />
-                {homework.createdAt ? new Date(homework.createdAt).toLocaleString() : 'N/A'}
+          <div className="border-t pt-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Timestamps</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Created</span>
+                <span className="text-xs">{homework.createdAt ? new Date(homework.createdAt).toLocaleString() : 'N/A'}</span>
               </div>
-              <div>
-                <span className="font-medium">Updated:</span>
-                <br />
-                {homework.updatedAt ? new Date(homework.updatedAt).toLocaleString() : 'N/A'}
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Updated</span>
+                <span className="text-xs">{homework.updatedAt ? new Date(homework.updatedAt).toLocaleString() : 'N/A'}</span>
               </div>
             </div>
           </div>
+
         </div>
         </ScrollArea>
       </DialogContent>

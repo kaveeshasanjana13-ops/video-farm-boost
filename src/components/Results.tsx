@@ -12,43 +12,11 @@ import { AccessControl } from '@/utils/permissions';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import CreateResultForm from '@/components/forms/CreateResultForm';
-import { getBaseUrl } from '@/contexts/utils/auth.api';
-
-const mockResults = [
-  {
-    id: '1',
-    studentName: 'Alice Johnson',
-    subject: 'Mathematics',
-    examType: 'Midterm',
-    score: 88,
-    grade: 'B+',
-    date: '2024-03-15',
-    status: 'Pass'
-  },
-  {
-    id: '2',
-    studentName: 'Bob Williams',
-    subject: 'Physics',
-    examType: 'Final',
-    score: 92,
-    grade: 'A-',
-    date: '2024-05-20',
-    status: 'Pass'
-  },
-  {
-    id: '3',
-    studentName: 'Charlie Brown',
-    subject: 'English',
-    examType: 'Quiz',
-    score: 76,
-    grade: 'C',
-    date: '2024-04-01',
-    status: 'Fail'
-  }
-];
+import { examResultsApi, type ExamResultsQueryParams } from '@/api/examResults.api';
+import { getErrorMessage } from '@/api/apiError';
 
 const Results = () => {
-  const { user, selectedInstitute, selectedClass, selectedSubject, currentInstituteId, currentClassId, currentSubjectId } = useAuth();
+  const { user, selectedInstitute, selectedClass, selectedSubject, currentInstituteId, currentClassId, currentSubjectId, isViewingAsParent, selectedChild } = useAuth();
   const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -62,111 +30,48 @@ const Results = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [subjectFilter, setSubjectFilter] = useState('all');
 
-  const getAuthToken = () => {
-    const token = localStorage.getItem('access_token') || 
-                  localStorage.getItem('token') || 
-                  localStorage.getItem('authToken');
-    return token;
-  };
-
-  const getApiHeaders = () => {
-    const token = getAuthToken();
-    
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    return headers;
-  };
-
-  const buildQueryParams = () => {
-    const params = new URLSearchParams();
-
-    // Add context-aware filtering
-    if (currentInstituteId) {
-      params.append('instituteId', currentInstituteId);
-    }
-
-    if (currentClassId) {
-      params.append('classId', currentClassId);
-    }
-
-    if (currentSubjectId) {
-      params.append('subjectId', currentSubjectId);
-    }
-
-    return params;
-  };
-
-  const buildRequestBody = (additionalData: any = {}) => {
-    const body: any = { ...additionalData };
-
-    if (currentInstituteId) {
-      body.instituteId = currentInstituteId;
-    }
-
-    if (currentClassId) {
-      body.classId = currentClassId;
-    }
-
-    if (currentSubjectId) {
-      body.subjectId = currentSubjectId;
-    }
-
-    return body;
-  };
-
   const handleLoadData = async () => {
     setIsLoading(true);
     console.log('Loading results data...');
     console.log(`Current context - Institute: ${selectedInstitute?.name}, Class: ${selectedClass?.name}, Subject: ${selectedSubject?.name}`);
     
     try {
-      const baseUrl = getBaseUrl();
-      const headers = getApiHeaders();
-      const params = buildQueryParams();
+      const effectiveStudentId = isViewingAsParent && selectedChild ? selectedChild.id : undefined;
+      const params: ExamResultsQueryParams = {
+        page: 1,
+        limit: 50,
+        userId: user?.id,
+        ...(effectiveStudentId ? { studentId: effectiveStudentId } : {}),
+      };
+
+      if (currentInstituteId) params.instituteId = currentInstituteId;
+      if (currentClassId) params.classId = currentClassId;
+      if (currentSubjectId) params.subjectId = currentSubjectId;
+
+      const response = await examResultsApi.getExamResults(params, true);
       
-      // For now, simulate API call with mock data but in real scenario would be:
-      // const url = params.toString() ? `${baseUrl}/results?${params}` : `${baseUrl}/results`;
-      // const response = await fetch(url, { method: 'GET', headers });
+      // Map API response to table-compatible format
+      const mappedData = response.data.map(result => ({
+        id: result.id,
+        studentName: result.student ? `${result.student.firstName} ${result.student.lastName}` : `Student ${result.studentId}`,
+        subject: selectedSubject?.name || 'N/A',
+        examType: result.exam?.examType || 'N/A',
+        score: result.score,
+        grade: result.grade,
+        date: result.createdAt ? new Date(result.createdAt).toLocaleDateString() : 'N/A',
+        status: parseFloat(result.score) >= 50 ? 'Pass' : 'Fail',
+        remarks: result.remarks,
+        examTitle: result.exam?.title,
+        studentId: result.studentId,
+        examId: result.examId,
+      }));
       
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Filter mock data based on filters
-      let filteredData = mockResults;
-      
-      if (searchTerm) {
-        filteredData = filteredData.filter(result =>
-          result.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          result.subject.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
-      
-      if (statusFilter !== 'all') {
-        filteredData = filteredData.filter(result => result.status === statusFilter);
-      }
-      
-      if (typeFilter !== 'all') {
-        filteredData = filteredData.filter(result => result.examType === typeFilter);
-      }
-      
-      if (subjectFilter !== 'all') {
-        filteredData = filteredData.filter(result =>
-          result.subject.toLowerCase().includes(subjectFilter.toLowerCase())
-        );
-      }
-      
-      setResultsData(filteredData);
+      setResultsData(mappedData);
       setDataLoaded(true);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Load Failed",
-        description: "Failed to load results data.",
+        description: getErrorMessage(error, 'Failed to load results data.'),
         variant: "destructive"
       });
     } finally {
@@ -423,7 +328,7 @@ const Results = () => {
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                   Subject
                 </label>
-                <Select value={subjectFilter} onValueChange={setTypeFilter}>
+                <Select value={subjectFilter} onValueChange={setSubjectFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="Subject" />
                   </SelectTrigger>

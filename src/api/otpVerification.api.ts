@@ -1,6 +1,6 @@
 /**
  * Public OTP Verification API (Registration flow)
- * Uses x-api-key header (VITE_SPECIAL_API_KEY)
+ * Uses Authorization Bearer header (VITE_SPECIAL_API_KEY)
  * No JWT required
  */
 
@@ -8,7 +8,7 @@ import { getBaseUrl } from '@/contexts/utils/auth.api';
 
 const getHeaders = (): Record<string, string> => ({
   'Content-Type': 'application/json',
-  'x-api-key': import.meta.env.VITE_SPECIAL_API_KEY || '',
+  'Authorization': `Bearer ${import.meta.env.VITE_SPECIAL_API_KEY || ''}`,
 });
 
 export interface OtpRequestResponse {

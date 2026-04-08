@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RefreshCw, BookOpen, Plus, Filter, FileText, Edit, Eye, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import CreateHomeworkForm from '@/components/forms/CreateHomeworkForm';
@@ -58,6 +59,7 @@ interface Column {
 const TeacherHomework = () => {
   const navigate = useNavigate();
   const { user, selectedInstitute, selectedClass, selectedSubject } = useAuth();
+  const { subjectLabel } = useInstituteLabels();
   const effectiveRole = useInstituteRole();
   const { toast } = useToast();
   
@@ -226,10 +228,10 @@ const TeacherHomework = () => {
         <div className="text-center py-12">
           <BookOpen className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <h2 className="text-2xl font-bold mb-4">
-            Select Subject
+            Select {subjectLabel}
           </h2>
           <p className="text-muted-foreground">
-            Please select an institute, class, and subject to view homework.
+            Please select an institute, class, and {subjectLabel.toLowerCase()} to view homework.
           </p>
         </div>
       </div>

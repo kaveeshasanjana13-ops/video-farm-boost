@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Filter, X, Search, Calendar, DollarSign } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
 export interface FilterParams {
   page?: number;
@@ -44,6 +45,7 @@ const PaymentSubmissionsFilters: React.FC<PaymentSubmissionsFiltersProps> = ({
   onClearFilters
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
 
   const updateFilter = (key: keyof FilterParams, value: any) => {
     onFiltersChange({ ...filters, [key]: value });
@@ -64,24 +66,105 @@ const PaymentSubmissionsFilters: React.FC<PaymentSubmissionsFiltersProps> = ({
   };
 
   return (
-    <Card className="mb-6">
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <CollapsibleTrigger asChild>
-          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Filter className="h-5 w-5" />
-                <span>Filters & Search</span>
-                {getActiveFilterCount() > 0 && (
-                  <Badge variant="secondary">{getActiveFilterCount()} active</Badge>
-                )}
+    <>
+      {/* Mobile Filter Sheet */}
+      <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
+        <SheetTrigger asChild>
+          <Button variant="outline" size="sm" className="md:hidden mb-6 w-full gap-2">
+            <Filter className="h-4 w-4" />
+            Filters & Search
+            {getActiveFilterCount() > 0 && (
+              <Badge variant="secondary" className="ml-auto">{getActiveFilterCount()} active</Badge>
+            )}
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="bottom" className="md:hidden flex flex-col max-h-[80vh] rounded-t-2xl">
+          <SheetHeader>
+            <SheetTitle>Filters & Search</SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto py-4">
+            <div className="space-y-6 px-4">
+              {/* Search and Quick Actions */}
+              <div className="flex flex-col gap-4">
+                <div className="flex-1">
+                  <Label htmlFor="search-mobile">Search</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="search-mobile"
+                      placeholder="Search in transaction ref, remarks, notes..."
+                      value={filters.search || ''}
+                      onChange={(e) => updateFilter('search', e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => { onApplyFilters(); setIsFilterSheetOpen(false); }} className="flex items-center space-x-2 flex-1">
+                    <Search className="h-4 w-4" />
+                    <span>Apply</span>
+                  </Button>
+                  <Button variant="outline" onClick={() => { onClearFilters(); setIsFilterSheetOpen(false); }} className="flex-1">
+                    Clear All
+                  </Button>
+                </div>
               </div>
-              <Button variant="ghost" size="sm">
-                {isOpen ? 'Hide' : 'Show'}
-              </Button>
-            </CardTitle>
-          </CardHeader>
-        </CollapsibleTrigger>
+              {/* Filter Controls */}
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <Label>Status</Label>
+                  <Select value={filters.status || 'all'} onValueChange={(value) => updateFilter('status', value === 'all' ? undefined : value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="PENDING">Pending</SelectItem>
+                      <SelectItem value="VERIFIED">Verified</SelectItem>
+                      <SelectItem value="REJECTED">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Payment Method</Label>
+                  <Select value={filters.paymentMethod || 'all'} onValueChange={(value) => updateFilter('paymentMethod', value === 'all' ? undefined : value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All methods" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All methods</SelectItem>
+                      <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                      <SelectItem value="UPI">UPI</SelectItem>
+                      <SelectItem value="ONLINE_PAYMENT">Online Payment</SelectItem>
+                      <SelectItem value="CASH_DEPOSIT">Cash Deposit</SelectItem>
+                      <SelectItem value="CHEQUE">Cheque</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+      {/* Desktop Filter Card */}
+      <Card className="mb-6 hidden md:block">
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Filter className="h-5 w-5" />
+                  <span>Filters & Search</span>
+                  {getActiveFilterCount() > 0 && (
+                    <Badge variant="secondary">{getActiveFilterCount()} active</Badge>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm">
+                  {isOpen ? 'Hide' : 'Show'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+          </CollapsibleTrigger>
         
         <CollapsibleContent>
           <CardContent className="space-y-6">
@@ -351,7 +434,8 @@ const PaymentSubmissionsFilters: React.FC<PaymentSubmissionsFiltersProps> = ({
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
-    </Card>
+      </Card>
+    </>
   );
 };
 

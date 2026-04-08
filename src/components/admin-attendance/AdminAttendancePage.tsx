@@ -11,40 +11,36 @@ import StudentAttendanceLookup from './StudentAttendanceLookup';
 import ExportReporting from './ExportReporting';
 import AttendanceAlerts from './AttendanceAlerts';
 import { cn } from '@/lib/utils';
-import {
-  TrendingUp, Sparkles, PartyPopper,
-  Eye, Users, GitBranch, GraduationCap, Download,
-  Bell, AlertTriangle, Activity
-} from 'lucide-react';
+import { AlertTriangle, Activity } from 'lucide-react';
 
 const tabGroups = [
   {
     label: 'Analytics',
     tabs: [
-      { id: 'analytics', label: 'Analytics', icon: TrendingUp, description: 'Charts & trends' },
-      { id: 'advanced', label: 'Advanced', icon: Sparkles, description: 'Deep analytics' },
+      { id: 'analytics', label: 'Analytics' },
+      { id: 'advanced', label: 'Advanced' },
     ],
   },
   {
     label: 'Events',
     tabs: [
-      { id: 'events', label: 'Events', icon: PartyPopper, description: 'Event attendance' },
-      { id: 'day-view', label: 'Day View', icon: Eye, description: 'Daily breakdown' },
+      { id: 'events', label: 'Events' },
+      { id: 'day-view', label: 'Day View' },
     ],
   },
   {
     label: 'Drilldowns',
     tabs: [
-      { id: 'user-types', label: 'By Type', icon: Users, description: 'User type breakdown' },
-      { id: 'drill-down', label: 'Drill-Down', icon: GitBranch, description: 'Class & subject' },
-      { id: 'student', label: 'Student', icon: GraduationCap, description: 'Student lookup' },
+      { id: 'user-types', label: 'By Type' },
+      { id: 'drill-down', label: 'Drill-Down' },
+      { id: 'student', label: 'Student' },
     ],
   },
   {
     label: 'Tools',
     tabs: [
-      { id: 'export', label: 'Export', icon: Download, description: 'Reports & export' },
-      { id: 'alerts', label: 'Alerts', icon: Bell, description: 'Alert configuration' },
+      { id: 'export', label: 'Export' },
+      { id: 'alerts', label: 'Alerts' },
     ],
   },
 ];
@@ -52,7 +48,7 @@ const tabGroups = [
 const AdminAttendancePage: React.FC = () => {
   const { currentInstituteId, selectedInstitute } = useAuth();
   const [activeTab, setActiveTab] = useState('analytics');
-  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(['analytics']));
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set<string>(['analytics']));
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId);
@@ -84,26 +80,20 @@ const AdminAttendancePage: React.FC = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Modern Header */}
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shadow-sm">
-            <Activity className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">Attendance</h1>
-            <p className="text-[11px] sm:text-xs text-muted-foreground">{selectedInstitute?.name || 'Institute'}</p>
-          </div>
+        <div>
+          <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">Attendance</h1>
+          <p className="text-[11px] sm:text-xs text-muted-foreground">{selectedInstitute?.name || 'Institute'}</p>
         </div>
       </div>
 
-      {/* Modern Tab Navigation */}
+      {/* Tab Navigation */}
       <div className="space-y-2">
         {/* Primary Group Tabs */}
         <div className="flex gap-1 p-1 rounded-2xl bg-muted/50 backdrop-blur-sm border border-border/50 overflow-x-auto scrollbar-hide">
           {tabGroups.map((group) => {
             const isGroupActive = group.tabs.some(t => t.id === activeTab);
-            const GroupIcon = group.tabs[0].icon;
             return (
               <button
                 key={group.label}
@@ -115,10 +105,7 @@ const AdminAttendancePage: React.FC = () => {
                     : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
                 )}
               >
-                <GroupIcon className={cn('h-4 w-4 shrink-0 transition-colors', isGroupActive && 'text-primary')} />
-                <span className={cn('transition-all duration-200', isGroupActive ? 'inline' : 'hidden sm:inline')}>
-                  {group.label}
-                </span>
+                <span>{group.label}</span>
               </button>
             );
           })}
@@ -128,7 +115,6 @@ const AdminAttendancePage: React.FC = () => {
         {activeGroup && activeGroup.tabs.length > 1 && (
           <div className="flex gap-1 p-0.5 rounded-xl bg-muted/30 border border-border/30 overflow-x-auto scrollbar-hide">
             {activeGroup.tabs.map((tab) => {
-              const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
@@ -141,11 +127,7 @@ const AdminAttendancePage: React.FC = () => {
                       : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
-                  <Icon className={cn('h-3.5 w-3.5 shrink-0', isActive && 'text-primary')} />
-                  <span className={cn('transition-all duration-200', isActive ? 'inline' : 'hidden sm:inline')}>
-                    {tab.label}
-                  </span>
-                  {isActive && <span className="text-[10px] text-muted-foreground hidden md:inline ml-0.5">— {tab.description}</span>}
+                  <span>{tab.label}</span>
                 </button>
               );
             })}

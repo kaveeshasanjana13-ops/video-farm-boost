@@ -37,35 +37,29 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 
   try {
-    // Pass Firebase config via URL parameter for service worker initialization
-    const configParam = encodeURIComponent(JSON.stringify(firebaseConfig));
-    const swUrl = `/firebase-messaging-sw.js?firebaseConfig=${configParam}`;
-    
+    // Register the service worker WITHOUT config in URL (prevents credentials leaking into logs)
+    const swUrl = `/firebase-messaging-sw.js`;
+
     const registration = await navigator.serviceWorker.register(swUrl, {
       scope: '/'
     });
-    console.log('Service Worker registered successfully:', registration);
 
-    // Also send config via message (more reliable)
+    // Send config via postMessage — the only safe channel
+    const sendConfig = (sw: ServiceWorker) => {
+      sw.postMessage({ type: 'FIREBASE_CONFIG', config: firebaseConfig });
+    };
+
     if (registration.active) {
-      registration.active.postMessage({
-        type: 'FIREBASE_CONFIG',
-        config: firebaseConfig
-      });
+      sendConfig(registration.active);
     }
 
-    // Send config when service worker becomes active
+    // Also send once the SW becomes active (handles first install)
     navigator.serviceWorker.ready.then((reg) => {
-      if (reg.active) {
-        reg.active.postMessage({
-          type: 'FIREBASE_CONFIG',
-          config: firebaseConfig
-        });
-      }
+      if (reg.active) sendConfig(reg.active);
     });
 
     return registration;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Service Worker registration failed:', error);
     return null;
   }
@@ -81,7 +75,7 @@ export async function unregisterServiceWorker(): Promise<boolean> {
     const result = await registration.unregister();
     console.log('Service Worker unregistered:', result);
     return result;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Service Worker unregistration failed:', error);
     return false;
   }

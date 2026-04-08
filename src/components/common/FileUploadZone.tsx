@@ -16,19 +16,25 @@ import {
 import { getValidDriveToken } from '@/lib/driveTokenCache';
 import type { DriveUploadPurpose } from '@/services/driveService';
 import { useNavigate } from 'react-router-dom';
+import { getErrorMessage } from '@/api/apiError';
+import { instituteDriveApi, InstituteDriveStatus, type InstituteDrivePurpose } from '@/api/instituteDriveAccess.api';
+import { uploadToInstituteDrive } from '@/lib/instituteDriveUpload';
+import { getValidInstituteToken } from '@/lib/instituteTokenCache';
 
 // ============================================
 // Types
 // ============================================
 
 export interface UploadResult {
-  method: 'upload' | 'google-drive';
+  method: 'upload' | 'google-drive' | 'institute-drive';
   /** For cloud storage uploads - the relative path */
   relativePath?: string;
   /** For Google Drive - the file ID */
   driveFileId?: string;
   /** Access token used for Drive */
   accessToken?: string;
+  /** Drive web view link (institute drive) */
+  driveWebViewLink?: string;
   /** Original file name */
   fileName: string;
   /** MIME type */
@@ -62,6 +68,12 @@ export interface FileUploadZoneProps {
   label?: string;
   /** Sub-label */
   subLabel?: string;
+  /** Institute ID for institute Drive uploads */
+  instituteId?: string;
+  /** Institute Drive purpose */
+  instituteDrivePurpose?: InstituteDrivePurpose;
+  /** Institute Drive folder params */
+  instituteFolderParams?: { subjectName?: string; className?: string; grade?: number };
 }
 
 // Helper: Extract Google Drive file ID from various URL formats
@@ -98,6 +110,9 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
   disabled = false,
   label,
   subLabel,
+  instituteId,
+  instituteDrivePurpose,
+  instituteFolderParams,
 }) => {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -120,6 +135,16 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
   const [isDriveUploading, setIsDriveUploading] = useState(false);
   const [driveUploadMessage, setDriveUploadMessage] = useState('');
   const [driveUploadProgress, setDriveUploadProgress] = useState(0);
+
+  // Institute Drive state
+  type DriveMode = 'personal' | 'institute';
+  const [driveMode, setDriveMode] = useState<DriveMode>(instituteId ? 'institute' : 'personal');
+  const [instituteDriveStatus, setInstituteDriveStatus] = useState<InstituteDriveStatus | null>(null);
+  const [instituteDriveChecked, setInstituteDriveChecked] = useState(false);
+  const [instDriveSelectedFile, setInstDriveSelectedFile] = useState<File | null>(null);
+  const [isInstDriveUploading, setIsInstDriveUploading] = useState(false);
+  const [instDriveUploadMessage, setInstDriveUploadMessage] = useState('');
+  const [instDriveUploadProgress, setInstDriveUploadProgress] = useState(0);
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -146,7 +171,22 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
   const handleDriveTabSelect = useCallback(() => {
     setUploadMethod('google-drive');
     checkDriveConnectionStatus();
-  }, [checkDriveConnectionStatus]);
+    if (instituteId && !instituteDriveChecked) checkInstituteDriveStatus();
+  }, [checkDriveConnectionStatus, instituteId, instituteDriveChecked]);
+
+  // Check institute Drive connection
+  const checkInstituteDriveStatus = useCallback(async () => {
+    if (!instituteId || instituteDriveChecked) return;
+    try {
+      const status = await instituteDriveApi.getStatus(instituteId);
+      setInstituteDriveStatus(status);
+      if (status.isConnected) setDriveMode('institute');
+    } catch {
+      setInstituteDriveStatus(null);
+    } finally {
+      setInstituteDriveChecked(true);
+    }
+  }, [instituteId, instituteDriveChecked]);
 
   const handleConnect = useCallback(async () => {
     setConnecting(true);
@@ -181,6 +221,7 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
   const clearFile = useCallback(() => {
     setSelectedFile(null);
     setDriveSelectedFile(null);
+    setInstDriveSelectedFile(null);
     setUploadedResult(null);
     onClear?.();
   }, [onClear]);
@@ -205,7 +246,7 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
       onUploadComplete(result);
       toast({ title: 'Upload complete', description: `${file.name} uploaded successfully` });
     } catch (error: any) {
-      toast({ title: 'Upload Failed', description: error.message || 'Failed to upload', variant: 'destructive' });
+      toast({ title: 'Upload Failed', description: getErrorMessage(error, 'Failed to upload'), variant: 'destructive' });
     } finally {
       setIsUploading(false);
       setUploadMessage('');
@@ -281,7 +322,7 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
       } else {
         toast({
           title: 'Upload Failed',
-          description: error.message || 'Failed to upload to Google Drive.',
+          description: getErrorMessage(error, 'Failed to upload to Google Drive.'),
           variant: 'destructive',
         });
       }
@@ -291,6 +332,68 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
       setDriveUploadProgress(0);
     }
   }, [driveSelectedFile, drivePurpose, driveReferenceType, driveReferenceId, onUploadComplete, toast]);
+
+  // Handle institute Drive file selection
+  const handleInstDriveFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > maxFileSize) {
+      toast({ title: 'File too large', description: `Max ${formatFileSize(maxFileSize)}`, variant: 'destructive' });
+      return;
+    }
+    setInstDriveSelectedFile(file);
+    setUploadedResult(null);
+  }, [maxFileSize, toast]);
+
+  // Upload to institute Drive
+  const handleInstDriveUpload = useCallback(async () => {
+    if (!instDriveSelectedFile || !instituteId) return;
+    setIsInstDriveUploading(true);
+    setInstDriveUploadProgress(0);
+    try {
+      const registered = await uploadToInstituteDrive({
+        file: instDriveSelectedFile,
+        instituteId,
+        purpose: instituteDrivePurpose || (drivePurpose as InstituteDrivePurpose) || 'GENERAL',
+        folderParams: instituteFolderParams,
+        referenceType: driveReferenceType,
+        referenceId: driveReferenceId,
+        onProgress: (percent) => {
+          setInstDriveUploadProgress(percent);
+          if (percent < 10) setInstDriveUploadMessage('Getting token...');
+          else if (percent < 85) setInstDriveUploadMessage('Uploading to Institute Drive...');
+          else setInstDriveUploadMessage('Registering...');
+        },
+      });
+
+      // Get institute token for the result
+      const tokenData = await getValidInstituteToken(instituteId);
+
+      const uploadResult: UploadResult = {
+        method: 'institute-drive',
+        driveFileId: registered.driveFileId,
+        accessToken: tokenData.accessToken,
+        driveWebViewLink: registered.driveWebViewLink || registered.viewUrl,
+        fileName: registered.fileName || instDriveSelectedFile.name,
+        mimeType: registered.mimeType || instDriveSelectedFile.type || 'application/octet-stream',
+        fileSize: instDriveSelectedFile.size,
+      };
+      setUploadedResult(uploadResult);
+      onUploadComplete(uploadResult);
+      toast({ title: 'Upload complete', description: `${instDriveSelectedFile.name} uploaded to Institute Drive` });
+    } catch (error: any) {
+      console.error('Institute Drive upload error:', error);
+      toast({
+        title: 'Upload Failed',
+        description: getErrorMessage(error, 'Failed to upload to Institute Drive'),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsInstDriveUploading(false);
+      setInstDriveUploadMessage('');
+      setInstDriveUploadProgress(0);
+    }
+  }, [instDriveSelectedFile, instituteId, instituteDrivePurpose, drivePurpose, instituteFolderParams, driveReferenceType, driveReferenceId, onUploadComplete, toast]);
 
   const handleUpload = useCallback(async () => {
     if (!selectedFile) return;
@@ -308,7 +411,7 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
           <p className="font-medium text-[10px] sm:text-xs truncate">{uploadedResult.fileName}</p>
           <p className="text-[9px] text-muted-foreground">
             {uploadedResult.fileSize > 0 ? `${formatFileSize(uploadedResult.fileSize)} • ` : ''}
-            {uploadedResult.method === 'google-drive' ? 'Google Drive' : 'Cloud Storage'}
+            {uploadedResult.method === 'institute-drive' ? 'Institute Drive' : uploadedResult.method === 'google-drive' ? 'Google Drive' : 'Cloud Storage'}
           </p>
         </div>
         {uploadedResult.driveFileId && (
@@ -368,8 +471,109 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
         </div>
       )}
 
-      {/* Drive not connected */}
-      {uploadMethod === 'google-drive' && !checkingDrive && !isConnected && (
+      {/* Drive mode selector (when institute Drive is available) */}
+      {uploadMethod === 'google-drive' && !checkingDrive && instituteDriveChecked && instituteDriveStatus?.isConnected && (
+        <div className="flex gap-1 p-0.5 bg-muted rounded-lg">
+          <button
+            type="button"
+            onClick={() => setDriveMode('institute')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-md text-[10px] sm:text-xs font-medium transition-colors',
+              driveMode === 'institute' ? 'bg-blue-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <HardDrive className="h-3 w-3" /> Institute
+          </button>
+          <button
+            type="button"
+            onClick={() => setDriveMode('personal')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-md text-[10px] sm:text-xs font-medium transition-colors',
+              driveMode === 'personal' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <Cloud className="h-3 w-3" /> Personal
+          </button>
+        </div>
+      )}
+
+      {/* Institute Drive: file picker + upload */}
+      {uploadMethod === 'google-drive' && !checkingDrive && driveMode === 'institute' && instituteDriveStatus?.isConnected && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5">
+            <CheckCircle2 className="h-3 w-3 text-blue-600" />
+            <span className="text-[10px] text-muted-foreground">
+              Institute Drive {instituteDriveStatus?.googleEmail || ''}
+            </span>
+          </div>
+          {!instDriveSelectedFile ? (
+            <div>
+              <input
+                type="file"
+                id="file-upload-zone-inst-drive"
+                onChange={handleInstDriveFileSelect}
+                accept={acceptedTypes}
+                className="hidden"
+                disabled={disabled || isInstDriveUploading}
+              />
+              <label
+                htmlFor="file-upload-zone-inst-drive"
+                className={cn(
+                  'flex flex-col items-center justify-center w-full py-4 sm:py-5 border-2 border-dashed rounded-lg transition-all cursor-pointer',
+                  disabled || isInstDriveUploading
+                    ? 'border-muted bg-muted/50 cursor-not-allowed'
+                    : 'border-blue-300/50 hover:border-blue-500/50 hover:bg-blue-50/30 active:scale-[0.99]'
+                )}
+              >
+                <HardDrive className="h-5 w-5 mb-1 text-blue-500/70" />
+                <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">
+                  {label || 'Tap to select file for Institute Drive'}
+                </p>
+                <p className="text-[9px] sm:text-[10px] text-muted-foreground/70 mt-0.5">
+                  {subLabel || `PDF, DOC, JPG, PNG (max ${formatFileSize(maxFileSize)})`}
+                </p>
+              </label>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800/30">
+                <File className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-[10px] sm:text-xs truncate">{instDriveSelectedFile.name}</p>
+                  <p className="text-[9px] text-muted-foreground">{formatFileSize(instDriveSelectedFile.size)}</p>
+                </div>
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  onClick={() => setInstDriveSelectedFile(null)}
+                  disabled={isInstDriveUploading}
+                  className="h-6 w-6 p-0 hover:text-destructive shrink-0"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+              <Button
+                type="button"
+                onClick={handleInstDriveUpload}
+                disabled={isInstDriveUploading || disabled}
+                className="w-full h-8 text-xs bg-blue-600 hover:bg-blue-700"
+              >
+                {isInstDriveUploading ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    {instDriveUploadMessage || 'Uploading...'}
+                    {instDriveUploadProgress > 0 && <span className="ml-1">({instDriveUploadProgress}%)</span>}
+                  </>
+                ) : (
+                  <><CloudUpload className="h-3 w-3 mr-1" /> Upload to Institute Drive</>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Personal Drive not connected */}
+      {uploadMethod === 'google-drive' && !checkingDrive && (driveMode === 'personal' || !instituteDriveStatus?.isConnected) && !isConnected && (
         <Card className="border-dashed">
           <CardContent className="py-4 text-center">
             <Cloud className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
@@ -451,8 +655,8 @@ const FileUploadZone: React.FC<FileUploadZoneProps> = ({
         </>
       )}
 
-      {/* Google Drive: File picker + upload to Drive */}
-      {uploadMethod === 'google-drive' && !checkingDrive && isConnected && (
+      {/* Personal Google Drive: File picker + upload to Drive */}
+      {uploadMethod === 'google-drive' && !checkingDrive && (driveMode === 'personal' || !instituteDriveStatus?.isConnected) && isConnected && (
         <div className="space-y-2">
           {!driveSelectedFile ? (
             <div>

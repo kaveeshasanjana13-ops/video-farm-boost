@@ -189,7 +189,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         console.log('✅ Access granted to:', location.pathname);
         setValidationError(null);
         setIsValidating(false);
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ Route validation error:', error);
         setValidationError('Validation error occurred');
         setIsValidating(false);

@@ -44,7 +44,7 @@ const VerifySubjectPaymentDialog = ({ open, onOpenChange, submission, onVerify }
       setStatus('VERIFIED');
       setRejectionReason('');
       setNotes('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to verify submission:', error);
     } finally {
       setLoading(false);
@@ -55,54 +55,66 @@ const VerifySubjectPaymentDialog = ({ open, onOpenChange, submission, onVerify }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Verify Payment Submission</DialogTitle>
+      <DialogContent className="w-[95vw] max-w-3xl max-h-[88vh] overflow-y-auto">
+        <DialogHeader className="pb-2">
+          <DialogTitle className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-primary/10">
+              <FileText className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="font-bold text-base leading-tight">Verify Payment Submission</p>
+              <p className="text-xs text-muted-foreground font-normal">Review payment evidence before approval</p>
+            </div>
+          </DialogTitle>
         </DialogHeader>
         
         {/* Submission Details */}
-        <div className="bg-muted p-4 rounded-lg mb-6">
-          <h3 className="font-semibold mb-3">Submission Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div className="flex items-center space-x-2">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span><strong>Submitter:</strong> {submission.username || 'Unknown User'}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-              <span><strong>Amount:</strong> Rs {submission.submittedAmount ? parseFloat(submission.submittedAmount.toString()).toLocaleString() : '0'}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span><strong>User Type:</strong> {submission.userType}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span><strong>Transaction ID:</strong> {submission.transactionId}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span><strong>Payment Date:</strong> {new Date(submission.paymentDate).toLocaleDateString()}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span><strong>Submitted:</strong> {new Date(submission.uploadedAt).toLocaleDateString()}</span>
+        <div className="space-y-5 mb-6">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Submission Details</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50 col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><User className="h-2.5 w-2.5" />Submitter</span>
+                <span className="text-xs font-medium">{submission.username || 'Unknown User'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60 flex items-center gap-1"><DollarSign className="h-2.5 w-2.5" />Amount</span>
+                <span className="text-xs font-bold text-primary">Rs {submission.submittedAmount ? parseFloat(submission.submittedAmount.toString()).toLocaleString() : '0'}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">User Type</span>
+                <span className="text-xs font-medium">{submission.userType}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50 col-span-2 sm:col-span-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Transaction ID</span>
+                <span className="text-xs font-mono font-medium break-all">{submission.transactionId}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />Payment Date</span>
+                <span className="text-xs font-medium">{new Date(submission.paymentDate).toLocaleDateString()}</span>
+              </div>
+              <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />Submitted</span>
+                <span className="text-xs font-medium">{new Date(submission.uploadedAt).toLocaleDateString()}</span>
+              </div>
             </div>
           </div>
+
           {submission.notes && (
-            <div className="mt-3 p-2 bg-background rounded border">
-              <p className="text-sm"><strong>Notes:</strong> {submission.notes}</p>
+            <div className="p-3 rounded-xl bg-muted/60 border border-border/50">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Notes</p>
+              <p className="text-sm">{submission.notes}</p>
             </div>
           )}
           {submission.receiptUrl && (
-            <div className="mt-3">
+            <div>
               <a 
                 target="_blank"
                 rel="noopener noreferrer"
                 href={getImageUrl(submission.receiptUrl)}
-                className="text-primary hover:underline text-sm"
+                className="text-primary hover:underline text-sm font-medium"
               >
-                View Receipt
+                View Receipt →
               </a>
             </div>
           )}

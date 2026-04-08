@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import ScrollAnimationWrapper from '@/components/ScrollAnimationWrapper';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,7 +13,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import MUITable from '@/components/ui/mui-table';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, RefreshCw, Search, Plus, AlertTriangle, User, MapPin, Phone, Briefcase, Calendar, Home, Filter, ChevronDown, ChevronUp, X, Eye, GraduationCap, Mail, Check, ChevronsUpDown } from 'lucide-react';
+import { Users, RefreshCw, Search, Plus, AlertTriangle, User, MapPin, Phone, Briefcase, Calendar, Home, Filter, ChevronDown, ChevronUp, X, Eye, GraduationCap, Mail, Check, ChevronsUpDown, LayoutGrid, Table2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,6 +27,22 @@ import { SafeImage } from '@/components/ui/SafeImage';
 import { Occupation, formatOccupation } from '@/types/occupation.types';
 import { getImageUrl } from '@/utils/imageUrlHelper';
 import { cn } from '@/lib/utils';
+import { useViewMode } from '@/hooks/useViewMode';
+import { type ColumnDef } from '@/hooks/useColumnConfig';
+
+/**
+ * Convert a full name to initials + last-name format.
+ * e.g. "HEENKENDA MUDIYANSELAGE KAVEESHA SANJANA KARUNARATHNA" → "H.M.K.S. Karunarathna"
+ */
+const formatNameToInitials = (fullName: string): string => {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length <= 1) return fullName;
+  const lastName = parts[parts.length - 1];
+  const initials = parts.slice(0, -1).map(p => p.charAt(0).toUpperCase() + '.').join('');
+  // Capitalize only first letter of last name
+  const formattedLast = lastName.charAt(0).toUpperCase() + lastName.slice(1).toLowerCase();
+  return `${initials} ${formattedLast}`;
+};
 
 // Searchable Occupation Combobox Component
 const OccupationCombobox = ({
@@ -93,6 +111,9 @@ const Parents = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const { viewMode, setViewMode } = useViewMode();
+  const CARD_INITIAL_SHOW = 8;
+  const [showAllParentCards, setShowAllParentCards] = useState(false);
   const [imagePreview, setImagePreview] = useState<{
     isOpen: boolean;
     url: string;
@@ -112,7 +133,7 @@ const Parents = () => {
     children: []
   });
 
-  // Filter states
+  const [expandedParentId, setExpandedParentId] = useState<string | null>(null);
   const [selectedOccupation, setSelectedOccupation] = useState<string>('');
   const [selectedWorkplace, setSelectedWorkplace] = useState<string>('');
   const [enrolledAfter, setEnrolledAfter] = useState<string>('');
@@ -172,120 +193,155 @@ const Parents = () => {
     dependencies: [selectedOccupation, selectedWorkplace, enrolledAfter, sortBy, sortOrder, selectedClass?.id, includeStudentInfo]
   });
 
-  // Table columns configuration
-  const columns = [{
-    id: 'imageUrl',
-    label: 'Avatar',
-    minWidth: 80,
-    align: 'center' as const,
-    format: (value: string, row: any) => <div className="cursor-pointer flex justify-center" onClick={() => {
-      if (value) {
-        setImagePreview({
-          isOpen: true,
-          url: value,
-          title: row.name
-        });
-      }
-    }}>
-      <Avatar className="h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 hover:opacity-80 transition-opacity border-2 border-border">
+  // --- Configurable column definitions ---
+  const allColumnDefs: ColumnDef[] = useMemo(() => [
+    {
+      key: 'imageUrl',
+      header: 'Avatar',
+      locked: true,
+      defaultVisible: true,
+      defaultWidth: 80,
+      minWidth: 60,
+      render: (value: string, row: any) => <div className="cursor-pointer flex justify-center" onClick={() => {
+        if (value) { setImagePreview({ isOpen: true, url: value, title: row.name }); }
+      }}>
+        <Avatar className="h-10 w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 hover:opacity-80 transition-opacity border-2 border-border">
           <AvatarImage src={getImageUrl(value)} alt={row.name} className="object-cover" />
-          <AvatarFallback className="bg-muted">
-            <User className="h-5 w-5 md:h-6 md:w-6" />
-          </AvatarFallback>
+          <AvatarFallback className="bg-muted"><User className="h-5 w-5 md:h-6 md:w-6" /></AvatarFallback>
         </Avatar>
       </div>
-  }, {
-    id: 'name',
-    label: 'Name',
-    minWidth: 150,
-    format: (value: string) => <div className="font-medium text-sm md:text-base">
-          {value}
+    },
+    {
+      key: 'name',
+      header: 'Name',
+      defaultVisible: true,
+      defaultWidth: 180,
+      minWidth: 120,
+      render: (value: string, row: any) => <div className="font-medium text-sm md:text-base">
+        {row.nameWithInitials || (value ? formatNameToInitials(value) : value)}
+      </div>
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      defaultVisible: true,
+      defaultWidth: 200,
+      minWidth: 140,
+      render: (value: string) => <div className="text-sm flex items-center gap-2">
+        <Mail className="h-4 w-4 text-muted-foreground" />
+        {value || 'Not specified'}
+      </div>
+    },
+    {
+      key: 'phoneNumber',
+      header: 'Phone',
+      defaultVisible: true,
+      defaultWidth: 150,
+      minWidth: 110,
+      render: (value: string) => <div className="text-sm flex items-center gap-2">
+        <Phone className="h-4 w-4 text-muted-foreground" />
+        {value || 'Not specified'}
+      </div>
+    },
+    {
+      key: 'userIdByInstitute',
+      header: 'Institute ID',
+      defaultVisible: false,
+      defaultWidth: 130,
+      minWidth: 90,
+      render: (value: string) => <span className="font-mono text-sm">{value || 'N/A'}</span>
+    },
+    {
+      key: 'dateOfBirth',
+      header: 'Date of Birth',
+      defaultVisible: true,
+      defaultWidth: 140,
+      minWidth: 100,
+      render: (value: string) => <div className="text-sm flex items-center gap-2">
+        <Calendar className="h-4 w-4 text-muted-foreground" />
+        {value ? new Date(value).toLocaleDateString() : 'Not specified'}
+      </div>
+    },
+    {
+      key: 'addressLine1',
+      header: 'Address',
+      defaultVisible: true,
+      defaultWidth: 200,
+      minWidth: 140,
+      render: (value: string, row: any) => <div className="text-sm flex items-center gap-2">
+        <MapPin className="h-4 w-4 text-muted-foreground" />
+        <div>
+          <div>{value || 'Not specified'}</div>
+          {row.addressLine2 && <div className="text-xs text-muted-foreground">{row.addressLine2}</div>}
         </div>
-  }, {
-    id: 'phoneNumber',
-    label: 'Phone',
-    minWidth: 130,
-    format: (value: string) => <div className="text-sm flex items-center gap-2">
-          <Phone className="h-4 w-4 text-muted-foreground" />
+      </div>
+    },
+    {
+      key: 'occupation',
+      header: 'Occupation',
+      defaultVisible: true,
+      defaultWidth: 150,
+      minWidth: 100,
+      render: (value: string, row: any) => <div className="text-sm">
+        <div className="flex items-center gap-2">
+          <Briefcase className="h-4 w-4 text-muted-foreground" />
           {value || 'Not specified'}
         </div>
-  }, {
-    id: 'dateOfBirth',
-    label: 'Date of Birth',
-    minWidth: 120,
-    format: (value: string) => <div className="text-sm flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          {value ? new Date(value).toLocaleDateString() : 'Not specified'}
-        </div>
-  }, {
-    id: 'addressLine1',
-    label: 'Address',
-    minWidth: 200,
-    format: (value: string, row: any) => <div className="text-sm flex items-center gap-2">
-          <MapPin className="h-4 w-4 text-muted-foreground" />
-          <div>
-            <div>{value || 'Not specified'}</div>
-            {row.addressLine2 && <div className="text-xs text-muted-foreground">{row.addressLine2}</div>}
-          </div>
-        </div>
-  }, {
-    id: 'occupation',
-    label: 'Occupation',
-    minWidth: 130,
-    format: (value: string, row: any) => <div className="text-sm">
-          <div className="flex items-center gap-2">
-            <Briefcase className="h-4 w-4 text-muted-foreground" />
-            {value || 'Not specified'}
-          </div>
-          {row.workPlace && <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
-              <Home className="h-3 w-3" />
-              {row.workPlace}
-            </div>}
-        </div>
-  },
-  // Children column - only shown when includeStudentInfo is true - Modern UI
-  ...(includeStudentInfo ? [{
-    id: 'students',
-    label: 'Children',
-    minWidth: 200,
-    align: 'center' as const,
-    format: (value: any[], row: any) => {
-      const children = value || row.children || [];
-      return <div className="flex items-center justify-center gap-3">
-          {/* Children count with gradient badge */}
+        {row.workPlace && <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+          <Home className="h-3 w-3" />{row.workPlace}
+        </div>}
+      </div>
+    },
+    ...(includeStudentInfo ? [{
+      key: 'students',
+      header: 'Children',
+      defaultVisible: true,
+      defaultWidth: 220,
+      minWidth: 160,
+      render: (value: any[], row: any) => {
+        const children = value || row.children || [];
+        return <div className="flex items-center justify-center gap-3">
           <div className="flex items-center gap-2">
             <div className="flex -space-x-2">
               {children.slice(0, 3).map((child: any, idx: number) => {
-              const rawImageUrl = child?.instituteUserImageUrl || child?.profileImageUrl || child?.imageUrl || child?.user?.imageUrl;
-              return <Avatar key={idx} className="h-8 w-8 border-2 border-background ring-2 ring-primary/20">
-                    <AvatarImage src={getImageUrl(rawImageUrl)} alt={child.name} />
-                    <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/40 text-xs font-medium">
-                      {child.name?.charAt(0) || 'C'}
-                    </AvatarFallback>
-                  </Avatar>;
-            })}
+                const rawImageUrl = child?.instituteUserImageUrl || child?.profileImageUrl || child?.imageUrl || child?.user?.imageUrl;
+                return <Avatar key={idx} className="h-8 w-8 border-2 border-background ring-2 ring-primary/20">
+                  <AvatarImage src={getImageUrl(rawImageUrl)} alt={child.name} />
+                  <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/40 text-xs font-medium">
+                    {child.name?.charAt(0) || 'C'}
+                  </AvatarFallback>
+                </Avatar>;
+              })}
               {children.length > 3 && <div className="h-8 w-8 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-medium">
-                  +{children.length - 3}
-                </div>}
+                +{children.length - 3}
+              </div>}
             </div>
             <Badge variant="secondary" className="text-xs font-semibold bg-gradient-to-r from-blue-500/10 to-purple-500/10 text-primary border border-primary/20">
               {children.length} {children.length === 1 ? 'Child' : 'Children'}
             </Badge>
           </div>
-          
-          {/* View button with modern styling */}
-          {children.length > 0 && <Button variant="outline" size="sm" onClick={() => setChildrenDialog({
-          isOpen: true,
-          parent: row,
-          children
-        })} className="h-8 px-3 bg-gradient-to-r from-blue-500/5 to-purple-500/5 hover:from-blue-500/10 hover:to-purple-500/10 border-primary/20 hover:border-primary/40 transition-all duration-200 shadow-sm hover:shadow">
-              <Eye className="h-4 w-4 mr-1.5 text-primary" />
-              <span className="font-medium">View Details</span>
-            </Button>}
+          {children.length > 0 && <Button variant="outline" size="sm" onClick={() => setChildrenDialog({ isOpen: true, parent: row, children })} className="h-8 px-3 bg-gradient-to-r from-blue-500/5 to-purple-500/5 hover:from-blue-500/10 hover:to-purple-500/10 border-primary/20 hover:border-primary/40 transition-all duration-200 shadow-sm hover:shadow">
+            <Eye className="h-4 w-4 mr-1.5 text-primary" />
+            <span className="font-medium">View</span>
+          </Button>}
         </div>;
-    }
-  }] : [])];
+      }
+    } as ColumnDef] : [])
+  ], [includeStudentInfo]);
 
+  // Map ALL columns to MUITable format — MUITable's built-in ColumnConfigurator handles visibility
+  const muiColumns = useMemo(() =>
+    allColumnDefs.map(col => ({
+      id: col.key,
+      label: col.header,
+      minWidth: col.minWidth || 100,
+      align: col.key === 'imageUrl' || col.key === 'students' ? 'center' as const : undefined,
+      format: col.render,
+    })),
+    [allColumnDefs]
+  );
+
+  const columns = muiColumns;
   // Filter data based on search term and filters
   const filteredData = tableData.state.data.filter(parent => {
     // Search term filter
@@ -376,6 +432,11 @@ const Parents = () => {
             <RefreshCw className={`w-4 h-4 mr-2 ${tableData.state.loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
+          {/* View Mode Toggle */}
+          <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5">
+            <button onClick={() => setViewMode('card')} className={`p-2 rounded-md transition-colors ${viewMode === 'card' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} title="Card View"><LayoutGrid className="h-4 w-4" /></button>
+            <button onClick={() => setViewMode('table')} className={`p-2 rounded-md transition-colors ${viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} title="Table View"><Table2 className="h-4 w-4" /></button>
+          </div>
         </div>
       </div>
 
@@ -484,9 +545,104 @@ const Parents = () => {
         </Collapsible>
       </div>
 
-      {/* Parents MUI Table - Full Height */}
+      {/* Parents Table / Card View */}
       <div className="flex-1 min-h-0">
-        <MUITable title="Institute Parents" columns={columns} data={filteredData} page={tableData.pagination.page} rowsPerPage={tableData.pagination.limit} totalCount={tableData.pagination.totalCount} onPageChange={tableData.actions.setPage} onRowsPerPageChange={tableData.actions.setLimit} rowsPerPageOptions={tableData.availableLimits} allowAdd={false} allowEdit={false} allowDelete={false} />
+        {viewMode === 'card' ? (
+          <div className="grid grid-cols-1 gap-4 overflow-auto">
+            {(showAllParentCards ? filteredData : filteredData.slice(0, CARD_INITIAL_SHOW)).map(parent => {
+              const parentKey = parent.id || parent.name;
+              const childrenCount = parent.students?.length || parent.children?.length || 0;
+              const isExpanded = expandedParentId === parentKey;
+              return (
+                <Card key={parentKey} className="hover:shadow-md transition-shadow">
+                  <div className="p-4 flex items-center gap-3">
+                    {/* Avatar */}
+                    <Avatar
+                      className="h-12 w-12 shrink-0 border-2 border-border cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => {
+                        if (parent.imageUrl) {
+                          setImagePreview({ isOpen: true, url: getImageUrl(parent.imageUrl), title: parent.name });
+                        }
+                      }}
+                    >
+                      <AvatarImage src={getImageUrl(parent.imageUrl)} alt={parent.name} className="object-cover" />
+                      <AvatarFallback className="bg-muted"><User className="h-5 w-5" /></AvatarFallback>
+                    </Avatar>
+
+                    {/* Info */}
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm truncate">{parent.name || 'N/A'}</p>
+                      {parent.phoneNumber && <p className="text-xs text-muted-foreground truncate">{parent.phoneNumber}</p>}
+                      {parent.email && <p className="text-xs text-muted-foreground truncate">{parent.email}</p>}
+                      {childrenCount > 0 && (
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {childrenCount} {childrenCount === 1 ? 'Child' : 'Children'}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2 ml-auto">
+                      {/* View Children */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        title="View Children"
+                        onClick={() => setChildrenDialog({ isOpen: true, parent, children: parent.students || parent.children || [] })}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                      {/* Expand */}
+                      <button
+                        onClick={() => setExpandedParentId(isExpanded ? null : parentKey)}
+                        className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      >
+                        <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {isExpanded && (
+                    <div className="px-4 pb-4 border-t pt-3 space-y-2">
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        {parent.occupation && <p><span className="font-medium text-foreground">Occupation:</span> {parent.occupation}</p>}
+                        {parent.workPlace && <p><span className="font-medium text-foreground">Workplace:</span> {parent.workPlace}</p>}
+                        {parent.addressLine1 && <p><span className="font-medium text-foreground">Address:</span> {parent.addressLine1}{parent.addressLine2 ? `, ${parent.addressLine2}` : ''}</p>}
+                        {parent.dateOfBirth && <p><span className="font-medium text-foreground">Date of Birth:</span> {new Date(parent.dateOfBirth).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>}
+                      </div>
+                      {childrenCount > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap pt-1">
+                          <div className="flex -space-x-2">
+                            {(parent.students || parent.children || []).slice(0, 4).map((child: any, idx: number) => {
+                              const rawImageUrl = child?.instituteUserImageUrl || child?.profileImageUrl || child?.imageUrl || child?.user?.imageUrl;
+                              return (
+                                <Avatar key={idx} className="h-7 w-7 border-2 border-background ring-1 ring-primary/20">
+                                  <AvatarImage src={rawImageUrl ? getImageUrl(rawImageUrl) : ''} alt={child.name} />
+                                  <AvatarFallback className="bg-muted text-xs font-medium">{child.name?.charAt(0) || 'C'}</AvatarFallback>
+                                </Avatar>
+                              );
+                            })}
+                            {childrenCount > 4 && (
+                              <div className="h-7 w-7 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs font-bold">+{childrenCount - 4}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+            {filteredData.length > CARD_INITIAL_SHOW && (
+              <Button variant="outline" className="w-full" onClick={() => setShowAllParentCards(v => !v)}>
+                {showAllParentCards ? `Show less` : `Show all ${filteredData.length} parents`}
+              </Button>
+            )}
+          </div>
+        ) : (
+          <MUITable title="Institute Parents" columns={columns} data={filteredData} page={tableData.pagination.page} rowsPerPage={tableData.pagination.limit} totalCount={tableData.pagination.totalCount} onPageChange={tableData.actions.setPage} onRowsPerPageChange={tableData.actions.setLimit} rowsPerPageOptions={tableData.availableLimits} allowAdd={false} allowEdit={false} allowDelete={false} />
+        )}
       </div>
 
       <ImagePreviewModal isOpen={imagePreview.isOpen} onClose={() => setImagePreview({

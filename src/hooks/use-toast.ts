@@ -6,7 +6,7 @@ import type {
 } from "@/components/ui/toast"
 
 const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_REMOVE_DELAY = 2000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -143,18 +143,16 @@ function dispatch(action: Action) {
 type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
-  // Only show attendance alerts, error messages, and action success messages
-  // Block data loading success messages (loaded, fetched, retrieved, etc.)
+  // Block only data-loading noise (loaded, fetched, retrieved)
+  // Allow everything else: errors, attendance alerts, and all action messages
   const titleLower = props.title?.toString().toLowerCase() || '';
   const descLower = props.description?.toString().toLowerCase() || '';
-  const isSuccessMessage = titleLower.includes('success');
-  const isDataLoadMessage = titleLower.includes('loaded') || titleLower.includes('fetched') || 
-    titleLower.includes('retrieved') || descLower.includes('loaded') || 
-    descLower.includes('fetched') || descLower.includes('retrieved');
-  
-  // Block non-error, non-attendance, non-success messages OR data loading messages
-  if (!props.isAttendanceAlert && props.variant !== 'destructive' && (!isSuccessMessage || isDataLoadMessage)) {
-    console.log('🚫 Toast blocked:', props.title)
+  const isDataLoadMessage =
+    titleLower.includes('loaded') || titleLower.includes('fetched') || titleLower.includes('retrieved') ||
+    descLower.includes('loaded') || descLower.includes('fetched') || descLower.includes('retrieved');
+
+  if (!props.isAttendanceAlert && props.variant !== 'destructive' && isDataLoadMessage) {
+    console.log('🚫 Toast blocked (data load):', props.title)
     return { id: '', dismiss: () => {}, update: () => {} }
   }
 
@@ -186,11 +184,11 @@ function toast({ ...props }: Toast) {
     }, 3000)
   }
 
-  // Auto-dismiss success messages after 1.5 seconds (but NOT error messages)
-  if (isSuccessMessage && props.variant !== 'destructive') {
+  // Auto-dismiss all non-error toasts after 2 seconds
+  if (props.variant !== 'destructive' && !props.isAttendanceAlert) {
     setTimeout(() => {
       dismiss()
-    }, 1500)
+    }, 2000)
   }
 
   return {

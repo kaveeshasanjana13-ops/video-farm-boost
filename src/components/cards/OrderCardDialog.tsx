@@ -22,6 +22,8 @@ import { userCardApi } from '@/api/userCard.api';
 import { formatPrice } from '@/utils/cardHelpers';
 import { toast } from '@/hooks/use-toast';
 import { z } from 'zod';
+import { getErrorMessage } from '@/api/apiError';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface OrderCardDialogProps {
   card: CardType | null;
@@ -49,6 +51,8 @@ const OrderCardDialog: React.FC<OrderCardDialogProps> = ({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const { selectedChild, isViewingAsParent } = useAuth();
+  const forUserId = isViewingAsParent && selectedChild ? (selectedChild.userId || selectedChild.id) : undefined;
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -81,7 +85,7 @@ const OrderCardDialog: React.FC<OrderCardDialogProps> = ({
         deliveryAddress: formData.deliveryAddress.trim(),
         contactPhone: formData.contactPhone.trim(),
         notes: formData.notes.trim() || undefined,
-      });
+      }, forUserId);
 
       toast({
         title: 'Order Created',
@@ -100,7 +104,7 @@ const OrderCardDialog: React.FC<OrderCardDialogProps> = ({
       console.error('Error creating order:', error);
       toast({
         title: 'Error',
-        description: error.message || 'Failed to create order',
+        description: getErrorMessage(error, 'Failed to create order'),
         variant: 'destructive',
       });
     } finally {

@@ -7,6 +7,10 @@ import ParentChildrenSelector from './ParentChildrenSelector';
 import { Users } from 'lucide-react';
 
 import DesktopDashboard from './dashboard/DesktopDashboard';
+import MobileDashboard from './MobileDashboard';
+import InstituteDashboardView from './dashboard/InstituteDashboardView';
+import ClassDashboardView from './dashboard/ClassDashboardView';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const Dashboard = () => {
   const {
@@ -17,6 +21,7 @@ const Dashboard = () => {
     selectedChild,
     isViewingAsParent
   } = useAuth();
+  const isMobile = useIsMobile();
 
   const userRole = useInstituteRole();
   const location = useLocation();
@@ -42,7 +47,7 @@ const Dashboard = () => {
                 Viewing as Parent
               </p>
               <p className="text-sm text-blue-700 dark:text-blue-300">
-                You are viewing {selectedChild.user?.firstName || (selectedChild as any).name || 'your child'}'s information. Submissions are disabled in view-only mode.
+                You are viewing {selectedChild.user?.firstName || selectedChild.name || selectedChild.nameWithInitials || 'your child'}'s information. Submissions are disabled in view-only mode.
               </p>
             </div>
           </div>
@@ -52,9 +57,24 @@ const Dashboard = () => {
     );
   }
 
-  // Subject-level dashboard
+  const DashboardComponent = isMobile ? MobileDashboard : DesktopDashboard;
+
+  // Subject-level dashboard — institute + class + subject all selected
   if (hasSubjectContext) {
-    return <DesktopDashboard />;
+    if (isViewingAsParent && selectedChild) {
+      // already handled by the parent-view block above — won't reach here
+    }
+    return <SubjectDashboard />;
+  }
+
+  // Class-level dashboard — institute + class selected, no subject
+  if (selectedInstitute && selectedClass) {
+    return <ClassDashboardView />;
+  }
+
+  // Institute-level dashboard — institute selected, no class
+  if (selectedInstitute) {
+    return <InstituteDashboardView />;
   }
 
   // Special handling for Parent role - child selector
@@ -74,7 +94,7 @@ const Dashboard = () => {
     );
   }
 
-  // For all roles - show unified dashboard
-  return <DesktopDashboard />;
+  // Pre-institute dashboard — nothing selected
+  return <DashboardComponent />;
 };
 export default Dashboard;

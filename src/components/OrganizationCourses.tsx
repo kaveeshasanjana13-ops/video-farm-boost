@@ -65,7 +65,7 @@ const OrganizationCourses = ({ organizationId, onSelectCourse, organization }: O
       
       setCourses(response.data);
       setTotalPages(response.pagination.totalPages);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching courses:', error);
       toast({
         title: "Error",
@@ -153,7 +153,7 @@ const OrganizationCourses = ({ organizationId, onSelectCourse, organization }: O
       
       // For other URLs, return as is but warn they might not work
       return url;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error parsing video URL:', error);
       return url;
     }

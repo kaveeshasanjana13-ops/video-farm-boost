@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,20 +50,45 @@ const ConnectedApps: React.FC = () => {
     loadDriveStatus();
   }, [loadDriveStatus]);
 
-  // Handle OAuth callback redirect
-  useDriveCallback((email) => {
-    toast({
-      title: 'Google Drive Connected',
-      description: `Successfully connected: ${email}`,
-    });
-    loadDriveStatus();
-  });
+  // Handle OAuth callback — web query params OR mobile deep link
+  useDriveCallback(
+    (email) => {
+      setConnecting(false);
+      toast({
+        title: 'Google Drive Connected',
+        description: `Successfully connected: ${email}`,
+      });
+      loadDriveStatus();
+    },
+    (error) => {
+      setConnecting(false);
+      toast({
+        title: 'Connection Failed',
+        description: error,
+        variant: 'destructive',
+      });
+    },
+  );
 
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      const { authUrl } = await getDriveConnectUrl(window.location.pathname);
-      window.location.href = authUrl;
+      const isMobile = Capacitor.isNativePlatform();
+      const returnUrl = isMobile
+        ? undefined
+        : window.location.pathname.includes('/profile')
+          ? window.location.pathname + '?tab=apps'
+          : window.location.pathname;
+      const { authUrl } = await getDriveConnectUrl(returnUrl, isMobile ? 'mobile' : 'web');
+
+      if (isMobile) {
+        // Open system browser so Google redirects to the deep link lk.suraksha.lms://drive-callback
+        window.open(authUrl, '_system');
+        // Reset spinner — user has left to system browser; result arrives via appUrlOpen
+        setTimeout(() => setConnecting(false), 800);
+      } else {
+        window.location.href = authUrl;
+      }
     } catch (err: any) {
       setConnecting(false);
       toast({

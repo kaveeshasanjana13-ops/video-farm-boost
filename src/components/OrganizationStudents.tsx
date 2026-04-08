@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,8 @@ import { Users, Mail, Phone, User } from 'lucide-react';
 import { useTableData } from '@/hooks/useTableData';
 import { useAuth } from '@/contexts/AuthContext';
 import UserOrganizationsDialog from './forms/UserOrganizationsDialog';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
 
 interface OrganizationStudentsProps {
   organizationId: string;
@@ -76,6 +78,108 @@ const OrganizationStudents = ({ organizationId, userRole }: OrganizationStudents
     }
   };
 
+  const allColumnDefs: ColumnDef[] = useMemo(() => [
+    {
+      key: 'name',
+      header: 'Name',
+      locked: true,
+      defaultVisible: true,
+      defaultWidth: 150,
+      minWidth: 120,
+      render: (_: any, row: OrganizationStudent) => (
+        <div className="min-w-0">
+          <div className="font-medium truncate">{row.name}</div>
+          <div className="text-xs text-muted-foreground truncate">{row.userIdByInstitute}</div>
+        </div>
+      )
+    },
+    {
+      key: 'userIdByInstitute',
+      header: 'User ID',
+      defaultVisible: true,
+      defaultWidth: 100,
+      minWidth: 80,
+      render: (_: any, row: OrganizationStudent) => (
+        <div className="flex items-center gap-1">
+          <User className="h-3 w-3 text-muted-foreground" />
+          <span className="text-sm">{row.userIdByInstitute}</span>
+        </div>
+      )
+    },
+    {
+      key: 'email',
+      header: 'Email',
+      defaultVisible: true,
+      defaultWidth: 200,
+      minWidth: 140,
+      render: (_: any, row: OrganizationStudent) => (
+        <div className="flex items-center gap-1 truncate max-w-[200px]">
+          <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+          <span className="text-sm truncate">{row.email}</span>
+        </div>
+      )
+    },
+    {
+      key: 'phoneNumber',
+      header: 'Phone',
+      defaultVisible: true,
+      defaultWidth: 120,
+      minWidth: 90,
+      render: (_: any, row: OrganizationStudent) => (
+        <div className="flex items-center gap-1">
+          <Phone className="h-3 w-3 text-muted-foreground" />
+          <span className="text-sm">{row.phoneNumber}</span>
+        </div>
+      )
+    },
+    {
+      key: 'instituteUserType',
+      header: 'User Type',
+      defaultVisible: true,
+      defaultWidth: 100,
+      minWidth: 80,
+      render: (_: any, row: OrganizationStudent) => (
+        <Badge variant={getUserTypeBadgeVariant(row.instituteUserType)} className="text-xs">
+          {row.instituteUserType.replace('_', ' ')}
+        </Badge>
+      )
+    },
+    {
+      key: 'organizationRole',
+      header: 'Org Role',
+      defaultVisible: true,
+      defaultWidth: 80,
+      minWidth: 60,
+      render: (_: any, row: OrganizationStudent) => (
+        <Badge variant={getRoleBadgeVariant(row.organizationRole)} className="text-xs">
+          {row.organizationRole}
+        </Badge>
+      )
+    },
+    {
+      key: 'verificationStatus',
+      header: 'Status',
+      defaultVisible: true,
+      defaultWidth: 80,
+      minWidth: 60,
+      render: (_: any, row: OrganizationStudent) => (
+        <Badge variant={getStatusBadgeVariant(row.verificationStatus)} className="text-xs">
+          {row.verificationStatus}
+        </Badge>
+      )
+    },
+    {
+      key: 'userId',
+      header: 'System User ID',
+      defaultVisible: false,
+      defaultWidth: 160,
+      minWidth: 100,
+      render: (_: any, row: OrganizationStudent) => <span className="font-mono text-sm">{row.userId}</span>
+    },
+  ], []);
+
+  const { colState, visibleColumns, toggleColumn, resetColumns } = useColumnConfig(allColumnDefs, 'org-students');
+
   if (state.loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -103,6 +207,12 @@ const OrganizationStudents = ({ organizationId, userRole }: OrganizationStudents
           <Users className="h-4 w-4 mr-2" />
           {state.loading ? 'Loading...' : 'Load Members'}
         </Button>
+        <ColumnConfigurator
+          allColumns={allColumnDefs}
+          colState={colState}
+          onToggle={toggleColumn}
+          onReset={resetColumns}
+        />
       </div>
 
       {/* Members Table */}
@@ -123,13 +233,11 @@ const OrganizationStudents = ({ organizationId, userRole }: OrganizationStudents
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[150px]">Name</TableHead>
-                  <TableHead className="hidden sm:table-cell min-w-[100px]">User ID</TableHead>
-                  <TableHead className="hidden md:table-cell min-w-[200px]">Email</TableHead>
-                  <TableHead className="hidden lg:table-cell min-w-[120px]">Phone</TableHead>
-                  <TableHead className="min-w-[100px]">User Type</TableHead>
-                  <TableHead className="hidden md:table-cell min-w-[80px]">Org Role</TableHead>
-                  <TableHead className="hidden lg:table-cell min-w-[80px]">Status</TableHead>
+                  {visibleColumns.map(col => (
+                    <TableHead key={col.key} style={{ minWidth: col.minWidth }}>
+                      {col.header}
+                    </TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -139,52 +247,11 @@ const OrganizationStudents = ({ organizationId, userRole }: OrganizationStudents
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => setSelectedUser({ userId: student.userId, userName: student.name })}
                   >
-                    <TableCell>
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{student.name}</div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {student.userIdByInstitute}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <div className="flex items-center gap-1">
-                        <User className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-sm">{student.userIdByInstitute}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <div className="flex items-center gap-1 truncate max-w-[200px]">
-                        <Mail className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                        <span className="text-sm truncate">{student.email}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <div className="flex items-center gap-1">
-                        <Phone className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-sm">{student.phoneNumber}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={getUserTypeBadgeVariant(student.instituteUserType)} className="text-xs">
-                        {student.instituteUserType.replace('_', ' ')}
-                      </Badge>
-                      <div className="md:hidden mt-1">
-                        <Badge variant={getRoleBadgeVariant(student.organizationRole)} className="text-xs">
-                          {student.organizationRole}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <Badge variant={getRoleBadgeVariant(student.organizationRole)} className="text-xs">
-                        {student.organizationRole}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <Badge variant={getStatusBadgeVariant(student.verificationStatus)} className="text-xs">
-                        {student.verificationStatus}
-                      </Badge>
-                    </TableCell>
+                    {visibleColumns.map(col => (
+                      <TableCell key={col.key}>
+                        {col.render ? col.render((student as any)[col.key], student) : (student as any)[col.key]}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 ))}
               </TableBody>

@@ -6,6 +6,7 @@ import { instituteSettingsApi, InstituteSettingsResponse } from '@/api/institute
 import { uploadWithSignedUrl } from '@/utils/signedUploadHelper';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { Upload, Trash2, Loader2, ImageIcon } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 interface ImageFieldUploaderProps {
   instituteId: string;
@@ -42,7 +43,7 @@ export const ImageFieldUploader: React.FC<ImageFieldUploaderProps> = ({
       onUpdate(updated);
       toast({ title: 'Uploaded', description: `${label} updated successfully.` });
     } catch (error: any) {
-      toast({ title: 'Upload Failed', description: error?.message || 'Failed to upload', variant: 'destructive' });
+      toast({ title: 'Upload Failed', description: getErrorMessage(error, 'Failed to upload'), variant: 'destructive' });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -61,7 +62,7 @@ export const ImageFieldUploader: React.FC<ImageFieldUploaderProps> = ({
       onUpdate(result);
       toast({ title: 'Removed', description: `${label} removed.` });
     } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'Failed to remove', variant: 'destructive' });
+      toast({ title: 'Error', description: getErrorMessage(error, 'Failed to remove'), variant: 'destructive' });
     } finally {
       setUploading(false);
     }

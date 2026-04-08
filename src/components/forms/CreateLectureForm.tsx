@@ -34,6 +34,7 @@ const CreateLectureForm = ({ onClose, onSuccess, courseId }: CreateLectureFormPr
     meetingPassword: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const { user, selectedInstitute, selectedClass, selectedSubject } = useAuth();
   const instituteRole = useInstituteRole();
@@ -41,6 +42,8 @@ const CreateLectureForm = ({ onClose, onSuccess, courseId }: CreateLectureFormPr
   const canCreate = instituteRole === 'InstituteAdmin' || instituteRole === 'Teacher';
 
   const handleInputChange = (field: string, value: string | boolean | number) => {
+    setFieldErrors(prev => ({ ...prev, [field]: '' }));
+
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -65,6 +68,16 @@ const CreateLectureForm = ({ onClose, onSuccess, courseId }: CreateLectureFormPr
         description: "You don't have permission to create lectures. Only Institute Admins and Teachers can create lectures.",
         variant: "destructive"
       });
+      return;
+    }
+
+        const errors: Record<string, string> = {};
+    if (!formData.title && formData.title !== 0) errors.title = 'Title is required';
+    if (!formData.venue && formData.venue !== 0) errors.venue = 'Venue is required';
+    if (!formData.timeStart && formData.timeStart !== 0) errors.timeStart = 'Time Start is required';
+    if (!formData.timeEnd && formData.timeEnd !== 0) errors.timeEnd = 'Time End is required';
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
@@ -122,7 +135,7 @@ const CreateLectureForm = ({ onClose, onSuccess, courseId }: CreateLectureFormPr
         meetingId: '',
         meetingPassword: ''
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating lecture:', error);
       toast({
         title: "Error",
@@ -164,7 +177,10 @@ const CreateLectureForm = ({ onClose, onSuccess, courseId }: CreateLectureFormPr
                   value={formData.title}
                   onChange={(e) => handleInputChange('title', e.target.value)}
                   required
+              className={`${fieldErrors.title ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                 />
+
+                {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
               </div>
 
               <div className="space-y-2">
@@ -210,7 +226,10 @@ const CreateLectureForm = ({ onClose, onSuccess, courseId }: CreateLectureFormPr
                 value={formData.venue}
                 onChange={(e) => handleInputChange('venue', e.target.value)}
                 required
+              className={`${fieldErrors.venue ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
               />
+
+              {fieldErrors.venue && <p className="text-xs text-red-500 mt-1">{fieldErrors.venue}</p>}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -225,7 +244,10 @@ const CreateLectureForm = ({ onClose, onSuccess, courseId }: CreateLectureFormPr
                   value={formData.timeStart}
                   onChange={(e) => handleInputChange('timeStart', e.target.value)}
                   required
+              className={`${fieldErrors.timeStart ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                 />
+
+                {fieldErrors.timeStart && <p className="text-xs text-red-500 mt-1">{fieldErrors.timeStart}</p>}
               </div>
 
               <div className="space-y-2">
@@ -239,7 +261,10 @@ const CreateLectureForm = ({ onClose, onSuccess, courseId }: CreateLectureFormPr
                   value={formData.timeEnd}
                   onChange={(e) => handleInputChange('timeEnd', e.target.value)}
                   required
+              className={`${fieldErrors.timeEnd ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                 />
+
+                {fieldErrors.timeEnd && <p className="text-xs text-red-500 mt-1">{fieldErrors.timeEnd}</p>}
               </div>
             </div>
 

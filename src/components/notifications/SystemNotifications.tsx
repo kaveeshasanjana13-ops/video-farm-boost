@@ -26,7 +26,7 @@ export const SystemNotifications: React.FC = () => {
       setNotifications(result.data || []);
       setTotalPages(result.totalPages || 1);
       if (result.unreadCount !== undefined) setUnreadCount(result.unreadCount);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load notifications:', error);
       toast({ title: 'Error', description: 'Failed to load notifications', variant: 'destructive' });
     } finally {
@@ -44,7 +44,7 @@ export const SystemNotifications: React.FC = () => {
       setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
       decrementUnread();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to mark as read:', error);
     }
   };
@@ -54,8 +54,9 @@ export const SystemNotifications: React.FC = () => {
       await notificationApiService.markAllSystemAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
+      resetUnread();
       toast({ title: 'Done', description: 'All notifications marked as read' });
-    } catch (error) {
+    } catch (error: any) {
       toast({ title: 'Error', description: 'Failed to mark all as read', variant: 'destructive' });
     }
   };

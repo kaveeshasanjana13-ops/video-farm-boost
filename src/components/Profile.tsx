@@ -23,7 +23,11 @@ import { useInstituteRole } from '@/hooks/useInstituteRole';
 import ConnectedApps from '@/components/ConnectedApps';
 import CurrentSelection from '@/components/ui/current-selection';
 import DeleteAccountTab from '@/components/profile/DeleteAccountTab';
-
+import ProfileImageSection from '@/components/profile/ProfileImageSection';
+import IdDocumentUpload from '@/components/profile/IdDocumentUpload';
+import UpdatePhoneDialog from '@/components/profile/UpdatePhoneDialog';
+import UpdateEmailDialog from '@/components/profile/UpdateEmailDialog';
+import UpgradeUserTypeDialog from '@/components/profile/UpgradeUserTypeDialog';
 interface UserData {
   id: string;
   nameWithInitials: string;
@@ -55,18 +59,22 @@ interface UserData {
   language: string;
 }
 
-const InfoRow = ({ icon: Icon, label, value }: { icon?: React.ElementType; label: string; value: string }) => (
-  <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 py-3 border-b border-border/30 last:border-0">
-    <div className="flex items-center gap-2 sm:w-36 shrink-0">
-      {Icon && <Icon className="h-4 w-4 text-muted-foreground shrink-0" />}
-      <span className="text-xs sm:text-sm text-muted-foreground">{label}</span>
+const InfoRow = ({ icon: Icon, label, value, action }: { icon?: React.ElementType; label: string; value: string; action?: React.ReactNode }) => (
+  <div className="flex flex-col sm:flex-row sm:items-center justify-between py-3 border-b border-border/30 last:border-0">
+    <div className="flex items-center gap-1 sm:gap-3">
+      <div className="flex items-center gap-2 sm:w-36 shrink-0">
+        {Icon && <Icon className="h-4 w-4 text-muted-foreground shrink-0" />}
+        <span className="text-xs sm:text-sm text-muted-foreground">{label}</span>
+      </div>
+      <span className="text-sm font-medium text-foreground break-all pl-6 sm:pl-0">{value || '—'}</span>
     </div>
-    <span className="text-sm font-medium text-foreground break-all pl-6 sm:pl-0">{value || '—'}</span>
+    {action && <div className="mt-2 sm:mt-0 pl-6 sm:pl-0">{action}</div>}
   </div>
 );
 
 const Profile = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, selectedChild, isViewingAsParent } = useAuth();
+  const isChildView = !!(isViewingAsParent && selectedChild);
   const instituteRole = useInstituteRole();
   const { toast } = useToast();
   const [userData, setUserData] = useState<UserData | null>(null);
@@ -216,9 +224,18 @@ const Profile = () => {
   const loadUserData = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.get<{ success: boolean; data: any }>('/auth/me');
-      if (response.success && response.data) {
-        const d = response.data;
+      let d: any;
+
+      if (isChildView && selectedChild) {
+        // Fetch child's user data when parent is viewing child context
+        const response = await apiClient.get<{ success: boolean; data: any }>(`/users/${selectedChild.userId || selectedChild.id}`);
+        d = response.success ? response.data : (response as any);
+      } else {
+        const response = await apiClient.get<{ success: boolean; data: any }>('/auth/me');
+        d = response.success ? response.data : null;
+      }
+
+      if (d) {
         const ud: UserData = {
           id: d.id || '', nameWithInitials: d.nameWithInitials || '',
           firstName: d.firstName || '', lastName: d.lastName || '',
@@ -251,7 +268,7 @@ const Profile = () => {
           subscriptionPlan: ud.subscriptionPlan, language: ud.language
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching user data:', error);
       toast({ title: "Error", description: "Failed to load profile data.", variant: "destructive" });
     } finally {
@@ -259,7 +276,7 @@ const Profile = () => {
     }
   };
 
-  useEffect(() => { loadUserData(); }, []);
+  useEffect(() => { loadUserData(); }, [isChildView, selectedChild?.userId]);
 
   const handleImageUpdate = (newImageUrl: string) => {
     if (userData) setUserData({ ...userData, imageUrl: newImageUrl });
@@ -339,8 +356,9 @@ const Profile = () => {
 
   const langDisplay = formData.language === 'E' ? 'English' : formData.language === 'S' ? 'Sinhala' : formData.language;
 
-  const menuItems = [
+  const allMenuItems = [
     { id: 'details', icon: User, label: 'Personal Details', description: 'Name, email, phone & more', color: 'text-blue-500' },
+    { id: 'image', icon: Camera, label: 'Profile Image', description: 'Upload & verification status', color: 'text-pink-500' },
     { id: 'address', icon: MapPin, label: 'Address', description: 'Your address information', color: 'text-emerald-500' },
     { id: 'professional', icon: Briefcase, label: 'Professional', description: 'Work & education details', color: 'text-amber-500' },
     { id: 'account', icon: CreditCard, label: 'Account & Plan', description: 'Subscription & language', color: 'text-purple-500' },
@@ -350,6 +368,12 @@ const Profile = () => {
     { id: 'delete-account', icon: Trash2, label: 'Delete Account', description: 'Permanently remove account', color: 'text-destructive' },
   ];
 
+  // When viewing child profile, only show read-only sections
+  const childViewOnlyTabs = ['details', 'image', 'address', 'professional', 'account'];
+  const menuItems = isChildView
+    ? allMenuItems.filter(item => childViewOnlyTabs.includes(item.id))
+    : allMenuItems;
+
   // Mobile section content renderer
   const renderMobileSection = (sectionId: string) => {
     switch (sectionId) {
@@ -358,8 +382,18 @@ const Profile = () => {
           <Card><CardContent className="p-4 space-y-0">
             <InfoRow label="Name with Initials" value={formData.nameWithInitials} />
             <InfoRow label="Full Name" value={formData.name} />
-            <InfoRow icon={Mail} label="Email" value={formData.email} />
-            <InfoRow icon={Phone} label="Phone" value={formData.phone} />
+            <InfoRow 
+              icon={Mail} 
+              label="Email" 
+              value={formData.email} 
+              action={<UpdateEmailDialog currentEmail={formData.email} onUpdate={(email) => setFormData({...formData, email})} />}
+            />
+            <InfoRow 
+              icon={Phone} 
+              label="Phone" 
+              value={formData.phone} 
+              action={<UpdatePhoneDialog currentPhone={formData.phone} onUpdate={(phone) => setFormData({...formData, phone})} />}
+            />
             <InfoRow icon={Calendar} label="Date of Birth" value={formData.dateOfBirth} />
             <InfoRow label="Gender" value={formData.gender} />
             <InfoRow label="NIC" value={formData.nic} />
@@ -403,6 +437,14 @@ const Profile = () => {
   // Profile header (shared)
   const profileHeader = (
     <Card className="overflow-hidden">
+      {isChildView && (
+        <div className="bg-blue-50 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-800 px-4 py-2.5 flex items-center gap-2">
+          <GraduationCap className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            Viewing {selectedChild?.user?.nameWithInitials || 'child'}'s profile (read-only)
+          </span>
+        </div>
+      )}
       <CardContent className="p-4 sm:p-6">
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-5">
           <div className="relative group">
@@ -415,17 +457,21 @@ const Profile = () => {
                 {getUserInitials()}
               </AvatarFallback>
             </Avatar>
-            <Button
-              size="icon"
-              variant="secondary"
-              className="absolute -bottom-1 -right-1 h-7 w-7 sm:h-8 sm:w-8 rounded-full shadow-md"
-              onClick={() => document.querySelector<HTMLButtonElement>('[aria-label="change-photo"]')?.click()}
-            >
-              <Camera className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-            </Button>
-            <div className="hidden">
-              <ProfileImageUpload currentImageUrl={currentImageUrl} onImageUpdate={handleImageUpdate} />
-            </div>
+            {!isChildView && (
+              <>
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="absolute -bottom-1 -right-1 h-7 w-7 sm:h-8 sm:w-8 rounded-full shadow-md"
+                  onClick={() => document.querySelector<HTMLButtonElement>('[aria-label="change-photo"]')?.click()}
+                >
+                  <Camera className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                </Button>
+                <div className="hidden">
+                  <ProfileImageUpload currentImageUrl={currentImageUrl} onImageUpdate={handleImageUpdate} />
+                </div>
+              </>
+            )}
           </div>
           <div className="text-center sm:text-left flex-1 min-w-0">
             <h1 className="text-lg sm:text-2xl font-bold text-foreground truncate">{formData.nameWithInitials || formData.name || 'Welcome'}</h1>
@@ -598,6 +644,12 @@ const Profile = () => {
           <h2 className="text-lg font-bold text-foreground">{item?.label}</h2>
 
           {['details', 'address', 'professional', 'account'].includes(mobileSection) && renderMobileSection(mobileSection)}
+          {mobileSection === 'image' && (
+            <div className="space-y-4">
+              <ProfileImageSection currentImageUrl={currentImageUrl} onImageUpdate={handleImageUpdate} />
+              <IdDocumentUpload />
+            </div>
+          )}
           {mobileSection === 'security' && securityContent}
           {mobileSection === 'sessions' && sessionsContent}
           {mobileSection === 'apps' && <ConnectedApps />}
@@ -613,6 +665,9 @@ const Profile = () => {
       <div className="px-3 py-4 pb-20 space-y-4">
         <CurrentSelection showNavigation={false} />
         {profileHeader}
+
+        {/* Upgrade prompt for upgradeable user types */}
+        <UpgradeUserTypeDialog userType={userTypeDisplay} onUpgradeSuccess={loadUserData} />
 
         {/* Menu List */}
         <Card className="overflow-hidden">
@@ -665,26 +720,40 @@ const Profile = () => {
       <CurrentSelection showNavigation={false} />
       {profileHeader}
 
+      {/* Upgrade prompt for upgradeable user types */}
+      <UpgradeUserTypeDialog userType={userTypeDisplay} onUpgradeSuccess={loadUserData} />
+
       <Tabs value={activeProfileTab} onValueChange={(val) => {
         setActiveProfileTab(val);
         if (val === 'devices' && sessions.length === 0) loadSessions();
       }}>
-        <TabsList className="w-full grid grid-cols-5 h-10">
-          <TabsTrigger value="details" className="gap-1.5 text-sm px-3">
-            <User className="h-4 w-4 shrink-0" /> Details
+        <TabsList className={`w-full grid h-10 ${isChildView ? 'grid-cols-3' : 'grid-cols-6'}`}>
+          <TabsTrigger value="details" className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3">
+            <User className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Details</span>
           </TabsTrigger>
-          <TabsTrigger value="security" className="gap-1.5 text-sm px-3">
-            <Lock className="h-4 w-4 shrink-0" /> Security
+          <TabsTrigger value="image" className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3">
+            <Camera className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Image</span>
           </TabsTrigger>
-          <TabsTrigger value="sessions" className="gap-1.5 text-sm px-3">
-            <Monitor className="h-4 w-4 shrink-0" /> Devices
-          </TabsTrigger>
-          <TabsTrigger value="apps" className="gap-1.5 text-sm px-3">
-            <Link2 className="h-4 w-4 shrink-0" /> Apps
-          </TabsTrigger>
-          <TabsTrigger value="delete-account" className="gap-1.5 text-sm px-3 text-destructive data-[state=active]:text-destructive">
-            <Trash2 className="h-4 w-4 shrink-0" /> Delete
-          </TabsTrigger>
+          {!isChildView && (
+            <TabsTrigger value="security" className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3">
+              <Lock className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Security</span>
+            </TabsTrigger>
+          )}
+          {!isChildView && (
+            <TabsTrigger value="sessions" className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3">
+              <Monitor className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Devices</span>
+            </TabsTrigger>
+          )}
+          {!isChildView && (
+            <TabsTrigger value="apps" className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3">
+              <Link2 className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Apps</span>
+            </TabsTrigger>
+          )}
+          {!isChildView && (
+            <TabsTrigger value="delete-account" className="gap-1.5 text-xs sm:text-sm px-2 sm:px-3 text-destructive data-[state=active]:text-destructive">
+              <Trash2 className="h-4 w-4 shrink-0" /> <span className="hidden sm:inline">Delete</span>
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="details" className="mt-4">
@@ -698,8 +767,18 @@ const Profile = () => {
               <AccordionContent>
                 <InfoRow label="Name with Initials" value={formData.nameWithInitials} />
                 <InfoRow label="Full Name" value={formData.name} />
-                <InfoRow icon={Mail} label="Email" value={formData.email} />
-                <InfoRow icon={Phone} label="Phone" value={formData.phone} />
+                <InfoRow 
+                  icon={Mail} 
+                  label="Email" 
+                  value={formData.email} 
+                  action={<UpdateEmailDialog currentEmail={formData.email} onUpdate={(email) => setFormData({...formData, email})} />}
+                />
+                <InfoRow 
+                  icon={Phone} 
+                  label="Phone" 
+                  value={formData.phone} 
+                  action={<UpdatePhoneDialog currentPhone={formData.phone} onUpdate={(phone) => setFormData({...formData, phone})} />}
+                />
                 <InfoRow icon={Calendar} label="Date of Birth" value={formData.dateOfBirth} />
                 <InfoRow label="Gender" value={formData.gender} />
                 <InfoRow label="NIC" value={formData.nic} />
@@ -751,6 +830,13 @@ const Profile = () => {
               </AccordionContent>
             </AccordionItem>
           </Accordion>
+        </TabsContent>
+
+        <TabsContent value="image" className="mt-4">
+          <div className="space-y-4">
+            <ProfileImageSection currentImageUrl={currentImageUrl} onImageUpdate={handleImageUpdate} />
+            <IdDocumentUpload />
+          </div>
         </TabsContent>
 
         <TabsContent value="security" className="mt-4">

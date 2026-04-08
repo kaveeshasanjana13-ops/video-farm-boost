@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { format, subDays } from 'date-fns';
 import { myAttendanceHistoryApi, type MyAttendanceHistoryResponse } from '@/api/myAttendanceHistory.api';
+import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, UserCheck, UserX, Clock, ChevronRight, LogOut, DoorOpen } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { getImageUrl } from '@/utils/imageUrlHelper';
 
 const STATUS_COLORS: Record<string, string> = {
   present: 'hsl(var(--chart-2))',
@@ -16,6 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const MyAttendanceHistoryCard = () => {
   const navigate = useNavigate();
+  const { selectedInstitute } = useAuth();
   const [data, setData] = useState<MyAttendanceHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -24,16 +27,15 @@ const MyAttendanceHistoryCard = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        setError(false);
         const endDate = format(new Date(), 'yyyy-MM-dd');
         const startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-        const result = await myAttendanceHistoryApi.getMyHistory({
-          startDate,
-          endDate,
-          limit: 10,
-        });
+        const result = await myAttendanceHistoryApi.getMyHistory(
+          { startDate, endDate, limit: 10 },
+          true // forceRefresh on every institute change
+        );
         setData(result);
       } catch (err: any) {
-        // Silently hide if endpoint not available (404)
         console.warn('Attendance history not available:', err?.message || err);
         setError(true);
       } finally {
@@ -41,11 +43,28 @@ const MyAttendanceHistoryCard = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [selectedInstitute?.id]);
 
-  // Don't render anything if error or no data — avoid showing broken UI
+  // Show empty state if error or no data instead of hiding
   if (error || (!loading && !data)) {
-    return null;
+    return (
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-primary/10">
+            <UserCheck className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-foreground">My Attendance</h3>
+            <p className="text-xs text-muted-foreground">Last 30 days</p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center py-6 text-center">
+          <UserCheck className="h-8 w-8 text-muted-foreground/40 mb-2" />
+          <p className="text-sm text-muted-foreground">No attendance data yet</p>
+          <p className="text-xs text-muted-foreground/70 mt-0.5">Your attendance records will appear here</p>
+        </div>
+      </div>
+    );
   }
 
   if (loading) {
@@ -110,7 +129,7 @@ const MyAttendanceHistoryCard = () => {
               <PieChart>
                 <Pie data={pieData} innerRadius={22} outerRadius={36} dataKey="value" strokeWidth={0}>
                   {pieData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
+                    <Cell key={`${entry.name}-${i}`} fill={entry.color} />
                   ))}
                 </Pie>
               </PieChart>
@@ -164,10 +183,17 @@ const MyAttendanceHistoryCard = () => {
       {records.length > 0 && (
         <div className="space-y-1.5 pt-2 border-t border-border">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recent</p>
-          {records.slice(0, 3).map((rec) => (
-            <div key={rec.id} className="flex items-center justify-between py-1.5 text-sm">
+          {records.slice(0, 3).map((rec, index) => (
+            <div key={`${rec.date}-${index}`} className="flex items-center justify-between py-1.5 text-sm">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-muted-foreground">{format(new Date(rec.date), 'MMM d')}</span>
+                <span className="text-muted-foreground shrink-0">{format(new Date(rec.date), 'MMM d')}</span>
+                {rec.instituteLogoUrl ? (
+                  <img src={getImageUrl(rec.instituteLogoUrl)} alt="" className="h-4 w-4 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className="h-4 w-4 rounded-full bg-muted flex items-center justify-center text-[8px] font-bold text-muted-foreground shrink-0">
+                    {(rec.instituteName || '?')[0]}
+                  </div>
+                )}
                 <span className="text-foreground truncate">{rec.instituteName}</span>
               </div>
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getStatusClasses(rec.status)}`}>

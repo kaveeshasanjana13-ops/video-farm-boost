@@ -1,3 +1,6 @@
+import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
+
 // src/utils/versionChecker.ts
 //
 // Two-tier update strategy:
@@ -12,13 +15,16 @@
 
 const VERSION_CHECK_INTERVAL = 5 * 60 * 1000; // Poll every 5 minutes
 
-// Injected by vite-plugin-version at build time
-const CURRENT_HASH  = import.meta.env.VITE_APP_VERSION || '__DEV__';
-const CURRENT_MAJOR = parseInt(import.meta.env.VITE_APP_MAJOR || '1', 10);
+// Injected at build time by Vite define config.
+const CURRENT_HASH = typeof __APP_BUILD_HASH__ !== 'undefined' ? __APP_BUILD_HASH__ : '__DEV__';
+const CURRENT_MAJOR = typeof __APP_MAJOR__ !== 'undefined' ? __APP_MAJOR__ : 1;
 
 const VERSION_URL = '/version.json';
 
 let checkIntervalId: ReturnType<typeof setInterval> | null = null;
+let startupTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let appStateListenerHandle: { remove: () => Promise<void> } | null = null;
+let visibilityListenerAttached = false;
 
 export type UpdateKind = 'patch' | 'major';
 
@@ -48,7 +54,7 @@ async function fetchRemoteVersion(): Promise<RemoteVersionJson | null> {
   }
 }
 
-async function detectUpdate(): Promise<UpdateInfo | null> {
+export async function detectUpdate(): Promise<UpdateInfo | null> {
   if (CURRENT_HASH === '__DEV__') return null; // Skip in dev
 
   const remote = await fetchRemoteVersion();
@@ -93,16 +99,86 @@ export function startVersionChecker(callbacks: {
     }
   };
 
-  // First check: 30s after startup (avoid slowing app load)
-  setTimeout(run, 30_000);
+  // First check shortly after startup so opened apps update quickly.
+  startupTimeoutId = setTimeout(run, 10_000);
   checkIntervalId = setInterval(run, VERSION_CHECK_INTERVAL);
+
+  if (!visibilityListenerAttached) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        void run();
+      }
+    });
+    visibilityListenerAttached = true;
+  }
+
+  if (Capacitor.isNativePlatform() && !appStateListenerHandle) {
+    CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+      if (isActive) {
+        void run();
+      }
+    }).then((handle) => {
+      appStateListenerHandle = handle;
+    }).catch(() => {
+      appStateListenerHandle = null;
+    });
+  }
 }
 
 export function stopVersionChecker(): void {
+  if (startupTimeoutId) {
+    clearTimeout(startupTimeoutId);
+    startupTimeoutId = null;
+  }
+
   if (checkIntervalId) {
     clearInterval(checkIntervalId);
     checkIntervalId = null;
   }
+
+  if (appStateListenerHandle) {
+    void appStateListenerHandle.remove();
+    appStateListenerHandle = null;
+  }
+}
+
+/** Forces the WebView / browser to hard-reload at the latest deployed build URL. */
+export function forceRefreshToLatestBuild(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set('_app_update', Date.now().toString());
+  window.location.replace(url.toString());
+}
+
+export type ManualCheckResult =
+  | { status: 'up-to-date'; semver: string }
+  | { status: 'offline' }
+  | { status: 'patch'; info: UpdateInfo }
+  | { status: 'major'; info: UpdateInfo };
+
+/**
+ * One-shot update check for the "Check for Updates" button in Settings.
+ * Unlike startVersionChecker, this does NOT start any background polling.
+ */
+export async function checkForUpdateOnce(): Promise<ManualCheckResult> {
+  const remote = await fetchRemoteVersion();
+  if (!remote) return { status: 'offline' };
+
+  // In dev builds there is no real hash to compare — treat as up-to-date.
+  if (CURRENT_HASH === '__DEV__') {
+    return { status: 'up-to-date', semver: remote.semver };
+  }
+
+  if (remote.hash === CURRENT_HASH) {
+    return { status: 'up-to-date', semver: remote.semver };
+  }
+
+  // Major version jump → must update native APK via Play Store
+  if (remote.major > CURRENT_MAJOR) {
+    return { status: 'major', info: { kind: 'major', newSemver: remote.semver } };
+  }
+
+  // Same major, different hash → silent web-bundle refresh
+  return { status: 'patch', info: { kind: 'patch', newSemver: remote.semver } };
 }
 
 export { CURRENT_HASH, CURRENT_MAJOR };

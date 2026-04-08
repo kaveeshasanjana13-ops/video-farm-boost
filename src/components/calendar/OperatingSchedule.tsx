@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Save, RotateCcw } from 'lucide-react';
+import { getErrorMessage } from '@/api/apiError';
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -112,7 +113,7 @@ const OperatingSchedule: React.FC = () => {
       });
       toast.success('Operating schedule saved!');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to save schedule');
+      toast.error(getErrorMessage(error, 'Failed to save schedule'));
     } finally {
       setSaving(false);
     }

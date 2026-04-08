@@ -1,5 +1,8 @@
 import { apiClient } from './client';
 import { getBaseUrl2, getApiHeaders } from '@/contexts/utils/auth.api';
+import { parseApiError } from '@/api/apiError';
+import { enhancedCachedClient } from './enhancedCachedClient';
+import { CACHE_TTL } from '@/config/cacheTTL';
 
 export interface Organization {
   organizationId: string;
@@ -215,7 +218,7 @@ class OrganizationApiClient {
   }
 
   async deleteOrganization(id: string): Promise<void> {
-    await apiClient.delete(`/organizations/${id}/management`);
+    await apiClient.delete(`/organizations/${id}`);
   }
 
   async enrollInOrganization(data: { organizationId: string; enrollmentKey?: string }): Promise<any> {
@@ -224,7 +227,7 @@ class OrganizationApiClient {
   }
 
   async transferPresidency(organizationId: string, data: { newPresidentUserId: string }): Promise<any> {
-    const response = await apiClient.put(`/organizations/${organizationId}/management/transfer-presidency`, data);
+    const response = await apiClient.post(`/organizations/${organizationId}/transfer-presidency`, data);
     return response;
   }
 
@@ -234,7 +237,9 @@ class OrganizationApiClient {
   }
 
   async getUnverifiedMembers(organizationId: string): Promise<any> {
-    const response = await apiClient.get(`/organizations/${organizationId}/members/unverified`);
+    const response = await enhancedCachedClient.get(`/organizations/${organizationId}/unverified-members`, undefined, {
+      ttl: CACHE_TTL.UNVERIFIED_STUDENTS,
+    });
     return response;
   }
 
@@ -244,12 +249,17 @@ class OrganizationApiClient {
   }
 
   async getOrganizationStudents(instituteId: string, organizationId: string, params?: OrganizationQueryParams): Promise<any> {
-    const response = await apiClient.get(`/organizations/institute/${instituteId}/organization/${organizationId}/students`, params);
+    const response = await enhancedCachedClient.get(`/organizations/institute/${instituteId}/organization/${organizationId}/students`, params as Record<string, any>, {
+      ttl: CACHE_TTL.ORGANIZATIONS,
+      instituteId,
+    });
     return response;
   }
 
   async getEnrollmentKey(organizationId: string): Promise<{ organizationId: string; organizationName: string; isPublic: boolean; enrollmentKey: string }> {
-    const response = await apiClient.get(`/organizations/${organizationId}/enrollment-key`);
+    const response = await enhancedCachedClient.get(`/organizations/${organizationId}/enrollment-key`, undefined, {
+      ttl: CACHE_TTL.SETTINGS,
+    });
     return response;
   }
 }
@@ -275,13 +285,8 @@ class OrganizationSpecificApiClient {
 
   private async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({
-        message: `HTTP Error: ${response.status}`,
-        statusCode: response.status,
-        error: response.statusText
-      }));
-      
-      throw new Error(errorData.message || `HTTP Error: ${response.status}`);
+      const errorText = await response.text().catch(() => '');
+      throw parseApiError(response.status, errorText, response.url);
     }
 
     const contentType = response.headers.get('Content-Type');
@@ -339,7 +344,7 @@ class OrganizationSpecificApiClient {
   }
 
   async transferPresidency(organizationId: string, data: { newPresidentUserId: string }): Promise<any> {
-    const response = await this.put(`/organization/api/v1/organizations/${organizationId}/management/transfer-presidency`, data);
+    const response = await this.post(`/organizations/${organizationId}/transfer-presidency`, data);
     return response;
   }
 
@@ -370,13 +375,13 @@ class OrganizationSpecificApiClient {
   }
 
   async updateOrganizationManagement(organizationId: string, data: any): Promise<any> {
-    const response = await this.patch(`/organization/api/v1/organizations/${organizationId}/management`, data);
+    const response = await this.put(`/organizations/${organizationId}/change-role`, data);
     return response;
   }
 
   async removeUserFromOrganization(organizationId: string, data: { userId: string }): Promise<any> {
     const baseUrl = this.getBaseUrl2();
-    const url = `${baseUrl}/organization/api/v1/organizations/${organizationId}/management/remove-user`;
+    const url = `${baseUrl}/organizations/${organizationId}/remove-user`;
     
     const response = await fetch(url, {
       method: 'DELETE',

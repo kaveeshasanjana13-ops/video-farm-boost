@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,13 +16,14 @@ const ChildTransportPage = () => {
   const [loading, setLoading] = useState(false);
   const [enrollments, setEnrollments] = useState<TransportEnrollment[]>([]);
 
+  useEffect(() => {
+    if (selectedChild?.id) {
+      loadEnrollments();
+    }
+  }, [selectedChild?.id]);
+
   const loadEnrollments = async () => {
     if (!selectedChild?.id) {
-      toast({
-        title: "No Child Selected",
-        description: "Please select a child to view transport",
-        variant: "destructive",
-      });
       return;
     }
 
@@ -34,11 +35,7 @@ const ChildTransportPage = () => {
       });
       
       setEnrollments(response.data.enrollments);
-      toast({
-        title: "Success",
-        description: `Loaded ${response.data.enrollments.length} enrollments`,
-      });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading enrollments:', error);
       toast({
         title: "Error",
@@ -83,18 +80,17 @@ const ChildTransportPage = () => {
               <Bus className="h-6 w-6" />
               Transport Information
             </CardTitle>
-            <Button onClick={loadEnrollments} disabled={loading} size="sm">
-              {loading ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
-              Load Enrollments
+            <Button variant="outline" onClick={loadEnrollments} disabled={loading} size="sm">
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {enrollments.length > 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-16">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : enrollments.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {enrollments.map((enrollment) => (
                 <div key={enrollment.id} className="relative flex w-80 flex-col rounded-xl bg-white dark:bg-card bg-clip-border text-gray-700 dark:text-foreground shadow-md">
@@ -145,9 +141,13 @@ const ChildTransportPage = () => {
               ))}
             </div>
           ) : (
-            <p className="text-center text-muted-foreground py-8">
-              Click "Load Enrollments" to view transport information
-            </p>
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
+                <Bus className="h-7 w-7 opacity-40" />
+              </div>
+              <p className="font-medium">No transport enrollments found</p>
+              <p className="text-sm text-muted-foreground">No transport routes have been assigned to this student.</p>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -94,6 +94,10 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
   const [userHasPhone, setUserHasPhone] = useState(false);
   const [userHasEmail, setUserHasEmail] = useState(false);
 
+  // ── Parent OTP info ──
+  const [parentOtpUsed, setParentOtpUsed] = useState(false);
+  const [parentRelationship, setParentRelationship] = useState('');
+
   // ── Step 2 ──
   const [otp, setOtp] = useState('');
   const [otpTimer, setOtpTimer] = useState(0);
@@ -179,17 +183,38 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
     setIsLoading(true);
     try {
       const data = await initiateFirstLogin(identifier.trim());
-      setOtpChannel(data.otpSentVia);
-      setMaskedDest(data.maskedDestination);
+
+      // Store access token if returned (system ID login)
+      if (data.accessToken) {
+        setFirstLoginToken(data.accessToken);
+      }
+
+      // Handle parent OTP flow
+      if (data.parentOtpUsed) {
+        setParentOtpUsed(true);
+        setParentRelationship(data.parentRelationship || '');
+      }
+
+      setOtpChannel(data.otpSentVia!);
+      setMaskedDest(data.maskedDestination || '');
       setVerificationsRequired(data.verificationsRequired);
       setUserHasPhone(data.userHasPhone);
       setUserHasEmail(data.userHasEmail);
       setOtpTimer(data.expiresInMinutes ? data.expiresInMinutes * 60 : 900);
-      toast({
-        title: 'OTP Sent',
-        description: `Code sent via ${data.otpSentVia === 'phone' ? 'SMS' : 'email'} to ${data.maskedDestination}`,
-      });
-      navigateToStep('verify-otp');
+
+      if (data.otpSentVia) {
+        const otpDesc = data.parentOtpUsed
+          ? `Code sent to ${data.parentRelationship || 'parent'}'s ${data.otpSentVia === 'phone' ? 'phone' : 'email'} (${data.maskedDestination})`
+          : `Code sent via ${data.otpSentVia === 'phone' ? 'SMS' : 'email'} to ${data.maskedDestination}`;
+        toast({ title: 'OTP Sent', description: otpDesc });
+        navigateToStep('verify-otp');
+      } else if (data.requiresContactInfo) {
+        // User has no contact and no parent contact — need to add contact via profile
+        navigateToStep('complete-profile');
+      } else if (data.accessToken) {
+        // System ID login with contacts verified — go to profile
+        navigateToStep('complete-profile');
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -483,7 +508,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
         imageUrl: data.user.imageUrl || '',
       });
 
-      toast({ title: 'Welcome!', description: 'Your account has been set up successfully.' });
+      toast({ title: 'Welcome! 🎉', description: 'Your account has been set up successfully. Download the Suraksha LMS app for the best experience!' });
       onComplete(data.user);
     } catch (err: any) {
       setError(err.message);
@@ -494,9 +519,13 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
 
   // ============= PROFILE IMAGE UPLOAD =============
 
+  // Revoke previous object URL to prevent memory leaks
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (profileImagePreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(profileImagePreview);
+    }
 
     // Validate
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -547,22 +576,33 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
         throw new Error(err.message || 'Failed to get upload URL');
       }
       const signedData = await signedRes.json();
-      const { uploadUrl, relativePath } = signedData.data;
-      const headers = signedData.instructions?.headers || {};
+      const { uploadUrl, relativePath, fields } = signedData.data;
 
       // Step 2: Upload to cloud storage
       setImageUploadProgress(50);
       setImageUploadMessage('Uploading image...');
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': headers['Content-Type'] || file.type,
-          'x-goog-content-length-range': headers['x-goog-content-length-range'] || '0,5242880',
-        },
-        body: file,
-      });
-      if (!uploadRes.ok) {
-        throw new Error('Upload failed: ' + uploadRes.statusText);
+
+      if (fields && Object.keys(fields).length > 0) {
+        // AWS S3 presigned POST — multipart/form-data, fields FIRST, file LAST
+        const formData = new FormData();
+        Object.entries(fields).forEach(([key, value]) => {
+          formData.append(key, value as string);
+        });
+        formData.append('file', file);
+        const uploadRes = await fetch(uploadUrl, { method: 'POST', body: formData });
+        if (!uploadRes.ok) {
+          throw new Error('Upload failed: ' + uploadRes.statusText);
+        }
+      } else {
+        // GCS presigned PUT
+        const uploadRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!uploadRes.ok) {
+          throw new Error('Upload failed: ' + uploadRes.statusText);
+        }
       }
 
       setImageUploadProgress(100);
@@ -580,6 +620,9 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
   };
 
   const handleRemoveImage = () => {
+    if (profileImagePreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(profileImagePreview);
+    }
     setProfileImage(null);
     setProfileImagePreview(null);
     setProfileImageRelativePath(null);
@@ -631,7 +674,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
             <Mail className="h-3.5 w-3.5" />
             Email {field.required && <span className="text-destructive">*</span>}
             {verified && (
-              <Badge variant="outline" className="text-xs text-green-600 border-green-200 bg-green-50 ml-1">
+              <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/30 ml-1">
                 <CheckCircle2 className="h-3 w-3 mr-0.5" /> Verified
               </Badge>
             )}
@@ -714,7 +757,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
             <Phone className="h-3.5 w-3.5" />
             Phone Number {field.required && <span className="text-destructive">*</span>}
             {verified && (
-              <Badge variant="outline" className="text-xs text-green-600 border-green-200 bg-green-50 ml-1">
+              <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/30 ml-1">
                 <CheckCircle2 className="h-3 w-3 mr-0.5" /> Verified
               </Badge>
             )}
@@ -820,7 +863,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
           <Label className="text-sm">
             {label} {field.required && <span className="text-destructive">*</span>}
           </Label>
-          <Select value={formData[key] ?? ''} onValueChange={val => updateField(key, val)}>
+          <Select value={formData[key] || undefined} onValueChange={val => updateField(key, val)}>
             <SelectTrigger className="h-10">
               <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
             </SelectTrigger>
@@ -938,24 +981,24 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
   // ============= RENDER =============
 
   return (
-    <div className="min-h-[100dvh] flex flex-col md:flex-row overflow-x-hidden">
-      {/* Top Illustration - Mobile Only */}
-      <div className="block md:hidden w-full relative h-48 shrink-0">
+    <div className="flex flex-col min-h-[100dvh] md:h-[100dvh] md:flex-row overflow-x-hidden md:overflow-hidden">
+      {/* Mobile Illustration */}
+      <div className="md:hidden w-full relative h-40 sm:h-52 shrink-0 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
-        <img src={loginIllustration} alt="Education illustration" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+        <img src={loginIllustration} alt="" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
       </div>
 
-      {/* Left Side - Form */}
-      <div className="w-full md:w-1/2 lg:w-2/5 flex flex-col items-center justify-start md:justify-center px-4 py-3 sm:p-6 md:p-8 bg-background -mt-10 md:mt-0 rounded-t-[3rem] md:rounded-none relative z-10 flex-1 md:min-h-screen overflow-y-auto">
-        <div className="w-full max-w-md space-y-2 md:space-y-4 pt-4 md:pt-0">
+      {/* Form Panel */}
+      <div className="w-full md:w-1/2 lg:w-2/5 flex flex-col items-center justify-start px-4 py-5 sm:p-6 md:p-8 bg-background -mt-6 sm:-mt-8 md:mt-0 rounded-t-3xl md:rounded-none relative z-10 flex-1 overflow-y-auto">
+        <div className="w-full max-w-md space-y-3 md:space-y-4 pb-8 md:py-6">
 
           {/* Logo and Header */}
           <div className="space-y-0.5 text-center">
-            <div className="flex flex-col items-center justify-center mb-1 md:mb-4">
-              <div className="w-10 h-10 md:w-24 md:h-24 rounded-lg overflow-hidden bg-transparent mb-0.5">
+            <div className="flex flex-col items-center justify-center mb-1 md:mb-3">
+              <div className="w-12 h-12 md:w-16 md:h-16 rounded-xl overflow-hidden bg-transparent mb-1">
                 <img src={surakshaLogo} alt="SurakshaLMS logo" className="w-full h-full object-contain" loading="lazy" />
               </div>
-              <span className="text-xl md:text-4xl font-bold text-foreground">SurakshaLMS</span>
+              <span className="text-lg md:text-2xl font-bold text-foreground">SurakshaLMS</span>
             </div>
             <h1 className="text-base md:text-2xl font-bold text-foreground">Activate Your Account</h1>
             <p className="text-xs text-muted-foreground">
@@ -978,7 +1021,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                   )}
                   <div className="flex flex-col items-center gap-0.5">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300 ${
-                      isActive ? 'bg-primary text-primary-foreground shadow-md ring-3 ring-primary/20'
+                      isActive ? 'bg-primary text-primary-foreground shadow-md ring-2 ring-offset-1 ring-primary/30'
                         : isDone ? 'bg-primary text-primary-foreground'
                         : 'bg-muted text-muted-foreground border border-border'
                     }`}>
@@ -1059,7 +1102,10 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                 <form onSubmit={handleVerifyOtp} className="space-y-3 md:space-y-4">
                   <div className="text-center">
                     <p className="text-xs md:text-sm text-muted-foreground">
-                      Enter the 6-digit code sent via <span className="font-semibold text-foreground">{otpChannel === 'phone' ? 'SMS' : 'email'}</span> to <span className="font-semibold text-foreground">{maskedDest}</span>
+                      {parentOtpUsed
+                        ? <>Enter the 6-digit code sent to your <span className="font-semibold text-foreground">{parentRelationship || 'parent'}'s {otpChannel === 'phone' ? 'phone' : 'email'}</span> ({maskedDest})</>
+                        : <>Enter the 6-digit code sent via <span className="font-semibold text-foreground">{otpChannel === 'phone' ? 'SMS' : 'email'}</span> to <span className="font-semibold text-foreground">{maskedDest}</span></>
+                      }
                     </p>
                   </div>
 
@@ -1221,7 +1267,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                       </div>
                       <div className="flex-1 space-y-1">
                         {profileImageRelativePath && (
-                          <p className="text-xs text-success flex items-center gap-1">
+                          <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                             <CheckCircle2 className="h-3 w-3" /> Image uploaded successfully
                           </p>
                         )}
@@ -1324,7 +1370,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                               <div key={i} className={`flex-1 rounded-full transition-colors duration-300 ${i <= pwStrength.level ? pwStrength.color : 'bg-muted'}`} />
                             ))}
                           </div>
-                          <p className={`text-[10px] font-medium ${pwStrength.level <= 2 ? 'text-destructive' : pwStrength.level <= 3 ? 'text-warning' : 'text-success'}`}>
+                          <p className={`text-[10px] font-medium ${pwStrength.level <= 2 ? 'text-destructive' : pwStrength.level <= 3 ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}`}>
                             {pwStrength.label}
                           </p>
                         </div>
@@ -1337,7 +1383,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                           { test: /[0-9]/.test(password), label: 'Number' },
                           { test: /[^A-Za-z0-9]/.test(password), label: 'Special char' },
                         ].map(({ test, label }) => (
-                          <span key={label} className={`text-[10px] flex items-center gap-1 ${test ? 'text-success' : 'text-muted-foreground'}`}>
+                          <span key={label} className={`text-[10px] flex items-center gap-1 ${test ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
                             {test ? <CheckCircle2 className="h-3 w-3" /> : <span className="w-3 h-3 rounded-full border border-border inline-block" />}
                             {label}
                           </span>
@@ -1368,7 +1414,7 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
                         <p className="text-xs text-destructive">Passwords do not match</p>
                       )}
                       {password && confirmPassword && password === confirmPassword && (
-                        <p className="text-xs text-success flex items-center gap-1">
+                        <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" /> Passwords match
                         </p>
                       )}
@@ -1386,10 +1432,10 @@ const FirstLogin: React.FC<FirstLoginProps> = ({ onBack, onComplete }) => {
         </div>
       </div>
 
-      {/* Right Side - Illustration (Desktop Only) */}
-      <div className="hidden md:flex md:w-1/2 lg:w-3/5 relative min-h-[300px] md:min-h-screen">
+      {/* Desktop Illustration */}
+      <div className="hidden md:block md:w-1/2 lg:w-3/5 relative overflow-hidden flex-shrink-0">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-primary/5" />
-        <img src={loginIllustration} alt="Education illustration" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+        <img src={loginIllustration} alt="" className="absolute inset-0 w-full h-full object-cover mix-blend-multiply" loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
       </div>
     </div>
   );

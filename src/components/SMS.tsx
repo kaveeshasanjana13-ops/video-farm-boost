@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useAppNavigation } from '@/hooks/useAppNavigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -8,19 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { uploadWithSignedUrl } from '@/utils/signedUploadHelper';
-import { MessageSquare, Send, Users, DollarSign, RefreshCw, Eye, Plus, Lock } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { useTableData } from '@/hooks/useTableData';
-import Paper from '@mui/material/Paper';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TablePagination from '@mui/material/TablePagination';
-import TableRow from '@mui/material/TableRow';
-import { format } from 'date-fns';
+import { MessageSquare, Send, Users, RefreshCw, ChevronRight, Upload, FileSpreadsheet, Trash2, AlertTriangle, Wallet, ArrowDownRight, ArrowUpRight, ChevronLeft, History, School } from 'lucide-react';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import { enhancedCachedClient } from '@/api/enhancedCachedClient';
 import { CACHE_TTL } from '@/config/cacheTTL';
 import { apiClient } from '@/api/client';
@@ -28,7 +20,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import ClassMultiSelectDialog, { SmsClassOption } from '@/components/sms/ClassMultiSelectDialog';
-import SubjectMultiSelectDialog from '@/components/sms/SubjectMultiSelectDialog';
+import SubjectMultiSelectDialog, { SmsSubjectOption } from '@/components/sms/SubjectMultiSelectDialog';
+import { creditsApi, type CreditBalance, type CreditTransaction } from '@/api/credits.api';
+
 
 interface SenderMask {
   maskId: string;
@@ -47,33 +41,12 @@ interface SMSCredentials {
   isActive: boolean;
 }
 
-interface PaymentSubmission {
-  id: string;
-  instituteId: string;
-  submittedBy: string;
-  requestedCredits: number;
-  paymentAmount: string;
-  paymentMethod: string;
-  paymentReference: string;
-  paymentSlipUrl: string | null;
-  paymentSlipFilename: string;
-  status: string;
-  creditsGranted: number;
-  costPerCredit: string | null;
-  verifiedBy: string;
-  verifiedAt: string;
-  rejectionReason: string | null;
-  adminNotes: string;
-  submissionNotes: string;
-  submittedAt: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 const SMS = () => {
-  const { currentInstituteId } = useAuth();
+  const { currentInstituteId, selectedInstituteType } = useAuth();
   const instituteRole = useInstituteRole();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const { navigateToPage } = useAppNavigation();
 
   // SMS Credentials state
   const [credentials, setCredentials] = useState<SMSCredentials | null>(null);
@@ -85,30 +58,11 @@ const SMS = () => {
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [selectedClassItems, setSelectedClassItems] = useState<SmsClassOption[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [selectedSubjectItems, setSelectedSubjectItems] = useState<SmsSubjectOption[]>([]);
   const [selectedRecipientTypes, setSelectedRecipientTypes] = useState<string[]>([]);
   const [bulkScheduledAt, setBulkScheduledAt] = useState('');
   const [isBulkSending, setIsBulkSending] = useState(false);
   const [isBulkNow, setIsBulkNow] = useState(true);
-
-  // Payment submissions state
-  const [paymentSubmissions, setPaymentSubmissions] = useState<PaymentSubmission[]>([]);
-  const [loadingPayments, setLoadingPayments] = useState(false);
-  const [paymentsPage, setPaymentsPage] = useState(0);
-  const [paymentsRowsPerPage, setPaymentsRowsPerPage] = useState(10);
-  const [paymentsTotal, setPaymentsTotal] = useState(0);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentSubmission | null>(null);
-  const [viewPaymentDialogOpen, setViewPaymentDialogOpen] = useState(false);
-  // New payment submission state
-  const [newPaymentOpen, setNewPaymentOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({
-    requestedCredits: '',
-    paymentAmount: '',
-    paymentMethod: 'Bank Transfer',
-    paymentReference: '',
-    submissionNotes: '',
-    paymentSlip: null as File | null,
-  });
 
   // Custom SMS state
   const [customMessage, setCustomMessage] = useState('');
@@ -118,6 +72,23 @@ const SMS = () => {
   const [isCustomSending, setIsCustomSending] = useState(false);
   const [isCustomNow, setIsCustomNow] = useState(true);
   const [customScheduledAt, setCustomScheduledAt] = useState('');
+  const [mobileSection, setMobileSection] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('bulk');
+
+  // Bulk file upload state
+  const [nameColumn, setNameColumn] = useState('name');
+  const [phoneColumn, setPhoneColumn] = useState('phone');
+  const [uploadedFileName, setUploadedFileName] = useState('');
+  const [fileParseError, setFileParseError] = useState('');
+  const [sendProgress, setSendProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Credit balance & usage history
+  const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
+  const [usageHistory, setUsageHistory] = useState<CreditTransaction[]>([]);
+  const [usageTotal, setUsageTotal] = useState(0);
+  const [usagePage, setUsagePage] = useState(1);
+  const [loadingUsage, setLoadingUsage] = useState(false);
+  const [usageFilter, setUsageFilter] = useState<string>('SMS_SEND');
 
   // Selection is handled via searchable pickers (no manual ID entry).
 
@@ -162,7 +133,7 @@ const SMS = () => {
             }
           );
           setCredentials(response as SMSCredentials);
-        } catch (error) {
+        } catch (error: any) {
           // Silently fail - user can click refresh if needed
           console.log('📦 No cached SMS credentials available');
         }
@@ -171,102 +142,38 @@ const SMS = () => {
     }
   }, [currentInstituteId]);
 
-  const fetchPaymentSubmissions = async () => {
+  // Load credit balance on mount
+  const loadCreditBalance = useCallback(async () => {
     if (!currentInstituteId) return;
-    
-    setLoadingPayments(true);
     try {
-      const response: any = await enhancedCachedClient.get(
-        `/sms/payment-submissions/institute/${currentInstituteId}`,
-        {
-          page: paymentsPage + 1,
-          limit: paymentsRowsPerPage
-        },
-        {
-          ttl: CACHE_TTL.SMS_HISTORY,
-          forceRefresh: false,
-          userId: currentInstituteId
-        }
-      );
-      
-      // Handle new API response format
-      if (response.submissions && Array.isArray(response.submissions)) {
-        setPaymentSubmissions(response.submissions);
-        setPaymentsTotal(response.total || 0);
-      } else if (Array.isArray(response)) {
-        setPaymentSubmissions(response);
-        setPaymentsTotal(response.length);
-      } else {
-        // Single object response (fallback)
-        setPaymentSubmissions([response]);
-        setPaymentsTotal(1);
-      }
-    } catch (error) {
-      console.error('Failed to fetch payment submissions:', error);
-      setPaymentSubmissions([]);
-      setPaymentsTotal(0);
-    } finally {
-      setLoadingPayments(false);
+      const data = await creditsApi.getBalance(currentInstituteId);
+      setCreditBalance(data);
+    } catch {
+      setCreditBalance(null);
     }
-  };
+  }, [currentInstituteId]);
 
-  // Only refetch when pagination changes if data is already loaded
-  useEffect(() => {
-    if (paymentsPage >= 0 && paymentSubmissions.length > 0) {
-      fetchPaymentSubmissions();
-    }
-  }, [paymentsPage, paymentsRowsPerPage]);
-
-  // Open slip by filename using API base URL
-  const handleViewSlip = (filename: string | null) => {
-    if (!filename) {
-      toast({ title: 'No slip available', description: 'This payment has no slip uploaded', variant: 'destructive' });
-    
-      return;
-    }
-    const baseUrl = (localStorage.getItem('api_base_url') || (apiClient as any)?.defaults?.baseURL || '');
-    const slipUrl = `${baseUrl}/sms/payment-slip/${filename}`;
-    window.open(slipUrl, '_blank');
-  };
-
-  // Submit new payment for SMS credits
-  const handlePaymentSubmit = async () => {
+  // Load usage history (SMS-related transactions)
+  const loadUsageHistory = useCallback(async () => {
     if (!currentInstituteId) return;
-    if (!paymentForm.requestedCredits || !paymentForm.paymentAmount || !paymentForm.paymentReference || !paymentForm.paymentSlip) {
-      toast({ title: 'Error', description: 'Please fill in all required fields and upload payment slip', variant: 'destructive' });
-      return;
-    }
+    setLoadingUsage(true);
     try {
-      setSubmitting(true);
-      
-      // Step 1: Upload payment slip using signed URL
-      const paymentSlipPath = await uploadWithSignedUrl(
-        paymentForm.paymentSlip,
-        'institute-payment-receipts'
-      );
-      
-      // Step 2: Submit payment with relativePath
-      const paymentData = {
-        requestedCredits: paymentForm.requestedCredits,
-        paymentAmount: paymentForm.paymentAmount,
-        paymentMethod: paymentForm.paymentMethod,
-        paymentReference: paymentForm.paymentReference,
-        submissionNotes: paymentForm.submissionNotes,
-        paymentSlipUrl: paymentSlipPath
-      };
-
-      const response: any = await apiClient.post(`/sms/payment/submit?instituteId=${currentInstituteId}`, paymentData);
-
-      toast({ title: 'Success', description: response?.message || 'Payment submission created successfully.' });
-      setNewPaymentOpen(false);
-      setPaymentForm({ requestedCredits: '', paymentAmount: '', paymentMethod: 'Bank Transfer', paymentReference: '', submissionNotes: '', paymentSlip: null });
-      fetchPaymentSubmissions();
-    } catch (error: any) {
-      toast({ title: 'Error', description: error?.message || 'Failed to submit payment', variant: 'destructive' });
-    } finally {
-      setSubmitting(false);
+      const data = await creditsApi.getTransactions(currentInstituteId, {
+        type: usageFilter || undefined,
+        page: usagePage,
+        limit: 10,
+      });
+      setUsageHistory(data.data);
+      setUsageTotal(data.total);
+    } catch {
+      setUsageHistory([]);
+      setUsageTotal(0);
     }
-  };
+    setLoadingUsage(false);
+  }, [currentInstituteId, usagePage, usageFilter]);
+
+  useEffect(() => { loadCreditBalance(); }, [loadCreditBalance]);
+  useEffect(() => { loadUsageHistory(); }, [loadUsageHistory]);
 
   const fetchCredentials = async () => {
     if (!currentInstituteId) {
@@ -289,11 +196,11 @@ const SMS = () => {
       console.log('✅ SMS credentials response:', response);
       setCredentials(response as SMSCredentials);
       console.log('✅ Credentials set successfully:', response);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to fetch SMS credentials:', error);
       toast({
         title: 'Warning',
-        description: 'Could not load SMS credits information',
+        description: 'Could not load SMS configuration',
         variant: 'destructive',
       });
     } finally {
@@ -352,6 +259,16 @@ const SMS = () => {
       return;
     }
 
+    // Check credit balance before sending
+    if (creditBalance && creditBalance.balance <= 0) {
+      toast({
+        title: 'Insufficient Balance',
+        description: 'Your wallet balance is empty. Please top up before sending SMS.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (selectedRecipientTypes.length === 0) {
       toast({
         title: 'Error',
@@ -385,14 +302,17 @@ const SMS = () => {
       setSelectedClasses([]);
       setSelectedClassItems([]);
       setSelectedSubjects([]);
+      setSelectedSubjectItems([]);
       setSelectedRecipientTypes([]);
       const now = new Date();
       const sriLankaTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
       setBulkScheduledAt(sriLankaTime.toISOString().slice(0, 16));
       setIsBulkNow(true);
       
-      // Refresh credentials
+      // Refresh credentials, credit balance and usage history
       fetchCredentials();
+      loadCreditBalance();
+      loadUsageHistory();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -418,6 +338,7 @@ const SMS = () => {
 
   const removeSubjectId = (id: string) => {
     setSelectedSubjects(selectedSubjects.filter((s) => s !== id));
+    setSelectedSubjectItems(selectedSubjectItems.filter((s) => s.id !== id));
   };
 
 
@@ -444,6 +365,86 @@ const SMS = () => {
     setCustomRecipients([...customRecipients, { name: customName.trim(), phoneNumber: customPhone.trim() }]);
     setCustomName('');
     setCustomPhone('');
+  };
+
+  /** Normalize phone: 07X → +947X, 947X → +947X */
+  const normalizePhone = (raw: string): string | null => {
+    const digits = raw.replace(/[\s\-()]/g, '');
+    let phone = digits;
+    if (phone.startsWith('0') && phone.length === 10) {
+      phone = '+94' + phone.slice(1);
+    } else if (phone.startsWith('94') && phone.length === 11) {
+      phone = '+' + phone;
+    } else if (!phone.startsWith('+')) {
+      phone = '+' + phone;
+    }
+    return /^\+94\d{9}$/.test(phone) ? phone : null;
+  };
+
+  /** Parse uploaded CSV or Excel file */
+  const handleFileUpload = (file: File) => {
+    setFileParseError('');
+    setUploadedFileName(file.name);
+
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
+    if (ext === 'csv' || ext === 'txt') {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (result) => processRows(result.data as Record<string, string>[]),
+        error: () => setFileParseError('Failed to parse CSV file'),
+      });
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target?.result, { type: 'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
+          processRows(rows);
+        } catch {
+          setFileParseError('Failed to parse Excel file');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      setFileParseError('Unsupported file type. Use .csv, .xlsx, or .xls');
+    }
+  };
+
+  const processRows = (rows: Record<string, string>[]) => {
+    const nCol = nameColumn.trim();
+    const pCol = phoneColumn.trim();
+    if (!pCol) {
+      setFileParseError('Phone column name is required');
+      return;
+    }
+    const parsed: Array<{ name: string; phoneNumber: string }> = [];
+    const invalid: string[] = [];
+    for (const row of rows) {
+      const rawPhone = String(row[pCol] ?? '').trim();
+      const rawName = nCol ? String(row[nCol] ?? '').trim() : '';
+      if (!rawPhone) continue;
+      const phone = normalizePhone(rawPhone);
+      if (phone) {
+        parsed.push({ name: rawName || 'Recipient', phoneNumber: phone });
+      } else {
+        invalid.push(rawPhone);
+      }
+    }
+    if (parsed.length === 0) {
+      setFileParseError(`No valid phone numbers found. Check column name "${pCol}". Available columns: ${rows.length > 0 ? Object.keys(rows[0]).join(', ') : 'none'}`);
+      return;
+    }
+    setCustomRecipients(prev => [...prev, ...parsed]);
+    const msg = `Loaded ${parsed.length} recipients from file.`;
+    toast({
+      title: 'File Imported',
+      description: invalid.length > 0
+        ? `${msg} ${invalid.length} invalid numbers skipped.`
+        : msg,
+    });
   };
 
   const removeCustomRecipient = (index: number) => {
@@ -478,19 +479,44 @@ const SMS = () => {
       return;
     }
 
+    // Check credit balance before sending
+    if (creditBalance && creditBalance.balance < customRecipients.length) {
+      toast({
+        title: 'Insufficient Balance',
+        description: `You need at least ${customRecipients.length} units to send to ${customRecipients.length} recipients. Your balance: ${Math.floor(creditBalance.balance)}. Please top up your wallet.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsCustomSending(true);
     try {
-      const response: any = await apiClient.post('/sms/send-custom', {
-        messageTemplate: customMessage,
-        customRecipients,
-        maskId: selectedMaskId,
-        isNow: isCustomNow,
-        scheduledAt: isCustomNow ? new Date().toISOString() : customScheduledAt,
-      });
+      // Chunk recipients into groups of 1000 (backend limit)
+      const CHUNK_SIZE = 1000;
+      const chunks: Array<Array<{ name: string; phoneNumber: string }>> = [];
+      for (let i = 0; i < customRecipients.length; i += CHUNK_SIZE) {
+        chunks.push(customRecipients.slice(i, i + CHUNK_SIZE));
+      }
 
+      let totalSent = 0;
+      setSendProgress({ current: 0, total: chunks.length });
+
+      for (let i = 0; i < chunks.length; i++) {
+        setSendProgress({ current: i + 1, total: chunks.length });
+        const response: any = await apiClient.post('/sms/send-custom', {
+          messageTemplate: customMessage,
+          customRecipients: chunks[i],
+          maskId: selectedMaskId,
+          isNow: isCustomNow,
+          scheduledAt: isCustomNow ? new Date().toISOString() : customScheduledAt,
+        });
+        totalSent += response.totalRecipients || chunks[i].length;
+      }
+
+      setSendProgress(null);
       toast({
         title: 'Success',
-        description: `${response.message || 'SMS scheduled successfully'}. Recipients: ${response.totalRecipients}. Status: ${response.status}`,
+        description: `SMS sent to ${totalSent} recipients${chunks.length > 1 ? ` in ${chunks.length} batches` : ''}.`,
       });
 
       // Reset form
@@ -503,8 +529,10 @@ const SMS = () => {
       setCustomScheduledAt(sriLankaTime.toISOString().slice(0, 16));
       setIsCustomNow(true);
       
-      // Refresh credentials
+      // Refresh credentials, credit balance and usage history
       fetchCredentials();
+      loadCreditBalance();
+      loadUsageHistory();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -513,20 +541,16 @@ const SMS = () => {
       });
     } finally {
       setIsCustomSending(false);
+      setSendProgress(null);
     }
   };
-
-  console.log('🎨 Rendering SMS component, credentials:', credentials);
-  console.log('🏢 Current Institute ID:', currentInstituteId);
-  
-  const [activeTab, setActiveTab] = useState('bulk');
 
   return (
     <div className="container mx-auto max-w-6xl p-3 sm:p-6 space-y-4 sm:space-y-6">
       <header className="space-y-1">
         <h1 className="text-2xl sm:text-3xl font-bold text-foreground">SMS</h1>
         <p className="text-sm sm:text-base text-muted-foreground">
-          Send bulk messages, manage sender masks, and track payments.
+          Send bulk messages, manage sender masks, and track usage.
         </p>
       </header>
 
@@ -535,8 +559,8 @@ const SMS = () => {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5" />
-              SMS Credits Information
+              <Wallet className="h-5 w-5" />
+              Wallet & SMS Configuration
             </CardTitle>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -545,55 +569,48 @@ const SMS = () => {
                   {credentials.isActive ? 'Active' : 'Inactive'}
                 </Badge>
               )}
-              <Button variant="outline" size="sm" onClick={fetchCredentials} disabled={loadingCredentials}>
+              <Button variant="outline" size="sm" onClick={() => { fetchCredentials(); loadCreditBalance(); }} disabled={loadingCredentials}>
                 <RefreshCw className={`h-4 w-4 ${loadingCredentials ? 'animate-spin' : ''}`} />
-                <span className="ml-2 hidden sm:inline">{loadingCredentials ? 'Loading...' : 'Load Data'}</span>
-                <span className="ml-2 sm:hidden">{loadingCredentials ? 'Loading' : 'Load'}</span>
+                <span className="ml-2 hidden sm:inline">{loadingCredentials ? 'Loading...' : 'Refresh'}</span>
+                <span className="ml-2 sm:hidden">{loadingCredentials ? '...' : 'Refresh'}</span>
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {!credentials && !loadingCredentials ? (
-            <div className="text-center py-8">
-              <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground text-lg mb-2">Click "Load Data" to view SMS credits</p>
-              <p className="text-muted-foreground text-sm">Credits information will appear here</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Wallet Balance</p>
+              <p className="text-2xl font-bold text-primary">
+                {creditBalance ? Math.floor(creditBalance.balance) : '—'}
+              </p>
+              <p className="text-[10px] text-muted-foreground">institute wallet for all services</p>
             </div>
-          ) : loadingCredentials ? (
-            <p className="text-muted-foreground">Loading SMS credentials...</p>
-          ) : credentials ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Available Credits</p>
-                <p className="text-2xl font-bold text-primary">{Math.floor(Number(credentials.availableCredits))}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Credits Used</p>
-                <p className="text-2xl font-bold">{Number(credentials.totalCreditsUsed)}</p>
-              </div>
-              <div>
-                <Label htmlFor="mask-id">Mask Name</Label>
-                <Select value={selectedMaskId} onValueChange={setSelectedMaskId}>
-                  <SelectTrigger id="mask-id" className="mt-1">
-                    <SelectValue placeholder="Select a mask" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {credentials.senderMasks && credentials.senderMasks.map((mask) => (
-                      <SelectItem key={mask.maskId} value={mask.maskId}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{mask.displayName}</span>
-                          <span className="text-xs text-muted-foreground">{mask.phoneNumber}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Used</p>
+              <p className="text-2xl font-bold">
+                {creditBalance ? Math.floor(creditBalance.totalUsed) : '—'}
+              </p>
             </div>
-          ) : (
-            <p className="text-muted-foreground">No credentials data available</p>
-          )}
+            <div>
+              <Label htmlFor="mask-id">Sender Mask</Label>
+              <Select value={selectedMaskId} onValueChange={setSelectedMaskId}>
+                <SelectTrigger id="mask-id" className="mt-1">
+                  <SelectValue placeholder="Select a mask" />
+                </SelectTrigger>
+                <SelectContent>
+                  {credentials?.senderMasks?.map((mask) => (
+                    <SelectItem key={mask.maskId} value={mask.maskId}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{mask.displayName}</span>
+                        <span className="text-xs text-muted-foreground">{mask.phoneNumber}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -605,36 +622,97 @@ const SMS = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="bulk" className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3">
-                <Users className="h-4 w-4 shrink-0" />
-                <span className={activeTab === "bulk" ? "" : "hidden sm:inline"}>
-                  Bulk SMS
-                </span>
-              </TabsTrigger>
-              <TabsTrigger value="custom" className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3">
-                <MessageSquare className="h-4 w-4 shrink-0" />
-                <span className={activeTab === "custom" ? "" : "hidden sm:inline"}>
-                  Custom SMS
-                </span>
-              </TabsTrigger>
-              <TabsTrigger value="payments" className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3">
-                <DollarSign className="h-4 w-4 shrink-0" />
-                <span className={activeTab === "payments" ? "" : "hidden sm:inline"}>
-                  Payments
-                </span>
-              </TabsTrigger>
-            </TabsList>
+          {isMobile && !mobileSection ? (
+            <div className="divide-y divide-border/40 border border-border/50 rounded-xl overflow-hidden bg-card/50">
+              {[
+                { id: 'bulk', icon: Users, label: 'Bulk SMS', description: 'Send messages to classes or roles', color: 'text-blue-500' },
+                { id: 'custom', icon: MessageSquare, label: 'Custom SMS', description: 'Send messages to specific numbers', color: 'text-emerald-500' },
+                { id: 'usage', icon: History, label: 'Usage', description: 'Credit balance & usage history', color: 'text-amber-500' },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setMobileSection(item.id)}
+                    className="w-full flex items-center gap-4 px-4 py-4 text-left active:bg-muted/60 transition-colors"
+                  >
+                    <div className={`p-2.5 rounded-xl bg-muted/60 ${item.color}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                      <p className="text-xs text-muted-foreground truncate">{item.description}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={isMobile ? "space-y-4" : ""}>
+              {isMobile && mobileSection && (
+                <div className="flex items-center mb-4">
+                  <button
+                    onClick={() => setMobileSection(null)}
+                    className="flex items-center gap-2 text-sm font-medium text-primary active:opacity-70 transition-opacity"
+                  >
+                    <ChevronRight className="h-4 w-4 rotate-180" />
+                    Back to Menu
+                  </button>
+                </div>
+              )}
+              {isMobile && mobileSection && (
+                <h2 className="text-lg font-bold text-foreground mb-4">
+                  {mobileSection === 'bulk' && 'Bulk SMS'}
+                  {mobileSection === 'custom' && 'Custom SMS'}
+                  {mobileSection === 'usage' && 'Usage History'}
+                </h2>
+              )}
+              <Tabs value={isMobile ? mobileSection : activeTab} onValueChange={setActiveTab} className="w-full">
+                {!isMobile && (
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="bulk" className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3">
+                      <Users className="h-4 w-4 shrink-0" />
+                      <span className={activeTab === "bulk" ? "" : "hidden sm:inline"}>
+                        Bulk SMS
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="custom" className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3">
+                      <MessageSquare className="h-4 w-4 shrink-0" />
+                      <span className={activeTab === "custom" ? "" : "hidden sm:inline"}>
+                        Custom SMS
+                      </span>
+                    </TabsTrigger>
+                    <TabsTrigger value="usage" className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3">
+                      <History className="h-4 w-4 shrink-0" />
+                      <span className={activeTab === "usage" ? "" : "hidden sm:inline"}>
+                        Usage
+                      </span>
+                    </TabsTrigger>
+                  </TabsList>
+                )}
 
             {/* Bulk SMS Tab */}
             <TabsContent value="bulk" className="space-y-4">
+              {/* Institute type context hint */}
+              {selectedInstituteType && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50 border border-border/60">
+                  <School className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs text-muted-foreground">
+                    Institute type: <span className="font-medium text-foreground capitalize">{selectedInstituteType.replace(/_/g, ' ')}</span>
+                    {selectedInstituteType === 'dhamma_school' && ' — Select classes (Dhamma school sections) then subjects (Dhamma subjects)'}
+                    {selectedInstituteType === 'school' && ' — Select grade classes then subjects to target specific recipients'}
+                    {selectedInstituteType === 'tuition_institute' && ' — Select classes (tuition batches) then subjects (courses)'}
+                    {selectedInstituteType === 'university' && ' — Select classes (faculties/courses) then subjects (modules)'}
+                  </span>
+                </div>
+              )}
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="bulk-message">Message Template</Label>
+                  <Label htmlFor="bulk-message">Message</Label>
                   <Textarea
                     id="bulk-message"
-                    placeholder="Dear {{firstName}}, your class schedule has been updated..."
+                    placeholder="Your class schedule has been updated. Thank you!"
                     value={bulkMessage}
                     onChange={(e) => setBulkMessage(e.target.value)}
                     rows={4}
@@ -645,15 +723,21 @@ const SMS = () => {
                 <div>
                   <Label>Recipient Types</Label>
                   <div className="flex flex-wrap gap-4 mt-2">
-                    {['CUSTOM', 'STUDENTS', 'TEACHERS', 'PARENTS', 'ADMIN', 'ALL'].map((type) => (
-                      <div key={type} className="flex items-center space-x-2">
+                    {[
+                      { value: 'STUDENTS', label: selectedInstituteType === 'dhamma_school' ? 'Dhamma Students' : 'Students' },
+                      { value: 'PARENTS', label: 'Parents / Guardians' },
+                      { value: 'TEACHERS', label: selectedInstituteType === 'dhamma_school' ? 'Dhamma Teachers' : 'Teachers' },
+                      { value: 'ADMIN', label: 'Admins' },
+                      { value: 'ALL', label: 'All Members' },
+                    ].map(({ value, label }) => (
+                      <div key={value} className="flex items-center space-x-2">
                         <Checkbox
-                          id={`recipienttype-${type}`}
-                          checked={selectedRecipientTypes.includes(type)}
-                          onCheckedChange={() => toggleRecipientType(type)}
+                          id={`recipienttype-${value}`}
+                          checked={selectedRecipientTypes.includes(value)}
+                          onCheckedChange={() => toggleRecipientType(value)}
                         />
-                        <label htmlFor={`recipienttype-${type}`} className="text-sm cursor-pointer">
-                          {type}
+                        <label htmlFor={`recipienttype-${value}`} className="text-sm cursor-pointer">
+                          {label}
                         </label>
                       </div>
                     ))}
@@ -688,31 +772,34 @@ const SMS = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="subject-ids">Subjects</Label>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label htmlFor="subject-ids">Subjects</Label>
+                    {selectedClasses.length > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        Showing subjects for {selectedClasses.length} selected class{selectedClasses.length > 1 ? 'es' : ''}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex gap-2 mt-2">
-                    <Input
-                      id="subject-ids"
-                      value={selectedSubjects.join(', ')}
-                      placeholder="Subject selection locked"
-                      disabled
-                      className="bg-muted/50"
+                    <SubjectMultiSelectDialog
+                      instituteId={currentInstituteId}
+                      userId={currentInstituteId}
+                      role={String(instituteRole || 'User')}
+                      selectedIds={selectedSubjects}
+                      classIds={selectedClasses.length > 0 ? selectedClasses : undefined}
+                      onChange={(ids, items) => {
+                        setSelectedSubjects(ids);
+                        if (items) setSelectedSubjectItems(items);
+                      }}
+                      triggerLabel={selectedSubjects.length > 0 ? `${selectedSubjects.length} Selected` : "Select Subjects"}
                     />
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      disabled 
-                      className="opacity-60 cursor-not-allowed"
-                    >
-                      <Lock className="h-4 w-4 mr-1" />
-                      Select
-                    </Button>
                   </div>
 
-                  {selectedSubjects.length > 0 && (
+                  {selectedSubjectItems.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {selectedSubjects.map((id) => (
-                        <Badge key={id} variant="secondary" className="cursor-pointer" onClick={() => removeSubjectId(id)}>
-                          {id} ×
+                      {selectedSubjectItems.map((sub) => (
+                        <Badge key={sub.id} variant="secondary" className="cursor-pointer" onClick={() => removeSubjectId(sub.id)}>
+                          {sub.name} ×
                         </Badge>
                       ))}
                     </div>
@@ -755,19 +842,80 @@ const SMS = () => {
             <TabsContent value="custom" className="space-y-4">
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="custom-message">Message Template</Label>
+                  <Label htmlFor="custom-message">Message</Label>
                   <Textarea
                     id="custom-message"
-                    placeholder="Hello {{name}}, welcome to our institute! Your admission is confirmed."
+                    placeholder="Hello, your admission is confirmed. Thank you!"
                     value={customMessage}
                     onChange={(e) => setCustomMessage(e.target.value)}
                     rows={4}
                     className="mt-2"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Same message will be sent to all recipients.</p>
                 </div>
 
+                {/* ── Bulk File Upload ── */}
+                <div className="border border-dashed border-border rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-5 w-5 text-emerald-500" />
+                    <Label className="text-sm font-semibold">Bulk Upload (CSV / Excel)</Label>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Name Column</Label>
+                      <Input
+                        placeholder="e.g. name"
+                        value={nameColumn}
+                        onChange={(e) => setNameColumn(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Phone Column *</Label>
+                      <Input
+                        placeholder="e.g. phone"
+                        value={phoneColumn}
+                        onChange={(e) => setPhoneColumn(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = '.csv,.xlsx,.xls';
+                        input.onchange = (e) => {
+                          const file = (e.target as HTMLInputElement).files?.[0];
+                          if (file) handleFileUpload(file);
+                        };
+                        input.click();
+                      }}
+                    >
+                      <Upload className="h-4 w-4" />
+                      Upload File
+                    </Button>
+                    {uploadedFileName && (
+                      <span className="text-xs text-muted-foreground">{uploadedFileName}</span>
+                    )}
+                  </div>
+                  {fileParseError && (
+                    <div className="flex items-start gap-2 text-destructive text-xs">
+                      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span>{fileParseError}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Type the exact column names from your spreadsheet header row. Phone numbers are auto-formatted to +94XXXXXXXXX.</p>
+                </div>
+
+                {/* ── Manual Add ── */}
                 <div>
-                  <Label>Add Recipients</Label>
+                  <Label>Add Manually</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                     <Input
                       placeholder="Recipient Name"
@@ -787,24 +935,34 @@ const SMS = () => {
                       </Button>
                     </div>
                   </div>
-                  {customRecipients.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      <p className="text-sm font-medium">Recipients ({customRecipients.length}):</p>
-                      <div className="flex flex-wrap gap-2">
-                        {customRecipients.map((recipient, index) => (
-                          <Badge 
-                            key={index} 
-                            variant="secondary" 
-                            className="cursor-pointer px-3 py-1"
-                            onClick={() => removeCustomRecipient(index)}
-                          >
-                            {recipient.name} - {recipient.phoneNumber} ×
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
+
+                {/* ── Recipient List ── */}
+                {customRecipients.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Recipients ({customRecipients.length}){customRecipients.length > 1000 && <span className="text-xs text-muted-foreground ml-1">(will send in {Math.ceil(customRecipients.length / 1000)} batches)</span>}</p>
+                      <Button type="button" variant="ghost" size="sm" className="text-destructive gap-1 h-7" onClick={() => { setCustomRecipients([]); setUploadedFileName(''); }}>
+                        <Trash2 className="h-3 w-3" /> Clear All
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+                      {customRecipients.slice(0, 100).map((recipient, index) => (
+                        <Badge 
+                          key={index} 
+                          variant="secondary" 
+                          className="cursor-pointer px-3 py-1"
+                          onClick={() => removeCustomRecipient(index)}
+                        >
+                          {recipient.name} - {recipient.phoneNumber} ×
+                        </Badge>
+                      ))}
+                      {customRecipients.length > 100 && (
+                        <Badge variant="outline" className="px-3 py-1">+{customRecipients.length - 100} more</Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -831,403 +989,170 @@ const SMS = () => {
                   />
                 </div>
 
-                <Button onClick={handleCustomSMS} disabled={isCustomSending} className="w-full">
+                <Button onClick={handleCustomSMS} disabled={isCustomSending || customRecipients.length === 0} className="w-full">
                   <Send className="h-4 w-4 mr-2" />
-                  {isCustomSending ? 'Sending...' : 'Send Custom SMS'}
+                  {isCustomSending
+                    ? sendProgress
+                      ? `Sending batch ${sendProgress.current}/${sendProgress.total}...`
+                      : 'Sending...'
+                    : `Send to ${customRecipients.length} Recipient${customRecipients.length !== 1 ? 's' : ''}`}
                 </Button>
               </div>
             </TabsContent>
 
-            {/* Payments Tab */}
-            <TabsContent value="payments" className="space-y-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium">Payment Submissions</h3>
-                  <div className="flex items-center gap-2">
-                    <Button 
-                      size="sm"
-                      className="flex items-center gap-2"
-                      onClick={() => setNewPaymentOpen(true)}
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span className="hidden sm:inline">New Payment</span>
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={fetchPaymentSubmissions}
-                      disabled={loadingPayments}
-                      className="gap-2"
-                    >
-                      <RefreshCw className={`h-4 w-4 ${loadingPayments ? 'animate-spin' : ''}`} />
-                      <span className="hidden sm:inline">{loadingPayments ? 'Loading...' : 'Load Data'}</span>
-                      <span className="sm:hidden">{loadingPayments ? 'Loading' : 'Load'}</span>
-                    </Button>
-                  </div>
-                </div>
+            {/* Usage History Tab - SMS Deductions from Wallet */}
+            <TabsContent value="usage" className="space-y-4">
+              {/* SMS Usage Summary row */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <Card className="border-orange-200 dark:border-orange-800">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <ArrowDownRight className="h-3.5 w-3.5 text-orange-500" />
+                      <p className="text-xs text-muted-foreground">Today's SMS Deductions</p>
+                    </div>
+                    <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                      {creditBalance ? Math.floor(creditBalance.dailyUsed) : '—'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">credits used today</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
+                      <p className="text-xs text-muted-foreground">Total SMS Used</p>
+                    </div>
+                    <p className="text-lg font-bold">
+                      {creditBalance ? Math.floor(creditBalance.totalUsed) : '—'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">all time</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-blue-200 dark:border-blue-800 col-span-2 sm:col-span-1">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Wallet className="h-3.5 w-3.5 text-blue-500" />
+                      <p className="text-xs text-muted-foreground">Wallet Balance</p>
+                    </div>
+                    <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                      {creditBalance ? Math.floor(creditBalance.balance) : '—'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">available credits</p>
+                  </CardContent>
+                </Card>
+              </div>
 
-                {loadingPayments ? (
-                  <p className="text-muted-foreground">Loading payment submissions...</p>
-                ) : (
-                  <Paper sx={{ width: '100%', overflow: 'hidden', height: 'calc(100vh - 400px)' }}>
-                    <TableContainer sx={{ height: 'calc(100% - 56px)' }}>
-                      <Table stickyHeader aria-label="payment submissions table">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell style={{ minWidth: 80 }}>ID</TableCell>
-                            <TableCell style={{ minWidth: 150 }}>Payment Ref</TableCell>
-                            <TableCell style={{ minWidth: 120 }}>Amount</TableCell>
-                            <TableCell style={{ minWidth: 120 }}>Method</TableCell>
-                            <TableCell style={{ minWidth: 120 }}>Credits Requested</TableCell>
-                            <TableCell style={{ minWidth: 120 }}>Credits Granted</TableCell>
-                            <TableCell style={{ minWidth: 100 }}>Status</TableCell>
-                            <TableCell style={{ minWidth: 150 }}>Submitted At</TableCell>
-                            <TableCell style={{ minWidth: 120 }}>Slip</TableCell>
-                            <TableCell style={{ minWidth: 80 }}>Actions</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {paymentSubmissions.length === 0 ? (
-                            <TableRow>
-                              <TableCell colSpan={10} align="center">
-                                <span className="text-muted-foreground">No payment submissions found</span>
-                              </TableCell>
-                            </TableRow>
-                          ) : (
-                            paymentSubmissions.map((payment) => (
-                              <TableRow hover role="checkbox" tabIndex={-1} key={payment.id}>
-                                <TableCell>#{payment.id}</TableCell>
-                                <TableCell>{payment.paymentReference}</TableCell>
-                                <TableCell>Rs. {payment.paymentAmount}</TableCell>
-                                <TableCell>{payment.paymentMethod}</TableCell>
-                                <TableCell>{payment.requestedCredits}</TableCell>
-                                <TableCell>{payment.creditsGranted}</TableCell>
-                                <TableCell>
-                                  <Badge 
-                                    variant={payment.status === 'REJECTED' ? 'destructive' : 'default'}
-                                    className={
-                                      payment.status === 'VERIFIED' ? 'bg-green-600 hover:bg-green-700' : 
-                                      payment.status === 'PENDING' ? 'bg-yellow-500 hover:bg-yellow-600' : 
-                                      ''
-                                    }
-                                  >
-                                    {payment.status}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  {payment.submittedAt && new Date(payment.submittedAt).toString() !== 'Invalid Date' 
-                                    ? format(new Date(payment.submittedAt), 'MMM dd, yyyy HH:mm')
-                                    : 'N/A'}
-                                </TableCell>
-                                <TableCell>
-                                  {payment.paymentSlipUrl ? (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => window.open(payment.paymentSlipUrl, '_blank')}
-                                    >
-                                      <Eye className="h-4 w-4 mr-1" />
-                                      View
-                                    </Button>
-                                  ) : (
-                                    <span className="text-muted-foreground text-sm">N/A</span>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm"
-                                    onClick={() => {
-                                      setSelectedPayment(payment);
-                                      setViewPaymentDialogOpen(true);
-                                    }}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                    <TablePagination
-                      rowsPerPageOptions={[10, 25, 50, 100]}
-                      component="div"
-                      count={paymentsTotal}
-                      rowsPerPage={paymentsRowsPerPage}
-                      page={paymentsPage}
-                      onPageChange={(event, newPage) => {
-                        setPaymentsPage(newPage);
-                      }}
-                      onRowsPerPageChange={(event) => {
-                        setPaymentsRowsPerPage(parseInt(event.target.value, 10));
-                        setPaymentsPage(0);
-                      }}
-                    />
-                  </Paper>
-                )}
+              {/* Low balance warning */}
+              {creditBalance && creditBalance.balance < 50 && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                  <p className="text-sm text-amber-700 dark:text-amber-300 flex-1">
+                    Low balance ({Math.floor(creditBalance.balance)} remaining). Top up to avoid interruptions.
+                  </p>
+                  <Button size="sm" variant="outline" className="shrink-0 text-xs h-7" onClick={() => navigateToPage('institute-credits')}>
+                    Top Up
+                  </Button>
+                </div>
+              )}
+
+              {/* Header + Refresh */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">SMS Send History</p>
+                  <p className="text-xs text-muted-foreground">Credits deducted for each SMS send</p>
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { loadCreditBalance(); loadUsageHistory(); }}>
+                  <RefreshCw className="h-3 w-3 mr-1" /> Refresh
+                </Button>
+              </div>
+
+              {/* Transaction list — SMS_SEND only */}
+              {loadingUsage ? (
+                <div className="space-y-2">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="h-14 bg-muted/30 rounded animate-pulse" />
+                  ))}
+                </div>
+              ) : usageHistory.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p className="font-medium">No SMS sends yet</p>
+                  <p className="text-xs mt-1">Credits deducted when SMS messages are sent will appear here.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    {usageHistory.map(tx => {
+                      const deducted = Math.abs(tx.amount);
+                      const isToday = tx.createdAt
+                        ? new Date(tx.createdAt).toDateString() === new Date().toDateString()
+                        : false;
+                      return (
+                        <div key={tx.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
+                          <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-900/30 shrink-0">
+                            <MessageSquare className="h-4 w-4 text-orange-500" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-orange-600 dark:text-orange-400">
+                                −{deducted} credits
+                              </span>
+                              {isToday && (
+                                <Badge variant="outline" className="text-[10px] h-4 border-orange-300 text-orange-600">Today</Badge>
+                              )}
+                            </div>
+                            {tx.description && (
+                              <p className="text-xs text-muted-foreground truncate mt-0.5 max-w-[260px]">{tx.description}</p>
+                            )}
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              Balance after: {tx.balanceAfter != null ? Math.floor(tx.balanceAfter) : '—'}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs text-muted-foreground">
+                              {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {tx.createdAt ? new Date(tx.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Pagination */}
+                  {Math.ceil(usageTotal / 10) > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-3">
+                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setUsagePage(p => Math.max(1, p - 1))} disabled={usagePage <= 1}>
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        {usagePage} / {Math.ceil(usageTotal / 10)}
+                      </span>
+                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setUsagePage(p => Math.min(Math.ceil(usageTotal / 10), p + 1))} disabled={usagePage >= Math.ceil(usageTotal / 10)}>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Link to full wallet page */}
+              <div className="text-center pt-2">
+                <Button variant="link" size="sm" className="text-xs" onClick={() => navigateToPage('institute-credits')}>
+                  View full wallet & top-up page <ChevronRight className="h-3 w-3 ml-1" />
+                </Button>
               </div>
             </TabsContent>
 
 
-          </Tabs>
+              </Tabs>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* View Payment Details Dialog */}
-      <Dialog open={viewPaymentDialogOpen} onOpenChange={setViewPaymentDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto mx-auto">
-          <DialogHeader>
-            <DialogTitle>Payment Submission Details</DialogTitle>
-          </DialogHeader>
-          
-          {selectedPayment && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Payment ID</label>
-                  <p className="text-base">#{selectedPayment.id}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Institute ID</label>
-                  <p className="text-base">{selectedPayment.instituteId}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Submitted By</label>
-                  <p className="text-base">{selectedPayment.submittedBy}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Status</label>
-                  <div className="mt-1">
-                    <Badge 
-                      variant={selectedPayment.status === 'REJECTED' ? 'destructive' : 'default'}
-                      className={
-                        selectedPayment.status === 'VERIFIED' ? 'bg-green-600 hover:bg-green-700' : 
-                        selectedPayment.status === 'PENDING' ? 'bg-yellow-500 hover:bg-yellow-600' : 
-                        ''
-                      }
-                    >
-                      {selectedPayment.status}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Payment Amount</label>
-                  <p className="text-base font-semibold">Rs. {selectedPayment.paymentAmount}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Payment Method</label>
-                  <p className="text-base">{selectedPayment.paymentMethod}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Payment Reference</label>
-                  <p className="text-base">{selectedPayment.paymentReference}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Cost Per Credit</label>
-                  <p className="text-base">{selectedPayment.costPerCredit || 'N/A'}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Requested Credits</label>
-                  <p className="text-base">{selectedPayment.requestedCredits}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Credits Granted</label>
-                  <p className="text-base font-semibold text-green-600">{selectedPayment.creditsGranted}</p>
-                </div>
-              </div>
-
-              {selectedPayment.paymentSlipFilename && (
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Payment Slip</label>
-                  <p className="text-base">{selectedPayment.paymentSlipFilename}</p>
-                  {selectedPayment.paymentSlipUrl && (
-                    <a 
-                      href={selectedPayment.paymentSlipUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      View Payment Slip
-                    </a>
-                  )}
-                </div>
-              )}
-
-              {selectedPayment.submissionNotes && (
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Submission Notes</label>
-                  <p className="text-base bg-gray-50 dark:bg-gray-800 p-3 rounded mt-1">
-                    {selectedPayment.submissionNotes}
-                  </p>
-                </div>
-              )}
-
-              {selectedPayment.adminNotes && (
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Admin Notes</label>
-                  <p className="text-base bg-gray-50 dark:bg-gray-800 p-3 rounded mt-1">
-                    {selectedPayment.adminNotes}
-                  </p>
-                </div>
-              )}
-
-              {selectedPayment.rejectionReason && (
-                <div>
-                  <label className="text-sm font-medium text-red-500">Rejection Reason</label>
-                  <p className="text-base text-red-600">{selectedPayment.rejectionReason}</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                {selectedPayment.verifiedBy && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Verified By</label>
-                    <p className="text-base">{selectedPayment.verifiedBy}</p>
-                  </div>
-                )}
-                {selectedPayment.verifiedAt && new Date(selectedPayment.verifiedAt).toString() !== 'Invalid Date' && (
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Verified At</label>
-                    <p className="text-base">{format(new Date(selectedPayment.verifiedAt), 'PPpp')}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
-                <div>
-                  <label className="font-medium">Submitted At</label>
-                  <p>{selectedPayment.submittedAt && new Date(selectedPayment.submittedAt).toString() !== 'Invalid Date' ? format(new Date(selectedPayment.submittedAt), 'PPpp') : 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="font-medium">Created At</label>
-                  <p>{selectedPayment.createdAt && new Date(selectedPayment.createdAt).toString() !== 'Invalid Date' ? format(new Date(selectedPayment.createdAt), 'PPpp') : 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="font-medium">Updated At</label>
-                  <p>{selectedPayment.updatedAt && new Date(selectedPayment.updatedAt).toString() !== 'Invalid Date' ? format(new Date(selectedPayment.updatedAt), 'PPpp') : 'N/A'}</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* New Payment Dialog */}
-      <Dialog open={newPaymentOpen} onOpenChange={setNewPaymentOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto mx-auto">
-          <DialogHeader>
-            <DialogTitle>Submit Payment for SMS Credits</DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="requestedCredits">Requested Credits *</Label>
-                <Input
-                  id="requestedCredits"
-                  type="number"
-                  placeholder="1000"
-                  value={paymentForm.requestedCredits}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, requestedCredits: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="paymentAmount">Payment Amount *</Label>
-                <Input
-                  id="paymentAmount"
-                  type="number"
-                  step="0.01"
-                  placeholder="1000.00"
-                  value={paymentForm.paymentAmount}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, paymentAmount: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="paymentMethod">Payment Method *</Label>
-              <Select 
-                value={paymentForm.paymentMethod} 
-                onValueChange={(value) => setPaymentForm({ ...paymentForm, paymentMethod: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="Cash">Cash</SelectItem>
-                  <SelectItem value="Credit Card">Credit Card</SelectItem>
-                  <SelectItem value="Online Payment">Online Payment</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="paymentReference">Payment Reference *</Label>
-              <Input
-                id="paymentReference"
-                placeholder="TXN12345"
-                value={paymentForm.paymentReference}
-                onChange={(e) => setPaymentForm({ ...paymentForm, paymentReference: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="submissionNotes">Submission Notes</Label>
-              <Textarea
-                id="submissionNotes"
-                placeholder="Payment made on 2024-10-07 via online banking"
-                value={paymentForm.submissionNotes}
-                onChange={(e) => setPaymentForm({ ...paymentForm, submissionNotes: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="paymentSlip">Payment Slip *</Label>
-              <Input
-                id="paymentSlip"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setPaymentForm({ ...paymentForm, paymentSlip: file });
-                  }
-                }}
-              />
-              {paymentForm.paymentSlip && (
-                <p className="text-sm text-muted-foreground">
-                  Selected: {paymentForm.paymentSlip.name}
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setNewPaymentOpen(false)}
-                disabled={submitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handlePaymentSubmit}
-                disabled={submitting}
-              >
-                {submitting ? 'Submitting...' : 'Submit Payment'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

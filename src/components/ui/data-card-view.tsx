@@ -1,9 +1,7 @@
 
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Eye, Edit, Trash2 } from 'lucide-react';
 
 interface Column {
@@ -39,11 +37,14 @@ export const DataCardView = ({
   allowDelete = true 
 }: DataCardViewProps) => {
   const hasActions = onView || (allowEdit && onEdit) || (allowDelete && onDelete) || customActions.length > 0;
+  const visibleCardLimit = 8;
+  const [showAllCards, setShowAllCards] = React.useState(false);
+  const visibleRows = showAllCards ? data : data.slice(0, visibleCardLimit);
 
   return (
     <div className="block sm:hidden space-y-3 px-2">
-      {data.map((row, index) => (
-        <Card key={index} className="w-full shadow-sm border border-gray-200 dark:border-gray-800">
+      {visibleRows.map((row, index) => (
+        <Card key={index} className="w-full shadow-sm border border-border/60 bg-card">
           <CardContent className="p-3 sm:p-4 space-y-3">
             {columns.map((column) => {
               const value = row[column.key];
@@ -53,10 +54,10 @@ export const DataCardView = ({
               
               return (
                 <div key={column.key} className="flex flex-col space-y-1">
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     {column.header}:
                   </span>
-                  <div className="text-sm">
+                  <div className="text-sm text-foreground">
                     {column.render ? column.render(value, row) : (
                       <span className="break-words">{value || '-'}</span>
                     )}
@@ -66,7 +67,7 @@ export const DataCardView = ({
             })}
             
             {hasActions && (
-              <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
+              <div className="pt-3 border-t border-border/40">
                 {/* Primary Actions Row */}
                 <div className="flex flex-wrap gap-2 mb-2">
                   {onView && (
@@ -74,7 +75,7 @@ export const DataCardView = ({
                       variant="outline" 
                       size="sm" 
                       onClick={() => onView(row)} 
-                      className="flex-1 min-w-[80px] h-8 text-xs font-medium"
+                      className="flex-1 min-w-[80px] h-8 text-xs font-medium border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-500/30 dark:text-emerald-400 dark:hover:bg-emerald-500/15"
                     >
                       <Eye className="h-3 w-3 mr-1.5" />
                       View
@@ -85,7 +86,7 @@ export const DataCardView = ({
                       variant="outline" 
                       size="sm" 
                       onClick={() => onEdit(row)} 
-                      className="flex-1 min-w-[80px] h-8 text-xs font-medium"
+                      className="flex-1 min-w-[80px] h-8 text-xs font-medium border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800 dark:border-blue-500/30 dark:text-blue-400 dark:hover:bg-blue-500/15"
                     >
                       <Edit className="h-3 w-3 mr-1.5" />
                       Edit
@@ -135,6 +136,17 @@ export const DataCardView = ({
         <Card className="p-8 text-center">
           <p className="text-sm text-muted-foreground">No records found</p>
         </Card>
+      )}
+
+      {data.length > visibleCardLimit && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() => setShowAllCards((prev) => !prev)}
+        >
+          {showAllCards ? 'Show less' : `Show all ${data.length} cards`}
+        </Button>
       )}
     </div>
   );

@@ -2,97 +2,105 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTenant } from '@/contexts/TenantContext';
 import { useInstituteRole } from '@/hooks/useInstituteRole';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { extractPageFromUrl, buildSidebarUrl, getSidebarHighlightPage } from '@/utils/pageNavigation';
 import { AccessControl } from '@/utils/permissions';
 import {
-  LayoutDashboard,
-  Users,
-  GraduationCap,
-  UserCheck,
-  BookOpen,
-  School,
-  ClipboardList,
-  BarChart3,
-  Settings,
-  User,
-  Building2,
-  QrCode,
-  X,
-  Award,
-  Video,
-  LogOut,
-  Menu,
-  FileText,
-  ArrowLeft,
-  Notebook,
-  Images,
-  Palette,
-  CreditCard,
-  Camera,
-  AlertCircle,
-  Truck,
-  ImageIcon,
-  IdCard,
-  MessageSquare,
-  Wifi,
-  Lock,
-  Bell,
-  Calendar,
-  CalendarDays,
-  ChevronDown
+  LayoutDashboard, Users, GraduationCap, UserCheck, BookOpen, School,
+  ClipboardList, BarChart3, Settings, User, Building2, QrCode, X,
+  Award, Video, LogOut, Menu, FileText, ArrowLeft, Notebook, Images,
+  Palette, CreditCard, Camera, AlertCircle, Truck, ImageIcon, IdCard,
+  MessageSquare, MessageSquareHeart, Wifi, Lock, Bell, Calendar,
+  CalendarDays, ChevronDown, UserCog, ShieldCheck, Megaphone, Home,
+  LayoutGrid, GalleryHorizontal, ListChecks, Flag, Search, Receipt, Wallet
 } from 'lucide-react';
+import GlobalSearch from '@/components/GlobalSearch';
 import surakshaLogoSidebar from '@/assets/suraksha-logo-sidebar.png';
+import surakshaMainLogo from '@/assets/surakshalms-main-logo.png';
+import { useNotificationStore, refreshContextCount } from '@/stores/useNotificationStore';
+import { enhancedCachedClient } from '@/api/enhancedCachedClient';
+import { getImageUrl } from '@/utils/imageUrlHelper';
+import { tenantApi } from '@/api/tenant.api';
+import { useInstituteLabels } from '@/hooks/useInstituteLabels';
 
-interface SidebarProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface SidebarProps { isOpen: boolean; onClose: () => void; }
+
+interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  permission?: string;
+  alwaysShow?: boolean;
+  locked?: boolean;
+  badge?: number;
+  path?: string;
 }
 
-// Extracted outside Sidebar to prevent re-creation on every render
-// Sections that should always be expanded (no dropdown)
-const ALWAYS_OPEN_SECTIONS = ['Main', 'Select Institute', 'My Children', 'Select Child Institute'];
+interface NavGroup {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  items: NavItem[];
+  defaultOpen?: boolean;
+  alwaysFlat?: boolean;   // show without collapsible header
+}
 
-const SidebarSection = React.memo(({ title, items, isCollapsed, sidebarHighlightPage, onItemClick, filterFn, sectionIcon }: {
-  title: string;
-  items: any[];
+// ──────────────────────────────────────────────────────────────────
+// NavGroupSection — renders a collapsible or flat group
+// ──────────────────────────────────────────────────────────────────
+const NavGroupSection = React.memo(({
+  group, isCollapsed, activePage, onItemClick, filterFn
+}: {
+  group: NavGroup;
   isCollapsed: boolean;
-  sidebarHighlightPage: string;
+  activePage: string;
   onItemClick: (id: string) => void;
-  filterFn: (items: any[]) => any[];
-  sectionIcon?: React.ReactNode;
+  filterFn: (items: NavItem[]) => NavItem[];
 }) => {
-  const filteredItems = filterFn(items);
-  if (filteredItems.length === 0) return null;
+  const filtered = filterFn(group.items);
+  if (filtered.length === 0) return null;
 
-  const hasActiveItem = filteredItems.some(item => sidebarHighlightPage === item.id);
-  const alwaysOpen = ALWAYS_OPEN_SECTIONS.includes(title);
+  const hasActive = filtered.some(i => activePage === i.id);
 
   const renderItems = () => (
     <div className="space-y-0.5">
-      {filteredItems.map((item) => {
-        const isActive = sidebarHighlightPage === item.id;
+      {filtered.map(item => {
+        const isActive = activePage === item.id;
+        const Icon = item.icon;
         return (
           <Button
             key={item.id}
             variant="ghost"
-            className={`w-full ${isCollapsed ? 'justify-center px-2' : 'justify-start px-3'} h-8 text-[13px] font-medium rounded-lg transition-all duration-150 ${
+            className={`w-full relative ${isCollapsed ? 'justify-center px-2' : 'justify-start px-3'} h-9 text-[13px] font-medium rounded-xl transition-all duration-150 ${
               isActive
-                ? 'bg-primary/10 text-primary border-l-2 border-primary shadow-sm' 
-                : item.locked 
-                  ? 'text-muted-foreground/40 cursor-not-allowed' 
+                ? 'bg-primary/10 text-primary border-l-2 border-primary shadow-sm'
+                : item.locked
+                  ? 'text-muted-foreground/40 cursor-not-allowed'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
             }`}
             onClick={() => !item.locked && onItemClick(item.id)}
             disabled={item.locked}
+            title={isCollapsed ? item.label : undefined}
           >
-            <item.icon className={`${isCollapsed ? '' : 'mr-2.5'} h-4 w-4 flex-shrink-0 ${isActive ? 'text-primary' : ''}`} />
+            <Icon className={`${isCollapsed ? '' : 'mr-2.5'} h-4 w-4 flex-shrink-0 ${isActive ? 'text-primary' : ''}`} />
+            {isCollapsed && item.badge != null && item.badge > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                {item.badge > 99 ? '99+' : item.badge}
+              </span>
+            )}
             {!isCollapsed && (
-              <span className="flex items-center gap-1.5 truncate">
+              <span className="flex items-center gap-1.5 truncate flex-1">
                 {item.label}
-                {item.locked && <Lock className="h-3 w-3 opacity-50" />}
+                {item.badge != null && item.badge > 0 && (
+                  <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
+                {item.locked && <Lock className="h-3 w-3 opacity-50 ml-auto" />}
               </span>
             )}
           </Button>
@@ -101,34 +109,33 @@ const SidebarSection = React.memo(({ title, items, isCollapsed, sidebarHighlight
     </div>
   );
 
-  // For always-open sections or collapsed sidebar, render flat
-  if (alwaysOpen || isCollapsed) {
+  if (group.alwaysFlat || isCollapsed) {
     return (
       <div className="mb-1">
         {!isCollapsed && (
-          <h3 className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.08em] mb-1 px-3 pt-2">
-            {title}
-          </h3>
+          <div className="flex items-center gap-1.5 px-3 pt-3 pb-1">
+            <group.icon className="h-3 w-3 text-muted-foreground/50" />
+            <h3 className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-[0.08em]">
+              {group.label}
+            </h3>
+          </div>
         )}
         {renderItems()}
       </div>
     );
   }
 
-  // Collapsible dropdown for other sections
   return (
-    <Collapsible defaultOpen={hasActiveItem} className="mb-0.5">
-      <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-1.5 group hover:bg-accent/50 rounded-lg transition-colors">
+    <Collapsible defaultOpen={hasActive || group.defaultOpen} className="mb-0.5">
+      <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-2 group hover:bg-accent/40 rounded-xl transition-colors">
         <div className="flex items-center gap-2">
-          {sectionIcon && <span className="text-muted-foreground/70">{sectionIcon}</span>}
-          <span className="text-[11px] font-bold text-muted-foreground/70 uppercase tracking-[0.06em]">
-            {title}
+          <group.icon className="h-3.5 w-3.5 text-muted-foreground/60" />
+          <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-[0.06em]">
+            {group.label}
           </span>
-          {hasActiveItem && (
-            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-          )}
+          {hasActive && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
         </div>
-        <ChevronDown className="h-3 w-3 text-muted-foreground/50 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+        <ChevronDown className="h-3 w-3 text-muted-foreground/40 transition-transform duration-200 group-data-[state=open]:rotate-180" />
       </CollapsibleTrigger>
       <CollapsibleContent className="pl-1 pt-0.5">
         {renderItems()}
@@ -136,1982 +143,791 @@ const SidebarSection = React.memo(({ title, items, isCollapsed, sidebarHighlight
     </Collapsible>
   );
 });
-SidebarSection.displayName = 'SidebarSection';
+NavGroupSection.displayName = 'NavGroupSection';
 
+// ──────────────────────────────────────────────────────────────────
+// Sidebar
+// ──────────────────────────────────────────────────────────────────
 const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
-  const { user, selectedInstitute, selectedClass, selectedSubject, selectedChild, selectedOrganization, selectedTransport, logout, setSelectedInstitute, setSelectedClass, setSelectedSubject, setSelectedChild, setSelectedOrganization, setSelectedTransport, isViewingAsParent } = useAuth();
+  const {
+    user, selectedInstitute, selectedClass, selectedSubject, selectedChild,
+    selectedOrganization, selectedTransport, logout,
+    setSelectedInstitute, setSelectedClass, setSelectedSubject,
+    setSelectedChild, setSelectedOrganization, setSelectedTransport,
+    isViewingAsParent
+  } = useAuth();
+  const { isTenantLogin } = useTenant();
+
   const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const [searchOpen, setSearchOpen] = React.useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  
-  // Check if institute type is tuition_institute for conditional labels
-  const isTuitionInstitute = selectedInstitute?.type === 'tuition_institute';
-  const subjectLabel = isTuitionInstitute ? 'Sub Class' : 'Subject';
-  
-  // Derive current page from URL (for component rendering)
-  const currentPage = React.useMemo(() => extractPageFromUrl(location.pathname), [location.pathname]);
-  
-  // Get sidebar highlight page (maps sub-pages to parent for highlighting)
-  const sidebarHighlightPage = React.useMemo(() => getSidebarHighlightPage(location.pathname), [location.pathname]);
-  
-  // Broadcast collapse state to the app (for responsive grids)
+
+  // Lock body scroll when sidebar is open on mobile
   React.useEffect(() => {
-    const root = document.documentElement;
-    if (isCollapsed) {
-      root.classList.add('sidebar-collapsed');
-      root.classList.remove('sidebar-expanded');
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
     } else {
-      root.classList.add('sidebar-expanded');
-      root.classList.remove('sidebar-collapsed');
+      document.body.style.overflow = '';
     }
-    window.dispatchEvent(new CustomEvent('sidebar:state', { detail: { collapsed: isCollapsed } }));
-  }, [isCollapsed]);
-  
-  // Institute-specific role
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen]);
+  const { contextUnreadCount: unreadNotifCount } = useNotificationStore();
+
+  // Keep sidebar badge in sync when institute selection changes
+  React.useEffect(() => {
+    refreshContextCount(selectedInstitute?.id);
+  }, [selectedInstitute?.id]);
+
+  // Load user avatar (institute-specific > global profile image; shows child image when viewing as parent)
+  const [sidebarAvatarUrl, setSidebarAvatarUrl] = React.useState('');
+  React.useEffect(() => {
+    if (isViewingAsParent && selectedChild?.user?.imageUrl) {
+      setSidebarAvatarUrl(getImageUrl(selectedChild.user.imageUrl));
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        if (!selectedInstitute?.id) {
+          setSidebarAvatarUrl(user?.imageUrl ? getImageUrl(user.imageUrl) : '');
+          return;
+        }
+        const resp = await enhancedCachedClient.get<any>(
+          `/institute-users/institute/${selectedInstitute.id}/me`,
+          {},
+          { ttl: 300, forceRefresh: false, userId: selectedInstitute.id }
+        );
+        if (!cancelled) {
+          const url = resp?.instituteUserImageUrl || user?.imageUrl || '';
+          setSidebarAvatarUrl(url ? getImageUrl(url) : '');
+        }
+      } catch {
+        if (!cancelled) setSidebarAvatarUrl(user?.imageUrl ? getImageUrl(user.imageUrl) : '');
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [selectedInstitute?.id, user?.imageUrl, isViewingAsParent, selectedChild?.user?.imageUrl]);
+
+  const isTuitionInstitute = (selectedInstitute?.type || '').toLowerCase() === 'tuition_institute';
+  const { subjectLabel, classLabel } = useInstituteLabels();
   const userRole = useInstituteRole();
 
-  // Get menu items based on current selection state
-  const getMenuItems = () => {
-    // Parent viewing child's data before institute selection:
-    // Only "Select Child Institute" section shows via getChildItems()
-    if (selectedChild && !selectedInstitute) {
-      return [];
+  // Fetch tier for conditional nav visibility
+  const [instituteTier, setInstituteTier] = React.useState<string>('FREE');
+  React.useEffect(() => {
+    if (!selectedInstitute?.id) { setInstituteTier('FREE'); return; }
+    tenantApi.getPlanInfo(selectedInstitute.id)
+      .then(info => setInstituteTier(info?.tier || 'FREE'))
+      .catch(() => setInstituteTier('FREE'));
+  }, [selectedInstitute?.id]);
+
+  const currentPage = React.useMemo(() => extractPageFromUrl(location.pathname), [location.pathname]);
+  const activePage = React.useMemo(() => getSidebarHighlightPage(location.pathname), [location.pathname]);
+
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('sidebar-collapsed', isCollapsed);
+    root.classList.toggle('sidebar-expanded', !isCollapsed);
+    window.dispatchEvent(new CustomEvent('sidebar:state', { detail: { collapsed: isCollapsed } }));
+  }, [isCollapsed]);
+
+  // ── Navigation helper ──────────────────────────────────────────
+  const handleItemClick = React.useCallback((itemId: string) => {
+    if (itemId === 'organizations' && !selectedInstitute) {
+      window.open('https://org.suraksha.lk/', '_blank');
+      onClose(); return;
     }
-
-    // Special handling for organization selection
-    if (selectedOrganization) {
-      return [
-        {
-          id: 'organizations',
-          label: 'Select Organizations',
-          icon: Building2,
-          permission: 'view-organizations',
-          alwaysShow: true
-        },
-        {
-          id: 'organization-gallery',
-          label: 'Gallery',
-          icon: Camera,
-          permission: 'view-organizations',
-          alwaysShow: true
-        },
-        {
-          id: 'organization-courses', 
-          label: 'Courses',
-          icon: BookOpen,
-          permission: 'view-organizations',
-          alwaysShow: true
-        }
-      ];
+    if (itemId === 'my-children') {
+      setSelectedChild(null);
+      navigate('/my-children');
+      onClose(); return;
     }
-
-    // Special handling for Student role
-    if (userRole === 'Student') {
-      // 1. Student without institute - only show basic options + payment
-      if (!selectedInstitute) {
-        return [
-          {
-            id: 'select-institute',
-            label: 'Select Institutes',
-            icon: Building2,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'profile',
-            label: 'Profile',
-            icon: User,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'organizations',
-            label: 'Organizations',
-            icon: Building2,
-            permission: 'view-organizations',
-            alwaysShow: true,
-            locked: true
-          },
-          {
-            id: 'transport',
-            label: 'Transport',
-            icon: Truck,
-            permission: 'view-dashboard',
-            alwaysShow: true,
-            locked: true
-          },
-          {
-            id: 'id-cards',
-            label: 'ID Cards',
-            icon: IdCard,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          }
-        ];
-      }
-
-      // 2. Student with institute selected - show basic navigation with Select Class
-      if (selectedInstitute && !selectedClass) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'select-class',
-            label: 'Select Class',
-            icon: School,
-            permission: 'view-classes',
-            alwaysShow: false
-          },
-          {
-            id: 'my-attendance',
-            label: 'My Attendance',
-            icon: UserCheck,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'institute-lectures',
-            label: 'Institute Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          }
-        ];
-      }
-
-      // 3. Student with institute and class selected (but no subject) - show subject selection
-      if (selectedInstitute && selectedClass && !selectedSubject) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'my-attendance',
-            label: 'My Attendance',
-            icon: UserCheck,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'select-subject',
-            label: isTuitionInstitute ? 'Select Sub Class' : 'Select Subject',
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          }
-        ];
-      }
-
-      // 4. Student with institute, class, and subject all selected - show subject-specific navigation
-      if (selectedInstitute && selectedClass && selectedSubject) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'my-attendance',
-            label: 'My Attendance',
-            icon: UserCheck,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'lectures',
-            label: 'Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          },
-          {
-            id: 'free-lectures',
-            label: 'Free Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          },
-          {
-            id: 'homework',
-            label: 'Homework',
-            icon: Notebook,
-            permission: 'view-homework',
-            alwaysShow: false
-          },
-          {
-            id: 'exams',
-            label: 'Exams',
-            icon: Award,
-            permission: 'view-exams',
-            alwaysShow: false
-          }
-          // Note: subject-payments is now shown in the Payments section via getPaymentItems()
-         ];
-      }
-      // Return empty for any other Student states
-      return [];
+    if (itemId === 'id-cards') {
+      navigate('/id-cards');
+      onClose(); return;
     }
-
-    // Special handling for Teacher role
-    if (userRole === 'Teacher') {
-      // 1. Teacher without institute - only show basic options (NO Organizations)
-      if (!selectedInstitute) {
-        return [
-          {
-            id: 'select-institute',
-            label: 'Select Institutes',
-            icon: Building2,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'profile',
-            label: 'Profile',
-            icon: User,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          }
-        ];
-      }
-
-      // 2. Teacher with institute selected (but no class/subject) - NO Organizations
-      if (selectedInstitute && !selectedClass && !selectedSubject) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'institute-subjects',
-            label: `Institute ${subjectLabel}s`,
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false,
-            section: 'Main\'s'
-          },
-          {
-            id: 'select-class',
-            label: 'Select Class',
-            icon: School,
-            permission: 'view-classes',
-            alwaysShow: false
-          },
-          {
-            id: 'select-subject',
-            label: isTuitionInstitute ? 'Select Sub Class' : 'Select Subject',
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          },
-          {
-            id: 'institute-lectures',
-            label: 'Institute Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          }
-        ];
-      }
-
-      // 3. Teacher with institute and class selected (but no subject)
-      if (selectedInstitute && selectedClass && !selectedSubject) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'select-subject',
-            label: isTuitionInstitute ? 'Select Sub Class' : 'Select Subject',
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          },
-          {
-            id: 'students',
-            label: 'Students',
-            icon: GraduationCap,
-            permission: 'view-students',
-            alwaysShow: false
-          },
-          {
-            id: 'unverified-students',
-            label: 'Verify Students',
-            icon: UserCheck,
-            permission: 'view-students',
-            alwaysShow: false
-          }
-        ];
-      }
-
-      // 4. Teacher with institute, class, and subject all selected
-      if (selectedInstitute && selectedClass && selectedSubject) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'select-subject',
-            label: isTuitionInstitute ? 'Select Sub Class' : 'Select Subject',
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          },
-          {
-            id: 'students',
-            label: 'Students',
-            icon: GraduationCap,
-            permission: 'view-students',
-            alwaysShow: false
-          },
-          {
-            id: 'unverified-students',
-            label: 'Verify Students',
-            icon: UserCheck,
-            permission: 'view-students',
-            alwaysShow: false
-          }
-          // Note: subject-payments is now shown in the Payments section via getPaymentItems()
-        ];
-      }
-      // Return empty for any other Teacher states
-      return [];
-    }
-
-    // Special handling for InstituteAdmin role
-    if (userRole === 'InstituteAdmin') {
-      if (!selectedInstitute) {
-        return [
-          {
-            id: 'select-institute',
-            label: 'Select Institutes',
-            icon: Building2,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'profile',
-            label: 'Profile',
-            icon: User,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'organizations',
-            label: 'Organizations',
-            icon: Building2,
-            permission: 'view-organizations',
-            alwaysShow: true,
-            locked: true
-          }
-        ];
-      }
-
-      // If only institute is selected
-      if (selectedInstitute && !selectedClass && !selectedSubject) {
-        const baseItems = [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          // Only show Organization menu item if NOT a tuition_institute
-          ...(isTuitionInstitute ? [] : [{
-            id: 'institute-organizations',
-            label: 'Organization',
-            icon: Building2,
-            permission: 'view-organizations',
-            alwaysShow: true
-          }]),
-          {
-            id: 'institute-users',
-            label: 'Institute Users',
-            icon: Users,
-            permission: 'view-users',
-            alwaysShow: false
-          },
-          {
-            id: 'parents',
-            label: 'Parents',
-            icon: Users,
-            permission: 'view-parents',
-            alwaysShow: false
-          },
-          {
-            id: 'verify-image',
-            label: 'Verify Image',
-            icon: ImageIcon,
-            permission: 'view-users',
-            alwaysShow: false
-          },
-          {
-            id: 'classes',
-            label: 'All Classes',
-            icon: School,
-            permission: 'view-classes',
-            alwaysShow: false
-          },
-          {
-            id: 'institute-subjects',
-            label: `Institute ${subjectLabel}s`,
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          },
-          {
-            id: 'select-class',
-            label: 'Select Class',
-            icon: School,
-            permission: 'view-classes',
-            alwaysShow: false
-          },
-          {
-            id: 'select-subject',
-            label: isTuitionInstitute ? 'Select Sub Class' : 'Select Subject',
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          },
-          {
-            id: 'institute-lectures',
-            label: 'Institute Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          }
-        ];
-        return baseItems;
-      }
-
-      // If institute and class are selected (but not subject)
-      if (selectedInstitute && selectedClass && !selectedSubject) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'students',
-            label: 'Students',
-            icon: GraduationCap,
-            permission: 'view-students',
-            alwaysShow: false
-          },
-          {
-            id: 'unverified-students',
-            label: 'Verify Students',
-            icon: UserCheck,
-            permission: 'view-students',
-            alwaysShow: false
-          },
-          {
-            id: 'parents',
-            label: 'Parents',
-            icon: Users,
-            permission: 'view-parents',
-            alwaysShow: false
-          },
-          {
-            id: 'class-subjects',
-            label: `Class ${subjectLabel}s`,
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          },
-          {
-            id: 'select-subject',
-            label: isTuitionInstitute ? 'Select Sub Class' : 'Select Subject',
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          }
-        ];
-      }
-
-      // If institute, class, and subject are all selected
-      if (selectedInstitute && selectedClass && selectedSubject) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'students',
-            label: 'Students',
-            icon: GraduationCap,
-            permission: 'view-students',
-            alwaysShow: false
-          },
-          {
-            id: 'unverified-students',
-            label: 'Verify Students',
-            icon: UserCheck,
-            permission: 'view-students',
-            alwaysShow: false
-          },
-          // Parents is class-scoped only (do not show under subject context)
-          {
-            id: 'select-subject',
-            label: isTuitionInstitute ? 'Select Sub Class' : 'Select Subject',
-            icon: BookOpen,
-            permission: 'view-subjects',
-            alwaysShow: false
-          }
-          // Note: subject-payments is now shown in the Payments section via getPaymentItems()
-        ];
-      }
-      // Return empty for any other InstituteAdmin states
-      return [];
-    }
-
-    // Special handling for Parent role
-    if (userRole === 'Parent') {
-      // 1. Parent without institute - show My Children option before institute selection
-      if (!selectedInstitute) {
-        return [
-          {
-            id: 'my-children',
-            label: 'My Children',
-            icon: Users,
-            permission: 'view-parents',
-            alwaysShow: true
-          },
-          {
-            id: 'select-institute',
-            label: 'Select Institutes',
-            icon: Building2,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'transport',
-            label: 'Transport',
-            icon: Truck,
-            permission: 'view-transport',
-            alwaysShow: true,
-            locked: true,
-            subItems: [
-              {
-                id: 'transport',
-                label: 'My Transport',
-                icon: Truck,
-                permission: 'view-transport',
-                alwaysShow: false
-              },
-              {
-                id: 'transport-attendance',
-                label: 'Transport Attendance',
-                icon: UserCheck,
-                permission: 'view-transport',
-                alwaysShow: false
-              }
-            ]
-          }
-        ];
-      }
-
-      // 2. Parent without child selected - show Dashboard and Select Child
-      if (!selectedChild) {
-        return [
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'parents',
-            label: 'Select Child',
-            icon: Users,
-            permission: 'view-parents',
-            alwaysShow: false
-          },
-          {
-            id: 'transport',
-            label: 'Transport',
-            icon: Truck,
-            permission: 'view-transport',
-            alwaysShow: true,
-            subItems: [
-              {
-                id: 'transport',
-                label: 'My Transport',
-                icon: Truck,
-                permission: 'view-transport',
-                alwaysShow: false
-              },
-              {
-                id: 'transport-attendance',
-                label: 'Transport Attendance',
-                icon: UserCheck,
-                permission: 'view-transport',
-                alwaysShow: false
-              }
-            ]
-          }
-        ];
-      }
-
-      // 2. Parent with child selected - show main sections without institute navigation
-      if (selectedChild) {
-        return [
-          {
-            id: 'parent-attendance',
-            label: 'Attendance Dashboard',
-            icon: BarChart3,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'child-attendance',
-            label: 'Transport Attendance',
-            icon: Truck,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          }
-        ];
-      }
-
-      return [];
-    }
-
-    // Special handling for AttendanceMarker role - only show specific items when institute is selected
-    if (userRole === 'AttendanceMarker') {
-      if (!selectedInstitute) {
-        return [
-          {
-            id: 'select-institute',
-            label: 'Select Institutes',
-            icon: Building2,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'dashboard',
-            label: 'Dashboard',
-            icon: LayoutDashboard,
-            permission: 'view-dashboard',
-            alwaysShow: true
-          },
-          {
-            id: 'transport',
-            label: 'Transport',
-            icon: Truck,
-            permission: 'view-transport',
-            alwaysShow: true,
-            locked: true,
-            subItems: [
-              {
-                id: 'transport',
-                label: 'My Transport',
-                icon: Truck,
-                permission: 'view-transport',
-                alwaysShow: false
-              },
-              {
-                id: 'transport-attendance',
-                label: 'Transport Attendance',
-                icon: UserCheck,
-                permission: 'view-transport',
-                alwaysShow: false
-              }
-            ]
-          }
-        ];
-      }
-
-      // For AttendanceMarker with institute selected - show dashboard and attendance options
-      const baseItems = [
-        {
-          id: 'dashboard',
-          label: 'Dashboard',
-          icon: LayoutDashboard,
-          permission: 'view-dashboard',
-          alwaysShow: false
-        },
-        {
-          id: 'attendance-markers',
-          label: 'Attendance Markers',
-          icon: Users,
-          permission: 'manage-attendance-markers',
-          alwaysShow: false
-        }
-      ];
-      
-      // Only show select-class at institute level (not when class is selected)
-      if (!selectedClass) {
-        baseItems.push({
-          id: 'select-class',
-          label: 'Select Class',
-          icon: School,
-          permission: 'view-classes',
-          alwaysShow: false
-        });
-      }
-      
-      baseItems.push({
-        id: 'select-subject',
-        label: 'Select Subject',
-        icon: BookOpen,
-        permission: 'view-subjects',
-        alwaysShow: false
-      });
-      
-      // Add Free Lectures if subject is selected
-      if (selectedSubject) {
-        baseItems.push({
-          id: 'free-lectures',
-          label: 'Free Lectures',
-          icon: Video,
-          permission: 'view-lectures',
-          alwaysShow: false
-        });
-      }
-      
-      return baseItems;
-    }
-
-    // Base items that are always available for all other users (User role, SystemAdmin, etc.)
-    const baseItems = [
-      {
-        id: selectedInstitute ? 'dashboard' : 'select-institute',
-        label: selectedInstitute ? 'Dashboard' : 'Select Institutes',
-        icon: selectedInstitute ? LayoutDashboard : Building2,
-        permission: 'view-dashboard',
-        alwaysShow: false
-      },
-      ...(!selectedInstitute ? [{
-        id: 'dashboard',
-        label: 'Dashboard',
-        icon: LayoutDashboard,
-        permission: 'view-dashboard',
-        alwaysShow: true as const
-      }] : []),
-      {
-        id: 'organizations',
-        label: 'Organizations',
-        icon: Building2,
-        permission: 'view-organizations',
-        alwaysShow: true,
-        locked: !selectedInstitute
-      }
-    ];
-
-    // If no institute is selected, return basic navigation including organizations and transport
-    if (!selectedInstitute) {
-      return [
-        ...baseItems,
-        {
-          id: 'transport',
-          label: 'Transport',
-          icon: Truck,
-          permission: 'view-transport',
-          alwaysShow: true,
-          locked: true,
-          subItems: [
-            {
-              id: 'transport',
-              label: 'My Transport',
-              icon: Truck,
-              permission: 'view-transport',
-              alwaysShow: false
-            },
-            {
-              id: 'transport-attendance',
-              label: 'Transport Attendance',
-              icon: UserCheck,
-              permission: 'view-transport',
-              alwaysShow: false
-            }
-          ]
-        }
-      ];
-    }
-
-    // For other roles (SystemAdmin, etc.) with institute selected, show full navigation
-    return [
-      ...baseItems,
-      {
-        id: 'users',
-        label: 'Users',
-        icon: Users,
-        permission: 'view-users',
-        alwaysShow: false
-      },
-      {
-        id: 'students',
-        label: 'Students',
-        icon: GraduationCap,
-        permission: 'view-students',
-        alwaysShow: false
-      },
-      // Parents is class-scoped only (do not show under subject context)
-      ...(!selectedSubject ? [{
-        id: 'parents',
-        label: 'Parents',
-        icon: Users,
-        permission: 'view-parents',
-        alwaysShow: false
-      }] : []),
-      // Remove teachers section for SystemAdmin
-      ...(user?.role !== 'SystemAdmin' ? [{
-        id: 'teachers',
-        label: 'Teachers',
-        icon: UserCheck,
-        permission: 'view-teachers',
-        alwaysShow: false
-      }] : []),
-      {
-        id: 'classes',
-        label: 'All Classes',
-        icon: School,
-        permission: 'view-classes',
-        alwaysShow: false
-      },
-      {
-        id: 'institute-subjects',
-        label: `Institute ${subjectLabel}s`,
-        icon: BookOpen,
-        permission: 'view-subjects',
-        alwaysShow: false
-      },
-      // Only show selection options for non-SystemAdmin users
-      ...(user?.role !== 'SystemAdmin' ? [
-        {
-          id: 'select-class',
-          label: 'Select Class',
-          icon: School,
-          permission: 'view-classes',
-          alwaysShow: false
-        },
-        {
-          id: 'select-subject',
-          label: 'Select Subject',
-          icon: BookOpen,
-          permission: 'view-subjects',
-          alwaysShow: false
-        }
-      ] : []),
-      {
-        id: 'institutes',
-        label: 'Institutes',
-        icon: Building2,
-        permission: 'view-institutes',
-        alwaysShow: false
-      }
-    ];
-  };
-
-  const getAttendanceItems = () => {
-    // For Student - show today dashboard and calendar view
-    if (userRole === 'Student') {
-      if (!selectedInstitute) return [];
-      return [
-        {
-          id: 'today-dashboard',
-          label: 'Today',
-          icon: CalendarDays,
-          permission: 'view-dashboard',
-          alwaysShow: false
-        },
-        {
-          id: 'calendar-view',
-          label: 'Calendar View',
-          icon: Calendar,
-          permission: 'view-dashboard',
-          alwaysShow: false
-        }
-      ];
-    }
-
-    // For Parent - show parent attendance dashboard
-    if (userRole === 'Parent') {
-      if (!selectedChild) return [];
-      return [
-        {
-          id: 'parent-attendance',
-          label: 'Attendance Dashboard',
-          icon: CalendarDays,
-          permission: 'view-dashboard',
-          alwaysShow: true
-        }
-      ];
-    }
-
-    // For Teacher - show specific attendance items based on selection state
-    if (userRole === 'Teacher') {
-      if (!selectedInstitute) return [];
-      
-      // Teacher with class or class+subject selected: only Daily Attendance + Mark Attendance
-      if (selectedClass) {
-        return [
-          {
-            id: 'daily-attendance',
-            label: 'Daily Attendance',
-            icon: UserCheck,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'qr-attendance',
-            label: 'Mark Attendance',
-            icon: QrCode,
-            permission: 'mark-attendance',
-            alwaysShow: false
-          }
-        ];
-      }
-      
-      // Teacher with only institute selected - show full attendance menu
-      return [
-        {
-          id: 'daily-attendance',
-          label: 'Daily Attendance',
-          icon: UserCheck,
-          permission: 'view-attendance',
-          alwaysShow: false
-        },
-        {
-          id: 'qr-attendance',
-          label: 'Mark Attendance',
-          icon: QrCode,
-          permission: 'mark-attendance',
-          alwaysShow: false
-        },
-        {
-          id: 'calendar-view',
-          label: 'Calendar View',
-          icon: Calendar,
-          permission: 'view-attendance',
-          alwaysShow: false
-        },
-        {
-          id: 'today-dashboard',
-          label: 'Today',
-          icon: CalendarDays,
-          permission: 'view-dashboard',
-          alwaysShow: false
-        }
-      ];
-    }
-
-    // For InstituteAdmin - show specific attendance items based on selection
-    if (userRole === 'InstituteAdmin') {
-      if (!selectedInstitute) {
-        return [];
-      }
-
-      // For InstituteAdmin with only institute selected
-      if (selectedInstitute && !selectedClass && !selectedSubject) {
-        return [
-          {
-            id: 'daily-attendance',
-            label: 'Daily Attendance',
-            icon: UserCheck,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'qr-attendance',
-            label: 'Mark Attendance',
-            icon: QrCode,
-            permission: 'mark-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'calendar-view',
-            label: 'Calendar View',
-            icon: Calendar,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'calendar-management',
-            label: 'Calendar',
-            icon: ClipboardList,
-            permission: 'view-dashboard',
-            alwaysShow: false
-          },
-          {
-            id: 'admin-attendance',
-            label: 'Attendance Monitor',
-            icon: BarChart3,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-        ];
-      }
-
-      // For InstituteAdmin with institute and class selected (or all three selected)
-      // Only show Daily Attendance + Mark Attendance
-      if (selectedInstitute && selectedClass) {
-        return [
-          {
-            id: 'daily-attendance',
-            label: 'Daily Attendance',
-            icon: UserCheck,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'qr-attendance',
-            label: 'Mark Attendance',
-            icon: QrCode,
-            permission: 'mark-attendance',
-            alwaysShow: false
-          }
-        ];
-      }
-    }
-
-    // For AttendanceMarker with institute selected
-    if (userRole === 'AttendanceMarker' && selectedInstitute) {
-      // With class selected: only Daily Attendance + Mark Attendance
-      if (selectedClass) {
-        return [
-          {
-            id: 'daily-attendance',
-            label: 'Daily Attendance',
-            icon: UserCheck,
-            permission: 'view-attendance',
-            alwaysShow: false
-          },
-          {
-            id: 'qr-attendance',
-            label: 'Mark Attendance',
-            icon: QrCode,
-            permission: 'mark-attendance',
-            alwaysShow: true
-          }
-        ];
-      }
-      
-      // Without class: full attendance menu
-      return [
-        {
-          id: 'daily-attendance',
-          label: 'Daily Attendance',
-          icon: UserCheck,
-          permission: 'view-attendance',
-          alwaysShow: false
-        },
-        {
-          id: 'qr-attendance',
-          label: 'Mark Attendance',
-          icon: QrCode,
-          permission: 'mark-attendance',
-          alwaysShow: true
-        },
-        {
-          id: 'calendar-view',
-          label: 'Calendar View',
-          icon: Calendar,
-          permission: 'view-attendance',
-          alwaysShow: false
-        },
-        {
-          id: 'today-dashboard',
-          label: 'Today',
-          icon: CalendarDays,
-          permission: 'view-dashboard',
-          alwaysShow: false
-        }
-      ];
-    }
-
-    // Default attendance items for other roles
-    const attendanceItems = [
-      {
-        id: 'today-dashboard',
-        label: 'Today',
-        icon: CalendarDays,
-        permission: 'view-attendance',
-        alwaysShow: false
-      },
-      {
-        id: 'attendance-markers',
-        label: 'Attendance Markers',
-        icon: Users,
-        permission: 'manage-attendance-markers',
-        alwaysShow: false
-      },
-      {
-        id: 'qr-attendance',
-        label: 'Mark Attendance',
-        icon: QrCode,
-        permission: 'mark-attendance',
-        alwaysShow: userRole === 'AttendanceMarker'
-      },
-      {
-        id: 'calendar-view',
-        label: 'Calendar View',
-        icon: Calendar,
-        permission: 'view-attendance',
-        alwaysShow: false
-      }
-    ];
-
-    return attendanceItems;
-  };
-
-  const getSystemItems = () => {
-    // For Student - no additional system items needed as they are in main menu
-    if (userRole === 'Student') {
-      return [];
-    }
-
-    // For Teacher - show academic items only when institute, class, and subject are all selected
-    if (userRole === 'Teacher') {
-      if (selectedInstitute && selectedClass && selectedSubject) {
-        return [
-          {
-            id: 'lectures',
-            label: 'Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          },
-          {
-            id: 'free-lectures',
-            label: 'Free Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          },
-          {
-            id: 'homework',
-            label: 'Homework',
-            icon: Notebook,
-            permission: 'view-homework',
-            alwaysShow: false
-          },
-          {
-            id: 'exams',
-            label: 'Exams',
-            icon: FileText,
-            permission: 'view-exams',
-            alwaysShow: false
-          }
-        ];
-      }
-      
-      // For other teacher selection states, return empty array
-      return [];
-    }
-
-    // For InstituteAdmin - show academic items when institute, class, and subject are all selected
-    if (userRole === 'InstituteAdmin') {
-      if (selectedInstitute && selectedClass && selectedSubject) {
-        return [
-          {
-            id: 'lectures',
-            label: 'Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          },
-          {
-            id: 'free-lectures',
-            label: 'Free Lectures',
-            icon: Video,
-            permission: 'view-lectures',
-            alwaysShow: false
-          },
-          {
-            id: 'homework',
-            label: 'Homework',
-            icon: Notebook,
-            permission: 'view-homework',
-            alwaysShow: false
-          },
-          {
-            id: 'exams',
-            label: 'Exams',
-            icon: FileText,
-            permission: 'view-exams',
-            alwaysShow: false
-          }
-        ];
-      }
-      
-      // For other InstituteAdmin selection states, return empty array
-      return [];
-    }
-
-    // Default system items for other roles
-    const systemItems = [
-      {
-        id: 'grading',
-        label: 'Grading',
-        icon: BarChart3,
-        permission: 'view-grading',
-        alwaysShow: false
-      },
-      {
-        id: 'live-lectures',
-        label: 'Live Lectures',
-        icon: Video,
-        permission: 'view-lectures',
-        alwaysShow: false
-      },
-      {
-        id: 'homework',
-        label: 'Homework',
-        icon: Notebook,
-        permission: 'view-homework',
-        alwaysShow: false
-      },
-      {
-        id: 'exams',
-        label: 'Exams',
-        icon: FileText,
-        permission: 'view-exams',
-        alwaysShow: false
-      }
-    ];
-
-    return systemItems;
-  };
-
-  const getMyChildrenItems = () => {
-    // Hide "My Children" when a child is already selected (we're in child context)
-    if (selectedChild) return [];
-    
-    // Show "My Children" section when no institute is selected for Parent, User, and UserWithoutStudent roles
-    const userType = user?.userType?.toLowerCase();
-    const isParentOrUserRole = userType === 'parent' || userType === 'user' || userType === 'user_without_student' || userRole === 'UserWithoutStudent';
-    if (!selectedInstitute && isParentOrUserRole) {
-      return [
-        {
-          id: 'my-children',
-          label: 'My Children',
-          icon: Users,
-          permission: 'view-parents',
-          alwaysShow: true
-        }
-      ];
-    }
-    return [];
-  };
-
-  const getChildItems = () => {
-    // Show child-specific navigation when a child is selected
-    if (!selectedChild) {
-      return [];
-    }
-
-    // When institute is already selected for child, don't show "Select Institute" -
-    // the Student sidebar menu items are shown instead via getMenuItems()
-    if (selectedInstitute) {
-      return [];
-    }
-
-    const childId = selectedChild.id;
-    
-    return [
-      {
-        id: 'select-institute',
-        label: 'Select Institute',
-        icon: Building2,
-        permission: 'view-profile',
-        alwaysShow: true,
-        path: `/child/${childId}/select-institute`
-      }
-    ];
-  };
-
-  const getSystemPaymentItems = () => {
-    // Hide system payments when viewing child context
-    if (selectedChild) return [];
-    
-    // Show "System Payments" section when no institute is selected
-    if (!selectedInstitute) {
-      return [
-        {
-          id: 'system-payment',
-          label: 'System Payments',
-          icon: CreditCard,
-          permission: 'view-profile',
-          alwaysShow: true
-        }
-      ];
-    }
-    return [];
-  };
-
-  const getPaymentItems = () => {
-    // Only show payment sections for InstituteAdmin, Teacher, Student
-    if (!['InstituteAdmin', 'Teacher', 'Student'].includes(userRole)) {
-      return [];
-    }
-
-    const paymentItems = [];
-
-    // 1. When only institute is selected - show Institute Payments for all three roles
-    // + My Submissions for Students only
-    if (selectedInstitute && !selectedClass && !selectedSubject) {
-      paymentItems.push({
-        id: 'institute-payments',
-        label: 'Institute Payments',
-        icon: CreditCard,
-        permission: 'view-profile',
-        alwaysShow: false
-      });
-
-      // Add My Submissions for Students only when only institute is selected
-
-      // Add My Submissions for Students only when only institute is selected
-      if (userRole === 'Student') {
-        paymentItems.push({
-          id: 'my-submissions',
-          label: 'My Submissions',
-          icon: FileText,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-    }
-
-    // 2. When institute and class selected (but no subject) - no payment items
-
-    // 3. When institute, class, and subject are all selected - show Subject Payments only
-    if (selectedInstitute && selectedClass && selectedSubject) {
-      paymentItems.push({
-        id: 'subject-payments',
-        label: `${subjectLabel} Payments`,
-        icon: CreditCard,
-        permission: 'view-profile',
-        alwaysShow: false
-      });
-
-      // 4. Add Subject Pay Submission for Students only when all three are selected
-      if (userRole === 'Student') {
-        paymentItems.push({
-          id: 'subject-pay-submission',
-          label: `${subjectLabel} Pay Submission`,
-          icon: FileText,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-    }
-
-    return paymentItems;
-  };
-
-  const getSmsItems = () => {
-    const items: any[] = [];
-    // Only show SMS items at institute level (not when class is selected)
-    if (userRole === 'InstituteAdmin' && selectedInstitute && !selectedClass) {
-      items.push({
-        id: 'sms',
-        label: 'SMS',
-        icon: MessageSquare,
-        permission: 'manage-sms',
-        alwaysShow: true
-      });
-      items.push({
-        id: 'sms-history',
-        label: 'SMS History',
-        icon: MessageSquare,
-        permission: 'manage-sms',
-        alwaysShow: true
-      });
-    }
-    return items;
-  };
-
-  /**
-   * Get Notification menu items based on institute selection
-   * - Before institute selection: Show "Notifications" (system notifications)
-   * - After institute selection: Show "Institute Notifications" with admin/teacher CRUD access
-   */
-  const getNotificationItems = () => {
-    // Hide notifications when viewing child context without institute
-    if (selectedChild && !selectedInstitute) return [];
-    
-    const items: any[] = [
-      {
-        id: 'all-notifications',
-        label: 'All Notifications',
-        icon: Bell,
-        permission: 'view-dashboard',
-        alwaysShow: true
-      }
-    ];
-
-    // Before institute selection - show system notifications
-    if (!selectedInstitute) {
-      items.push({
-        id: 'notifications',
-        label: 'System Notifications',
-        icon: Bell,
-        permission: 'view-dashboard',
-        alwaysShow: true
-      });
-    }
-
-    // After institute selection - show institute notifications
-    if (selectedInstitute) {
-      items.push({
-        id: 'institute-notifications',
-        label: 'Institute Notifications',
-        icon: Bell,
-        permission: 'view-dashboard',
-        alwaysShow: true
-      });
-    }
-
-    return items;
-  };
-
-  const getSettingsItems = () => {
-    // Hide settings when viewing child context without institute
-    if (selectedChild && !selectedInstitute) return [];
-    
-    // Always show settings if user is logged in
-    if (!user) {
-      return [];
-    }
-
-    // If organization is selected, only show Profile
-    if (selectedOrganization) {
-      return [
-        {
-          id: 'profile',
-          label: 'Profile',
-          icon: User,
-          permission: 'view-profile',
-          alwaysShow: true
-        }
-      ];
-    }
-
-    // For Parent - show specific settings items based on child selection
-    if (userRole === 'Parent') {
-      const baseItems = [
-        {
-          id: 'profile',
-          label: 'Profile',
-          icon: User,
-          permission: 'view-profile',
-          alwaysShow: true
-        }
-      ];
-
-      // Add System Payment only when child is selected
-      if (selectedChild) {
-        baseItems.push({
-          id: 'system-payment',
-          label: 'System Payment',
-          icon: CreditCard,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-
-      baseItems.push({
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        permission: 'view-profile',
-        alwaysShow: true
-      });
-
-      return baseItems;
-    }
-
-    // For Student - always show Profile + Payment if no institute
-    if (userRole === 'Student') {
-      const baseItems = [
-        {
-          id: 'profile',
-          label: 'Profile',
-          icon: User,
-          permission: 'view-profile',
-          alwaysShow: true
-        }
-      ];
-
-      // Add Institute Profile when institute is selected
-      if (selectedInstitute) {
-        baseItems.push({
-          id: 'institute-profile',
-          label: 'Institute Profile',
-          icon: IdCard,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-
-      // Add System Payment only when no institute is selected
-      if (!selectedInstitute) {
-        baseItems.push({
-          id: 'system-payment',
-          label: 'System Payment',
-          icon: CreditCard,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-
-      baseItems.push({
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        permission: 'view-profile',
-        alwaysShow: true
-      });
-
-      return baseItems;
-    }
-
-    // For Teacher - show specific settings items based on selection state + Payment if no institute
-    if (userRole === 'Teacher') {
-      const baseItems = [
-        {
-          id: 'profile',
-          label: 'Profile',
-          icon: User,
-          permission: 'view-profile',
-          alwaysShow: true
-        }
-      ];
-
-      // Add Institute Profile when institute is selected
-      if (selectedInstitute) {
-        baseItems.push({
-          id: 'institute-profile',
-          label: 'Institute Profile',
-          icon: IdCard,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-
-      // Add System Payment only when no institute is selected
-      if (!selectedInstitute) {
-        baseItems.push({
-          id: 'system-payment',
-          label: 'System Payment',
-          icon: CreditCard,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-
-      baseItems.push({
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        permission: 'view-profile',
-        alwaysShow: true
-      });
-
-      return baseItems;
-    }
-
-    // For InstituteAdmin - show specific settings items + Payment if no institute
-    if (userRole === 'InstituteAdmin') {
-      const baseItems = [
-        {
-          id: 'profile',
-          label: 'Profile',
-          icon: User,
-          permission: 'view-profile',
-          alwaysShow: true
-        }
-      ];
-
-      // Add System Payment only when no institute is selected
-      if (!selectedInstitute) {
-        baseItems.push({
-          id: 'system-payment',
-          label: 'System Payment',
-          icon: CreditCard,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      } else {
-        // Add Institute Profile when institute is selected
-        baseItems.push({
-          id: 'institute-profile',
-          label: 'Institute Profile',
-          icon: IdCard,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-        // Add Institute Settings for admin
-        baseItems.push({
-          id: 'institute-settings',
-          label: 'Institute Settings',
-          icon: Settings,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-
-      // Add Device Management when institute is selected
-      if (selectedInstitute) {
-        baseItems.push({
-          id: 'device-management',
-          label: 'Device Management',
-          icon: Wifi,
-          permission: 'view-profile',
-          alwaysShow: false
-        });
-      }
-
-      baseItems.push({
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        permission: 'view-profile',
-        alwaysShow: true
-      });
-
-      return baseItems;
-    }
-
-    // Default settings items for other roles (including AttendanceMarker)
-    const settingsItems = [
-      {
-        id: 'profile',
-        label: 'Profile',
-        icon: User,
-        permission: 'view-profile',
-        alwaysShow: true
-      },
-      ...(selectedInstitute ? [{
-        id: 'institute-profile',
-        label: 'Institute Profile',
-        icon: Building2,
-        permission: 'view-profile',
-        alwaysShow: false
-      },
-      {
-        id: 'device-management',
-        label: 'Device Management',
-        icon: Wifi,
-        permission: 'view-profile',
-        alwaysShow: false
-      }] : []),
-      {
-        id: 'settings',
-        label: 'Settings',
-        icon: Settings,
-        permission: 'view-settings',
-        alwaysShow: false
-      }
-    ];
-
-    return settingsItems;
-  };
-
-  const menuItems = getMenuItems();
-  const attendanceItems = getAttendanceItems();
-  const systemItems = getSystemItems();
-  const myChildrenItems = getMyChildrenItems();
-  const childItems = getChildItems();
-  const systemPaymentItems = getSystemPaymentItems();
-  const paymentItems = getPaymentItems();
-  const smsItems = getSmsItems();
-  const notificationItems = getNotificationItems();
-  const settingsItems = getSettingsItems();
-
-  // Ensure the active page is always visible in the sidebar even if hidden by selection rules
-  const menuItemsDisplay = [...menuItems];
-  const attendanceItemsDisplay = [...attendanceItems];
-  const systemItemsDisplay = [...systemItems];
-  const myChildrenItemsDisplay = [...myChildrenItems];
-  const childItemsDisplay = [...childItems];
-  const systemPaymentItemsDisplay = [...systemPaymentItems];
-  const paymentItemsDisplay = [...paymentItems];
-  const smsItemsDisplay = [...(smsItems || [])];
-  const notificationItemsDisplay = [...notificationItems];
-  const settingsItemsDisplay = [...settingsItems];
-
-  // Only show "ID Cards" in sidebar when NO institute is selected
-  // Insert right after "Profile" in settings section for consistent placement
-  if (!selectedInstitute) {
-    const idCardsItem = {
-      id: 'id-cards',
-      label: 'ID Cards',
-      icon: IdCard,
-      permission: 'view-dashboard',
-      alwaysShow: true
-    };
-
-    // Insert ID Cards after Profile in settingsItemsDisplay
-    const profileIndex = settingsItemsDisplay.findIndex(item => item.id === 'profile');
-    if (profileIndex !== -1) {
-      settingsItemsDisplay.splice(profileIndex + 1, 0, idCardsItem);
-    } else {
-      // Fallback: add at beginning if no profile found
-      settingsItemsDisplay.unshift(idCardsItem);
-    }
-  }
-
-  const activeExists = [
-    menuItemsDisplay,
-    attendanceItemsDisplay,
-    systemItemsDisplay,
-    myChildrenItemsDisplay,
-    childItemsDisplay,
-    systemPaymentItemsDisplay,
-    paymentItemsDisplay,
-    smsItemsDisplay,
-    notificationItemsDisplay,
-    settingsItemsDisplay
-  ].some(list => list.some(i => i.id === sidebarHighlightPage));
-
-  if (!activeExists && currentPage) {
-    // Don't auto-add sub-routes (pages with / in them) to sidebar
-    const isSubRoute = currentPage.includes('/');
-    
-    if (!isSubRoute) {
-      const toTitle = (s: string) => s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      const label = toTitle(currentPage);
-
-      let target = menuItemsDisplay as any[];
-      let icon: any = LayoutDashboard;
-      let allowPush = true;
-
-      // Institute-specific pages that require institute selection
-      const instituteSpecificPages = /^(classes|subjects|students|teachers|users|parents|institutes|qr-attendance|live-lectures|grading|exams|homework|results|lectures|free-lectures|institute-details|institute-users|verify-image|select-class|select-subject|unverified-students)$/i;
-      
-      // Don't show institute-specific pages in sidebar when no institute is selected
-      if (!selectedInstitute && instituteSpecificPages.test(currentPage)) {
-        allowPush = false;
-      }
-
-      // NEVER auto-add "Verify Students" for students/parents/etc.
-      if (currentPage === 'unverified-students' && !['InstituteAdmin', 'Teacher'].includes(userRole)) {
-        allowPush = false;
-      }
-
-      if (/payment/i.test(currentPage)) { target = paymentItemsDisplay; icon = CreditCard; }
-      else if (/sms/i.test(currentPage)) {
-        if (selectedInstitute) { target = smsItemsDisplay; icon = MessageSquare; }
-        else { allowPush = false; }
-      }
-      else if (/attendance/i.test(currentPage)) { target = attendanceItemsDisplay; icon = UserCheck; }
-      else if (/(lecture|homework|exam|result|grading)/i.test(currentPage)) { target = systemItemsDisplay; icon = Video; }
-      else if (/(profile|settings|appearance|device-management)/i.test(currentPage)) { target = settingsItemsDisplay; icon = Settings; }
-
-      if (allowPush) {
-        target.push({ id: currentPage, label, icon, permission: 'view-dashboard', alwaysShow: false });
-      }
-    }
-  }
-
-  const filterItemsByPermission = (items: any[]) => {
-    return items.filter(item => {
-      // Items explicitly defined for the current role context are always shown
-      if (item.alwaysShow) {
-        return true;
-      }
-      // Otherwise check permission
-      return AccessControl.hasPermission(userRole as any, item.permission);
-    });
-  };
-
-  const handleItemClick = (itemId: string) => {
-    console.log('Sidebar item clicked:', itemId);
-    
-    // Build context-aware URL
     const context = {
       instituteId: selectedInstitute?.id,
       classId: selectedClass?.id,
       subjectId: selectedSubject?.id,
       childId: selectedChild?.id,
       organizationId: selectedOrganization?.id,
-      transportId: selectedTransport?.id
+      transportId: selectedTransport?.id,
     };
-    
-    // Handle special cases
-    if (itemId === 'organizations' && !selectedInstitute) {
-      window.open('https://org.suraksha.lk/', '_blank');
-      onClose();
-      return;
-    }
-    
-    // Handle my-children - clear child selection
-    if (itemId === 'my-children') {
-      setSelectedChild(null);
-      navigate('/my-children');
-      onClose();
-      return;
-    }
-    
-    // Build URL with context and preserve query params
-    const searchParams = new URLSearchParams(location.search);
-    const queryString = searchParams.toString();
-    const url = buildSidebarUrl(itemId, context);
-    const fullUrl = url + (queryString ? `?${queryString}` : '');
-    
-    console.log('🔗 [Sidebar] Navigating to:', fullUrl);
-    navigate(fullUrl);
+    navigate(buildSidebarUrl(itemId, context));
     onClose();
-  };
+  }, [selectedInstitute?.id, selectedClass?.id, selectedSubject?.id, selectedChild?.id,
+      selectedOrganization?.id, selectedTransport?.id, navigate, onClose]);
 
-  const handleLogout = () => {
-    logout();
-    onClose();
-  };
+  const handleLogout = () => { logout(); onClose(); };
 
   const handleBackNavigation = () => {
-    const searchParams = new URLSearchParams(location.search);
-    const queryString = searchParams.toString() ? `?${searchParams.toString()}` : '';
-    
-    if (selectedTransport) {
-      setSelectedTransport(null);
-      navigate(`/transport${queryString}`);
-    } else if (selectedOrganization) {
-      setSelectedOrganization(null);
-      navigate(`/organizations${queryString}`);
-    } else if (selectedChild) {
-      const childId = selectedChild.id;
-      // Child hierarchy: subject → class → institute → my-children
-      if (selectedSubject) {
-        setSelectedSubject(null);
-        navigate(`/child/${childId}/select-subject${queryString}`);
-      } else if (selectedClass) {
-        setSelectedClass(null);
-        navigate(`/child/${childId}/select-class${queryString}`);
-      } else if (selectedInstitute) {
-        setSelectedInstitute(null);
-        navigate(`/child/${childId}/select-institute${queryString}`);
-      } else {
-        setSelectedChild(null);
-        navigate(`/my-children${queryString}`);
-      }
+    if (selectedTransport) { setSelectedTransport(null); navigate('/transport'); }
+    else if (selectedOrganization) { setSelectedOrganization(null); navigate('/organizations'); }
+    else if (selectedChild) {
+      if (selectedSubject) { setSelectedSubject(null); navigate(`/child/${selectedChild.id}/select-subject`); }
+      else if (selectedClass) { setSelectedClass(null); navigate(`/child/${selectedChild.id}/select-class`); }
+      else if (selectedInstitute) { setSelectedInstitute(null); navigate(`/child/${selectedChild.id}/select-institute`); }
+      else { setSelectedChild(null); navigate('/my-children'); }
     } else if (selectedSubject) {
       setSelectedSubject(null);
-      navigate(`/institute/${selectedInstitute?.id}/class/${selectedClass?.id}/dashboard${queryString}`);
+      navigate(`/institute/${selectedInstitute?.id}/class/${selectedClass?.id}/dashboard`);
     } else if (selectedClass) {
       setSelectedClass(null);
-      navigate(`/institute/${selectedInstitute?.id}/dashboard${queryString}`);
+      navigate(`/institute/${selectedInstitute?.id}/dashboard`);
     } else if (selectedInstitute) {
-      setSelectedInstitute(null);
-      navigate(`/dashboard${queryString}`);
+      // In subdomain/tenant mode, don't navigate away from the institute
+      if (!isTenantLogin) {
+        setSelectedInstitute(null);
+        navigate('/dashboard');
+      }
     }
   };
 
-  // Memoize handlers used by SidebarSection
-  const handleItemClickCb = React.useCallback((itemId: string) => {
-    handleItemClick(itemId);
-  }, [selectedInstitute?.id, selectedClass?.id, selectedSubject?.id, selectedChild?.id, selectedOrganization?.id, selectedTransport?.id, location.search]);
-
-  const filterItemsByPermissionCb = React.useCallback((items: any[]) => {
-    return filterItemsByPermission(items);
+  const filterFn = React.useCallback((items: NavItem[]) => {
+    return items.filter(item =>
+      item.alwaysShow || AccessControl.hasPermission(userRole as any, (item.permission || 'view-dashboard') as any)
+    );
   }, [userRole]);
+
+  // ── Build nav groups based on role + selection state ──────────
+  const navGroups = React.useMemo((): NavGroup[] => {
+    const groups: NavGroup[] = [];
+
+    // ── Transport attendance special case ──────────────────────
+    if (currentPage === 'transport-attendance') {
+      return [{
+        id: 'transport', label: 'Transport', icon: Truck, alwaysFlat: true,
+        items: [{ id: 'transport-attendance', label: 'Attendance', icon: UserCheck, alwaysShow: true }]
+      }];
+    }
+
+    // ── Organization context ───────────────────────────────────
+    if (selectedOrganization) {
+      return [
+        { id: 'org-nav', label: 'Organization', icon: Building2, alwaysFlat: true,
+          items: [
+            { id: 'organizations', label: 'Select Organization', icon: Building2, alwaysShow: true },
+            { id: 'organization-gallery', label: 'Gallery', icon: Camera, alwaysShow: true },
+            { id: 'organization-courses', label: 'Courses', icon: BookOpen, alwaysShow: true },
+          ]},
+        { id: 'account', label: 'Account', icon: User, alwaysFlat: true,
+          items: [{ id: 'profile', label: 'My Profile', icon: User, alwaysShow: true }] }
+      ];
+    }
+
+    // ── Child context navigation (parent viewing child) ────────
+    if (selectedChild && !selectedInstitute) {
+      return [{
+        id: 'child-nav', label: 'Select Child Institute', icon: Building2, alwaysFlat: true,
+        items: [{ id: 'select-institute', label: 'Institutes', icon: Building2, alwaysShow: true,
+          path: `/child/${selectedChild.id}/select-institute` }]
+      }];
+    }
+
+    // ==========================================================
+    //  STUDENT
+    // ==========================================================
+    if (userRole === 'Student') {
+      // Main
+      const mainItems: NavItem[] = [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, alwaysShow: true },
+      ];
+      if (!selectedInstitute && !isTenantLogin) {
+        mainItems.push({ id: 'select-institute', label: 'Institutes', icon: Building2, alwaysShow: true });
+      }
+      groups.push({ id: 'main', label: 'Main', icon: Home, alwaysFlat: true, defaultOpen: true, items: mainItems });
+
+      if (!selectedInstitute && !isTenantLogin) {
+        groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+          defaultOpen: activePage === 'institute-notifications',
+          items: [{ id: 'institute-notifications', label: 'All Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount }]
+        });
+      }
+
+      if (selectedInstitute && !selectedClass) {
+        groups.push({ id: 'institute', label: 'Institute', icon: Building2, alwaysFlat: true, items: [
+          { id: 'select-class', label: 'Select Class', icon: School, alwaysShow: true },
+          { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, alwaysShow: true },
+          { id: 'institute-lectures', label: 'Institute Lectures', icon: Video, alwaysShow: true },
+          { id: 'calendar-view', label: 'Calendar', icon: Calendar, alwaysShow: true },
+          ...(!isTuitionInstitute ? [{ id: 'houses', label: 'Houses', icon: Flag, alwaysShow: true }] : []),
+        ]});
+        groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+          defaultOpen: activePage === 'institute-notifications',
+          items: [{ id: 'institute-notifications', label: 'Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount }]
+        });
+      }
+
+      if (selectedInstitute && selectedClass && !selectedSubject) {
+        groups.push({ id: 'class', label: 'Class', icon: School, alwaysFlat: true, items: [
+          { id: 'select-subject', label: `Select ${subjectLabel}`, icon: BookOpen, alwaysShow: true },
+          { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, alwaysShow: true },
+          { id: 'calendar-view', label: 'Calendar', icon: Calendar, alwaysShow: true },
+        ]});
+        groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+          defaultOpen: activePage === 'institute-notifications',
+          items: [{ id: 'institute-notifications', label: 'Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount }]
+        });
+      }
+
+      if (selectedInstitute && selectedClass && selectedSubject) {
+        // Check if student has full access (verified/enrolled_free_card) or limited access (pending states)
+        const vs = selectedSubject.verificationStatus;
+        const hasFullAccess = !vs || vs === 'verified' || vs === 'enrolled_free_card';
+        
+        const academicItems: NavItem[] = [
+          { id: 'select-subject', label: `Select ${subjectLabel}`, icon: BookOpen, alwaysShow: true },
+        ];
+        if (hasFullAccess) {
+          academicItems.push(
+            { id: 'lectures', label: 'Lectures', icon: Video, alwaysShow: true },
+          );
+        }
+        academicItems.push(
+          { id: 'free-lectures', label: 'Free Lectures', icon: Video, alwaysShow: true },
+        );
+        if (hasFullAccess) {
+          academicItems.push(
+            { id: 'homework', label: 'Homework', icon: Notebook, alwaysShow: true },
+            { id: 'exams', label: 'Exams', icon: Award, alwaysShow: true },
+          );
+        }
+        
+        groups.push({ id: 'academics', label: 'Academics', icon: BookOpen, defaultOpen: true, items: academicItems });
+        groups.push({ id: 'attendance', label: 'Attendance', icon: UserCheck, defaultOpen: true, items: [
+          { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, alwaysShow: true },
+          { id: 'calendar-view', label: 'Calendar', icon: Calendar, alwaysShow: true },
+        ]});
+        groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+          defaultOpen: activePage === 'institute-notifications',
+          items: [{ id: 'institute-notifications', label: 'Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount }]
+        });
+        groups.push({ id: 'payments', label: 'Fees & Payments', icon: CreditCard, items: [
+          { id: 'subject-payments', label: `${subjectLabel} Fees`, icon: CreditCard, alwaysShow: true },
+          { id: 'subject-pay-submission', label: 'My Submission', icon: FileText, alwaysShow: true },
+        ]});
+      }
+
+      if (selectedInstitute && !selectedSubject) {
+        groups.push({ id: 'payments-inst', label: 'Fees & Payments', icon: CreditCard, items: [
+          { id: 'institute-payments', label: 'Institute Fees', icon: CreditCard, alwaysShow: true },
+          { id: 'my-submissions', label: 'My Submissions', icon: FileText, alwaysShow: true },
+        ]});
+      }
+
+      if (!selectedInstitute) {
+        groups.push({ id: 'services', label: 'Services', icon: LayoutGrid, items: [
+          { id: 'id-cards', label: 'ID Cards', icon: IdCard, alwaysShow: true },
+          ...(!isTenantLogin ? [
+            { id: 'system-payment', label: 'System Payment', icon: CreditCard, alwaysShow: true },
+            { id: 'organizations', label: 'Organizations', icon: Building2, alwaysShow: true, locked: true },
+            { id: 'transport', label: 'Transport', icon: Truck, alwaysShow: true, locked: true },
+          ] : []),
+        ]});
+      }
+
+      groups.push({ id: 'account', label: 'Account', icon: User, items: [
+        { id: 'profile', label: 'My Profile', icon: User, alwaysShow: true },
+        ...(selectedInstitute ? [{ id: 'institute-profile', label: 'Institute Profile', icon: IdCard, alwaysShow: true }] : []),
+        { id: 'settings', label: 'Settings', icon: Settings, alwaysShow: true },
+      ]});
+
+      return groups;
+    }
+
+    // ==========================================================
+    //  TEACHER
+    // ==========================================================
+    if (userRole === 'Teacher') {
+      groups.push({ id: 'main', label: 'Main', icon: Home, alwaysFlat: true, items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, alwaysShow: true },
+        ...(!selectedInstitute && !isTenantLogin ? [{ id: 'select-institute', label: 'Institutes', icon: Building2, alwaysShow: true }] : []),
+      ]});
+
+      if (!selectedInstitute && !isTenantLogin) {
+        groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+          defaultOpen: activePage === 'institute-notifications',
+          items: [{ id: 'institute-notifications', label: 'All Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount }]
+        });
+      }
+
+      if (selectedInstitute) {
+        groups.push({ id: 'class-nav', label: 'Class Navigation', icon: School, alwaysFlat: true, items: [
+          ...(!selectedClass ? [{ id: 'select-class', label: 'Select Class', icon: School, alwaysShow: true }] : []),
+          { id: 'select-subject', label: `Select ${subjectLabel}`, icon: BookOpen, alwaysShow: true },
+          ...(selectedInstitute && !selectedClass ? [{ id: 'institute-subjects', label: `Institute ${subjectLabel}s`, icon: BookOpen, alwaysShow: true }] : []),
+          { id: 'institute-lectures', label: 'Institute Lectures', icon: Video, alwaysShow: !selectedClass },
+          ...(!selectedClass && !isTuitionInstitute ? [{ id: 'houses', label: 'Houses', icon: Flag, alwaysShow: true }] : []),
+        ].filter(i => i !== undefined) as NavItem[]});
+
+        if (selectedClass) {
+          groups.push({ id: 'manage-users', label: 'Manage Users', icon: Users, defaultOpen: hasActiveInGroup(['students','unverified-students'], activePage), items: [
+            { id: 'students', label: 'Students', icon: GraduationCap, alwaysShow: true },
+            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, alwaysShow: true },
+          ]});
+        }
+
+        if (selectedClass && selectedSubject) {
+          groups.push({ id: 'academics', label: 'Academics', icon: BookOpen, defaultOpen: true, items: [
+            { id: 'lectures', label: 'Lectures', icon: Video, alwaysShow: true },
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, alwaysShow: true },
+            { id: 'homework', label: 'Homework', icon: Notebook, alwaysShow: true },
+            { id: 'exams', label: 'Exams', icon: Award, alwaysShow: true },
+          ]});
+        }
+
+        groups.push({ id: 'attendance', label: 'Attendance', icon: UserCheck, defaultOpen: hasActiveInGroup(['daily-attendance','my-attendance','select-attendance-mark-type','qr-attendance','rfid-attendance','institute-mark-attendance','close-attendance','calendar-view'], activePage), items: [
+          { id: 'select-attendance-mark-type', label: 'Mark Attendance', icon: QrCode, alwaysShow: true },
+          ...(selectedClass ? [{ id: 'daily-attendance', label: 'Institute Attendance', icon: ClipboardList, alwaysShow: true }] : []),
+          { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, alwaysShow: true },
+          ...(!selectedClass ? [{ id: 'calendar-view', label: 'Calendar View', icon: Calendar, alwaysShow: true }] : []),
+        ]});
+
+        if (selectedClass && selectedSubject) {
+          groups.push({ id: 'payments', label: 'Fees & Payments', icon: CreditCard, items: [
+            { id: 'subject-payments', label: `${subjectLabel} Fees`, icon: CreditCard, alwaysShow: true },
+          ]});
+        } else if (!selectedClass) {
+          groups.push({ id: 'payments', label: 'Fees & Payments', icon: CreditCard, items: [
+            { id: 'institute-payments', label: 'Institute Fees', icon: CreditCard, alwaysShow: true },
+          ]});
+        }
+      }
+
+      if (!selectedInstitute) {
+        groups.push({ id: 'services', label: 'Services', icon: LayoutGrid, items: [
+          { id: 'id-cards', label: 'ID Cards', icon: IdCard, alwaysShow: true },
+          ...(!isTenantLogin ? [
+            { id: 'system-payment', label: 'System Payment', icon: CreditCard, alwaysShow: true },
+          ] : []),
+        ]});
+      }
+
+      groups.push({ id: 'account', label: 'Account', icon: User, items: [
+        { id: 'profile', label: 'My Profile', icon: User, alwaysShow: true },
+        ...(selectedInstitute ? [{ id: 'institute-profile', label: 'Institute Profile', icon: IdCard, alwaysShow: true }] : []),
+        { id: 'settings', label: 'Settings', icon: Settings, alwaysShow: true },
+      ]});
+
+      return groups;
+    }
+
+    // ==========================================================
+    //  INSTITUTE ADMIN
+    // ==========================================================
+    if (userRole === 'InstituteAdmin') {
+      groups.push({ id: 'main', label: 'Main', icon: Home, alwaysFlat: true, items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, alwaysShow: true },
+        ...(!selectedInstitute && !isTenantLogin ? [{ id: 'select-institute', label: 'Institutes', icon: Building2, alwaysShow: true }] : []),
+      ]});
+
+      if (!selectedInstitute && !isTenantLogin) {
+        groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+          defaultOpen: activePage === 'institute-notifications',
+          items: [{ id: 'institute-notifications', label: 'All Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount }]
+        });
+      }
+
+      if (selectedInstitute) {
+        // Class/Subject navigation
+        groups.push({ id: 'institute-nav', label: 'Navigate', icon: School, alwaysFlat: true, items: [
+          ...(!selectedClass ? [{ id: 'select-class', label: 'Select Class', icon: School, alwaysShow: true }] : []),
+          { id: 'select-subject', label: `Select ${subjectLabel}`, icon: BookOpen, alwaysShow: true },
+        ]});
+
+        // Houses
+        if (!selectedClass && !isTuitionInstitute) {
+          groups.push({ id: 'houses-group', label: 'Community', icon: Flag,
+            defaultOpen: activePage === 'houses',
+            items: [{ id: 'houses', label: 'Houses', icon: Flag, alwaysShow: true }] });
+        }
+
+        // Manage Users — consolidated group (the key improvement)
+        const manageUserItems: NavItem[] = [
+          ...(!selectedClass ? [{ id: 'institute-users', label: 'All Users', icon: Users, alwaysShow: true }] : []),
+          ...(!selectedSubject ? [{ id: 'parents', label: 'Parents', icon: Users, alwaysShow: true }] : []),
+          ...(selectedClass ? [
+            { id: 'students', label: 'Students', icon: GraduationCap, alwaysShow: true },
+            { id: 'unverified-students', label: 'Pending Students', icon: UserCheck, alwaysShow: true },
+          ] : []),
+          ...(!selectedClass ? [{ id: 'verify-image', label: 'Verify Photos', icon: ShieldCheck, alwaysShow: true }] : []),
+        ];
+        groups.push({ id: 'manage-users', label: 'Manage Users', icon: UserCog,
+          defaultOpen: hasActiveInGroup(['institute-users','parents','students','unverified-students','verify-image'], activePage),
+          items: manageUserItems });
+
+        // Academics
+        const academicItems: NavItem[] = [
+          { id: 'classes', label: 'All Classes', icon: School, alwaysShow: !selectedClass },
+          { id: 'institute-subjects', label: `Institute ${subjectLabel}s`, icon: BookOpen, alwaysShow: !selectedClass },
+          ...(!selectedClass ? [{ id: 'institute-lectures', label: 'Institute Lectures', icon: Video, alwaysShow: true }] : []),
+          ...(selectedClass && !selectedSubject ? [{ id: 'class-subjects', label: `Class ${subjectLabel}s`, icon: BookOpen, alwaysShow: true }] : []),
+          ...(selectedClass && selectedSubject ? [
+            { id: 'lectures', label: 'Lectures', icon: Video, alwaysShow: true },
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, alwaysShow: true },
+            { id: 'homework', label: 'Homework', icon: Notebook, alwaysShow: true },
+            { id: 'exams', label: 'Exams', icon: Award, alwaysShow: true },
+          ] : []),
+          ...(!isTuitionInstitute && !selectedClass ? [{ id: 'institute-organizations', label: 'Organization', icon: Building2, alwaysShow: true }] : []),
+        ];
+        groups.push({ id: 'academics', label: 'Academics', icon: BookOpen,
+          defaultOpen: hasActiveInGroup(['classes','institute-subjects','lectures','homework','exams'], activePage),
+          items: academicItems });
+
+        // Attendance
+        const attendanceItems: NavItem[] = selectedClass ? [
+          { id: 'select-attendance-mark-type', label: 'Mark Attendance', icon: QrCode, alwaysShow: true },
+          { id: 'daily-attendance', label: 'Institute Attendance', icon: ClipboardList, alwaysShow: true },
+          { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, alwaysShow: true },
+        ] : [
+          { id: 'select-attendance-mark-type', label: 'Mark Attendance', icon: QrCode, alwaysShow: true },
+          { id: 'daily-attendance', label: 'Institute Attendance', icon: ClipboardList, alwaysShow: true },
+          { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, alwaysShow: true },
+          { id: 'admin-attendance', label: 'Advanced Attendance', icon: BarChart3, alwaysShow: true },
+          { id: 'calendar-view', label: 'Calendar View', icon: Calendar, alwaysShow: true },
+          { id: 'calendar-management', label: 'Manage Calendar', icon: CalendarDays, alwaysShow: true },
+        ];
+        groups.push({ id: 'attendance', label: 'Attendance', icon: UserCheck,
+          defaultOpen: hasActiveInGroup(['daily-attendance','select-attendance-mark-type','qr-attendance','rfid-attendance','institute-mark-attendance','close-attendance','admin-attendance','calendar-view'], activePage),
+          items: attendanceItems });
+
+        // Fees & Payments
+        const paymentItems: NavItem[] = [];
+        if (!selectedClass) {
+          paymentItems.push({ id: 'institute-payments', label: 'Institute Fees', icon: CreditCard, alwaysShow: true });
+        }
+        if (selectedClass && selectedSubject) paymentItems.push({ id: 'subject-payments', label: `${subjectLabel} Fees`, icon: CreditCard, alwaysShow: true });
+        if (!selectedClass) {
+          paymentItems.push({ id: 'institute-billing', label: `Billing & Plan${instituteTier && instituteTier !== 'FREE' ? '' : ' — Free'}`, icon: Receipt, alwaysShow: true });
+          paymentItems.push({ id: 'institute-credits', label: 'Institute Wallet', icon: Wallet, alwaysShow: true });
+        }
+        if (paymentItems.length) {
+          groups.push({ id: 'payments', label: 'Fees & Payments', icon: CreditCard,
+            defaultOpen: hasActiveInGroup(['institute-payments','subject-payments','institute-billing','institute-credits'], activePage),
+            items: paymentItems });
+        }
+
+        // Communication
+        if (!selectedClass) {
+          groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+            defaultOpen: hasActiveInGroup(['sms','sms-history','institute-notifications'], activePage),
+            items: [
+              { id: 'sms', label: 'Send SMS', icon: MessageSquare, alwaysShow: true },
+              { id: 'sms-history', label: 'SMS History', icon: ListChecks, alwaysShow: true },
+              { id: 'institute-notifications', label: 'Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount },
+            ]});
+        } else {
+          groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+            defaultOpen: activePage === 'institute-notifications',
+            items: [
+              { id: 'institute-notifications', label: 'Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount },
+            ]});
+        }
+      }
+
+      // Services (only visible before institute is selected)
+      if (!selectedInstitute) {
+        groups.push({ id: 'services', label: 'Services', icon: LayoutGrid,
+          defaultOpen: hasActiveInGroup(['id-cards'], activePage),
+          items: [
+            { id: 'id-cards', label: 'ID Cards', icon: IdCard, alwaysShow: true },
+            ...(!isTenantLogin ? [
+              { id: 'system-payment', label: 'System Payment', icon: CreditCard, alwaysShow: true },
+              { id: 'organizations', label: 'Organizations', icon: Building2, alwaysShow: true, locked: true },
+            ] : []),
+          ]});
+      }
+
+      // Account
+      const accountItems: NavItem[] = [
+        { id: 'profile', label: 'My Profile', icon: User, alwaysShow: true },
+      ];
+      if (selectedInstitute) {
+        accountItems.push({ id: 'institute-profile', label: 'Institute Profile', icon: Building2, alwaysShow: true });
+        accountItems.push({ id: 'institute-settings', label: 'Institute Settings', icon: Settings, alwaysShow: true });
+        accountItems.push({ id: 'device-management', label: 'Device Management', icon: Wifi, alwaysShow: true });
+      }
+      accountItems.push({ id: 'settings', label: 'Settings', icon: Settings, alwaysShow: true });
+      groups.push({ id: 'account', label: 'Account', icon: User,
+        defaultOpen: hasActiveInGroup(['profile','settings','institute-profile','institute-settings'], activePage),
+        items: accountItems });
+
+      return groups;
+    }
+
+    // ==========================================================
+    //  PARENT
+    // ==========================================================
+    if (userRole === 'Parent') {
+      groups.push({ id: 'main', label: 'Main', icon: Home, alwaysFlat: true, items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, alwaysShow: true },
+        ...(!selectedInstitute && !isTenantLogin ? [{ id: 'select-institute', label: 'Institutes', icon: Building2, alwaysShow: true }] : []),
+        { id: 'my-children', label: 'My Children', icon: Users, alwaysShow: true },
+      ]});
+
+      if (selectedChild) {
+        groups.push({ id: 'attendance', label: 'Attendance', icon: UserCheck, defaultOpen: true, items: [
+          { id: 'parent-attendance', label: 'Attendance Dashboard', icon: CalendarDays, alwaysShow: true },
+          { id: 'child-attendance', label: 'Transport Attendance', icon: Truck, alwaysShow: true },
+        ]});
+      }
+
+    if (selectedChild && selectedInstitute) {
+      groups.push({ id: 'child-nav', label: 'Navigate', icon: School, alwaysFlat: true, items: [
+        ...(!selectedClass ? [{ id: 'select-class', label: 'Select Class', icon: School, alwaysShow: true }] : []),
+        { id: 'select-subject', label: `Select ${subjectLabel}`, icon: BookOpen, alwaysShow: true },
+      ]});
+
+      groups.push({ id: 'academics', label: 'Academics', icon: BookOpen,
+        defaultOpen: hasActiveInGroup(['homework','homework-submissions','exams'], activePage),
+        items: [
+          { id: 'homework', label: 'Homework', icon: Notebook, alwaysShow: true },
+          { id: 'homework-submissions', label: 'Submit Homework', icon: FileText, alwaysShow: true },
+          { id: 'exams', label: 'Exams', icon: Award, alwaysShow: true },
+        ]});
+
+      const parentPaymentItems: NavItem[] = [
+        { id: 'institute-payments', label: 'Institute Fees', icon: CreditCard, alwaysShow: true },
+        ...(selectedSubject ? [{ id: 'subject-payments', label: `${subjectLabel} Fees`, icon: CreditCard, alwaysShow: true }] : []),
+        ...(selectedSubject ? [{ id: 'subject-pay-submission', label: 'Subject Submission', icon: FileText, alwaysShow: true }] : []),
+        { id: 'my-submissions', label: 'My Submissions', icon: FileText, alwaysShow: true },
+      ];
+      groups.push({ id: 'payments', label: 'Fees & Payments', icon: CreditCard,
+        defaultOpen: hasActiveInGroup(['institute-payments','my-submissions','subject-payments','subject-pay-submission'], activePage),
+        items: parentPaymentItems });
+      }
+
+      groups.push({ id: 'services', label: 'Services', icon: LayoutGrid, items: [
+        ...(!selectedInstitute ? [
+          { id: 'id-cards', label: 'ID Cards', icon: IdCard, alwaysShow: true },
+          { id: 'system-payment', label: 'System Payment', icon: CreditCard, alwaysShow: true },
+        ] : []),
+        { id: 'transport', label: 'Transport', icon: Truck, alwaysShow: true, locked: true },
+      ]});
+
+      groups.push({ id: 'account', label: 'Account', icon: User, items: [
+        { id: 'profile', label: 'My Profile', icon: User, alwaysShow: true },
+        { id: 'settings', label: 'Settings', icon: Settings, alwaysShow: true },
+      ]});
+
+      return groups;
+    }
+
+    // ==========================================================
+    //  ATTENDANCE MARKER
+    // ==========================================================
+    if (userRole === 'AttendanceMarker') {
+      groups.push({ id: 'main', label: 'Main', icon: Home, alwaysFlat: true, items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, alwaysShow: true },
+        ...(!selectedInstitute && !isTenantLogin ? [{ id: 'select-institute', label: 'Institutes', icon: Building2, alwaysShow: true }] : []),
+      ]});
+
+      if (selectedInstitute) {
+        groups.push({ id: 'class-nav', label: 'Navigate', icon: School, alwaysFlat: true, items: [
+          ...(!selectedClass ? [{ id: 'select-class', label: 'Select Class', icon: School, alwaysShow: true }] : []),
+          { id: 'select-subject', label: `Select ${subjectLabel}`, icon: BookOpen, alwaysShow: true },
+        ]});
+
+        groups.push({ id: 'attendance', label: 'Attendance', icon: UserCheck, defaultOpen: true, items: [
+          { id: 'daily-attendance', label: 'Daily Attendance', icon: UserCheck, alwaysShow: true },
+          { id: 'select-attendance-mark-type', label: 'Mark Attendance', icon: QrCode, alwaysShow: true },
+          { id: 'my-attendance', label: 'My Attendance', icon: UserCheck, alwaysShow: true },
+          ...(!selectedClass ? [
+            { id: 'calendar-view', label: 'Calendar View', icon: Calendar, alwaysShow: true },
+          ] : []),
+        ]});
+
+        if (selectedSubject) {
+          groups.push({ id: 'academics', label: 'Academics', icon: BookOpen, items: [
+            { id: 'free-lectures', label: 'Free Lectures', icon: Video, alwaysShow: true },
+          ]});
+        }
+      }
+
+      if (!selectedInstitute) {
+        groups.push({ id: 'services', label: 'Services', icon: LayoutGrid, items: [
+          { id: 'id-cards', label: 'ID Cards', icon: IdCard, alwaysShow: true },
+          { id: 'system-payment', label: 'System Payment', icon: CreditCard, alwaysShow: true },
+        ]});
+      }
+
+      groups.push({ id: 'account', label: 'Account', icon: User, items: [
+        { id: 'profile', label: 'My Profile', icon: User, alwaysShow: true },
+        ...(selectedInstitute ? [{ id: 'institute-profile', label: 'Institute Profile', icon: Building2, alwaysShow: true }] : []),
+        { id: 'settings', label: 'Settings', icon: Settings, alwaysShow: true },
+      ]});
+
+      return groups;
+    }
+
+    // ==========================================================
+    //  DEFAULT / SystemAdmin / Other
+    // ==========================================================
+    groups.push({ id: 'main', label: 'Main', icon: Home, alwaysFlat: true, items: [
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, alwaysShow: true },
+      ...(!selectedInstitute && !isTenantLogin ? [{ id: 'select-institute', label: 'Institutes', icon: Building2, alwaysShow: true }] : []),
+      ...((userRole === 'User' || userRole === 'UserWithoutStudent') ? [{ id: 'my-children', label: 'My Children', icon: Users, alwaysShow: true }] : []),
+    ]});
+
+    if (!selectedInstitute && !isTenantLogin) {
+      groups.push({ id: 'communication', label: 'Communication', icon: MessageSquare,
+        defaultOpen: activePage === 'institute-notifications',
+        items: [{ id: 'institute-notifications', label: 'All Notifications', icon: Bell, alwaysShow: true, badge: unreadNotifCount }]
+      });
+    }
+
+    if (selectedInstitute) {
+      groups.push({ id: 'manage-users', label: 'Manage Users', icon: UserCog, defaultOpen: true, items: [
+        { id: 'users', label: 'All Users', icon: Users },
+        { id: 'students', label: 'Students', icon: GraduationCap },
+        ...(!selectedSubject ? [{ id: 'parents', label: 'Parents', icon: Users }] : []),
+        ...(user?.role !== 'SystemAdmin' ? [{ id: 'teachers', label: 'Teachers', icon: UserCheck }] : []),
+        { id: 'verify-image', label: 'Verify Photos', icon: ShieldCheck },
+      ]});
+
+      groups.push({ id: 'academics', label: 'Academics', icon: BookOpen, items: [
+        { id: 'classes', label: 'All Classes', icon: School },
+        { id: 'institute-subjects', label: `Institute ${subjectLabel}s`, icon: BookOpen },
+        ...(user?.role !== 'SystemAdmin' ? [
+          { id: 'select-class', label: 'Select Class', icon: School },
+          { id: 'select-subject', label: `Select ${subjectLabel}`, icon: BookOpen },
+        ] : []),
+        { id: 'institutes', label: 'Institutes', icon: Building2 },
+      ]});
+
+      groups.push({ id: 'attendance', label: 'Attendance', icon: UserCheck, items: [
+        { id: 'select-attendance-mark-type', label: 'Mark Attendance', icon: QrCode, permission: 'mark-attendance' },
+        { id: 'calendar-view', label: 'Calendar View', icon: Calendar },
+      ]});
+    }
+
+    if (!selectedInstitute) {
+      groups.push({ id: 'services', label: 'Services', icon: LayoutGrid, items: [
+        { id: 'id-cards', label: 'ID Cards', icon: IdCard, alwaysShow: true },
+        { id: 'system-payment', label: 'System Payment', icon: CreditCard, alwaysShow: true },
+        { id: 'organizations', label: 'Organizations', icon: Building2, alwaysShow: true, locked: true },
+        { id: 'transport', label: 'Transport', icon: Truck, alwaysShow: true, locked: true },
+      ]});
+    }
+
+    groups.push({ id: 'account', label: 'Account', icon: User, items: [
+      { id: 'profile', label: 'My Profile', icon: User, alwaysShow: true },
+      { id: 'feedback', label: 'Feedback', icon: MessageSquareHeart, alwaysShow: true },
+      { id: 'settings', label: 'Settings', icon: Settings },
+    ]});
+
+    return groups;
+  }, [userRole, selectedInstitute?.id, selectedClass?.id, selectedSubject?.id,
+      selectedChild?.id, selectedOrganization?.id, selectedTransport?.id,
+      isTuitionInstitute, subjectLabel, activePage, user?.role, currentPage, unreadNotifCount]);
+
+  // Context breadcrumb
+  const showContextBar = !isCollapsed && user?.role !== 'SystemAdmin'
+    && (selectedInstitute || selectedClass || selectedSubject || selectedChild || selectedOrganization || selectedTransport)
+    && !location.pathname.startsWith('/child/');
+
+  const childContextBar = !isCollapsed && location.pathname.startsWith('/child/') && selectedChild;
 
   return (
     <>
-      {/* Mobile & Tablet Overlay */}
+      {/* Mobile Overlay */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" 
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm" onClick={onClose} />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar panel */}
       <div className={`
-        fixed inset-y-0 right-0 z-50 lg:relative lg:left-0 lg:right-auto
+        fixed top-0 bottom-16 lg:bottom-0 right-0 z-50 lg:relative lg:left-0 lg:right-auto
         ${isCollapsed ? 'w-16' : 'w-72 sm:w-80 lg:w-64'} bg-background border-l lg:border-l-0 lg:border-r border-border
         transform transition-all duration-300 ease-in-out lg:transform-none
         ${isOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
-        flex flex-col h-dvh
-        overflow-hidden
-        pt-safe-top pb-safe-bottom
+        flex flex-col lg:h-dvh overflow-hidden pt-safe-top pb-safe-bottom
       `}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
+
+        {/* ── Sidebar Header ──────────────────────────────────── */}
+        <div className={`flex items-center border-b border-border ${
+          isCollapsed
+            ? 'justify-center px-1 py-2.5'
+            : 'justify-between px-2 sm:px-4 py-2.5 sm:py-3'
+        }`}>
           {!isCollapsed && (
-            <div className="flex items-center space-x-2 min-w-0 flex-1">
-              <img 
-                src={selectedInstitute?.logo || surakshaLogoSidebar} 
-                alt={selectedInstitute?.logo ? "Institute logo" : "SurakshaLMS logo"}
-                className="h-9 w-9 object-contain rounded-lg flex-shrink-0 ring-1 ring-border"
-              />
-              <span className="font-bold text-sm text-foreground truncate">
-                {selectedInstitute?.shortName || 'SurakshaLMS'}
-              </span>
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              {selectedInstitute ? (
+                <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <img
+                    src={selectedInstitute.logo || surakshaLogoSidebar}
+                    alt="logo"
+                    className="h-6 w-6 object-contain"
+                  />
+                </div>
+              ) : null}
+              <div className="min-w-0 flex-1">
+                {selectedInstitute ? (
+                  <p className="font-bold text-sm text-foreground truncate leading-tight">
+                    {selectedInstitute.shortName || selectedInstitute.name}
+                  </p>
+                ) : (
+                  <img
+                    src={surakshaMainLogo}
+                    alt="SurakshaLMS"
+                    className="h-7 w-auto max-w-full object-contain"
+                  />
+                )}
+                {selectedInstitute && (
+                  <p className="text-[10px] text-muted-foreground truncate leading-tight">
+                    {userRole}
+                  </p>
+                )}
+              </div>
             </div>
           )}
-          <div className={`flex items-center ${isCollapsed ? 'w-full justify-center' : ''}`}>
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Search & bell: only in expanded header (desktop) */}
+            {!isCollapsed && (
+              <>
+                <button
+                  onClick={() => setSearchOpen(true)}
+                  className="hidden lg:flex relative h-7 w-7 items-center justify-center rounded-lg hover:bg-accent transition-colors"
+                  aria-label="Search"
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    const context = {
+                      instituteId: selectedInstitute?.id,
+                      classId: selectedClass?.id,
+                      subjectId: selectedSubject?.id,
+                      childId: selectedChild?.id,
+                      organizationId: selectedOrganization?.id,
+                      transportId: selectedTransport?.id,
+                    };
+                    navigate(selectedInstitute?.id
+                      ? buildSidebarUrl('institute-notifications', context)
+                      : '/all-notifications'
+                    );
+                    onClose();
+                  }}
+                  className="hidden lg:flex relative h-7 w-7 items-center justify-center rounded-lg hover:bg-accent transition-colors"
+                  aria-label="Notifications"
+                >
+                  <Bell className="h-4 w-4" />
+                  {unreadNotifCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-[14px] min-w-[14px] flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold px-0.5">
+                      {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                    </span>
+                  )}
+                </button>
+              </>
+            )}
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (window.innerWidth < 1024) {
-                  onClose();
-                } else {
-                  setIsCollapsed(!isCollapsed);
-                }
-              }}
-              className="h-7 w-7 p-0 hover:bg-accent"
-              aria-label={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              variant="ghost" size="sm"
+              onClick={() => window.innerWidth < 1024 ? onClose() : setIsCollapsed(!isCollapsed)}
+              className="h-8 w-8 p-0 hover:bg-accent"
+              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               <X className="h-4 w-4 lg:hidden" />
               <Menu className="h-4 w-4 hidden lg:block" />
@@ -2119,207 +935,152 @@ const Sidebar = ({ isOpen, onClose }: SidebarProps) => {
           </div>
         </div>
 
-        {/* Context Info - Show child context on child routes, with institute if selected */}
-        {!isCollapsed && location.pathname.startsWith('/child/') && selectedChild ? (
-          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border-b border-border">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-blue-600 dark:text-blue-400">Current Selection</span>
-              <Button variant="ghost" size="sm" onClick={handleBackNavigation} className="h-6 w-6 p-0 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-800" aria-label="Go Back">
-                <ArrowLeft className="h-3 w-3" />
-              </Button>
+        {/* ── Context Bar ──────────────────────────────────────── */}
+        {(showContextBar || childContextBar) && (
+          <div className="px-3 py-2 bg-primary/5 border-b border-border/60">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">
+                {childContextBar ? 'Viewing Child' : 'Current Selection'}
+              </span>
+              <button
+                onClick={handleBackNavigation}
+                className="p-1 rounded-lg hover:bg-primary/10 transition-colors"
+                title="Go back"
+              >
+                <ArrowLeft className="h-3 w-3 text-primary/70" />
+              </button>
             </div>
-            <div className="space-y-1 text-xs">
-              {selectedInstitute && (
-                <div className="text-blue-600 dark:text-blue-400">
-                  <span className="font-medium">Institute:</span>
-                  <span className="ml-1 text-sm font-semibold break-words whitespace-normal leading-snug">{selectedInstitute.name}</span>
+            <div className="space-y-0.5 text-[11px]">
+              {childContextBar && (
+                <div className="flex items-center gap-1.5 text-primary">
+                  <Users className="h-3 w-3" />
+                  <span className="font-medium truncate">
+                    {(selectedChild as any)?.name || selectedChild?.user?.firstName || 'Child'}
+                  </span>
                 </div>
               )}
-              <div className="text-blue-600 dark:text-blue-400">
-                <span className="font-medium">Child:</span>
-                <span className="ml-1 truncate">{(selectedChild as any).name || selectedChild?.user?.nameWithInitials || [selectedChild?.user?.firstName, selectedChild?.user?.lastName].filter(Boolean).join(' ') || 'Unknown Child'}</span>
-              </div>
-              {selectedClass && (
-                <div className="text-blue-600 dark:text-blue-400"><span className="font-medium">Class:</span> <span className="ml-1 truncate">{selectedClass.name}</span></div>
-              )}
-              {selectedSubject && (
-                <div className="text-blue-600 dark:text-blue-400"><span className="font-medium">Subject:</span> <span className="ml-1 truncate">{selectedSubject.name}</span></div>
-              )}
+              {selectedOrganization && <div className="flex items-center gap-1.5 text-primary/80"><Building2 className="h-3 w-3" /><span className="truncate">{selectedOrganization.name}</span></div>}
+              {selectedInstitute && <div className="flex items-center gap-1.5 text-primary/80"><Building2 className="h-3 w-3" /><span className="font-semibold truncate">{selectedInstitute.shortName || selectedInstitute.name}</span></div>}
+              {selectedClass && <div className="flex items-center gap-1.5 text-primary/60"><School className="h-3 w-3" /><span className="truncate">{selectedClass.name}</span></div>}
+              {selectedSubject && <div className="flex items-center gap-1.5 text-primary/60"><BookOpen className="h-3 w-3" /><span className="truncate">{selectedSubject.name}</span></div>}
             </div>
           </div>
-        ) : (
-          !isCollapsed && user?.role !== 'SystemAdmin' && (selectedInstitute || selectedClass || selectedSubject || selectedOrganization || selectedTransport) && !location.pathname.startsWith('/child/') && (
-            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border-b border-border">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-blue-600 dark:text-blue-400">Current Selection</span>
-                <Button variant="ghost" size="sm" onClick={handleBackNavigation} className="h-6 w-6 p-0 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-800" aria-label="Go Back">
-                  <ArrowLeft className="h-3 w-3" />
-                </Button>
-              </div>
-              <div className="space-y-1 text-xs">
-                {selectedTransport && (
-                  <div className="text-blue-600 dark:text-blue-400"><span className="font-medium">Transport:</span> <span className="ml-1 truncate">{selectedTransport.vehicleNumber}</span></div>
-                )}
-                {selectedOrganization && (
-                  <div className="text-blue-600 dark:text-blue-400"><span className="font-medium">Organization:</span> <span className="ml-1 truncate">{selectedOrganization.name}</span></div>
-                )}
-                {selectedInstitute && (
-                  <div className="text-blue-600 dark:text-blue-400">
-                    <span className="font-medium">Institute:</span>
-                    <span className="ml-1 text-sm font-semibold break-words whitespace-normal leading-snug">{selectedInstitute.name}</span>
-                  </div>
-                )}
-                {selectedClass && (
-                  <div className="text-blue-600 dark:text-blue-400"><span className="font-medium">Class:</span> <span className="ml-1 truncate">{selectedClass.name}</span></div>
-                )}
-                {selectedSubject && (
-                  <div className="text-blue-600 dark:text-blue-400"><span className="font-medium">Subject:</span> <span className="ml-1 truncate">{selectedSubject.name}</span></div>
-                )}
-              </div>
-            </div>
-          )
         )}
 
-        {/* Navigation */}
+        {/* ── Navigation ───────────────────────────────────────── */}
         <ScrollArea className="flex-1 px-2 py-2">
+          {/* Search bar trigger (expanded sidebar only) */}
+          {!isCollapsed && (
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="flex items-center gap-2 w-full mb-2 px-3 py-2 rounded-xl border border-border/60 bg-muted/40 text-sm text-muted-foreground hover:bg-muted/70 hover:border-border transition-all"
+              aria-label="Open search"
+            >
+              <Search className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1 text-left text-[13px]">Search pages & actions…</span>
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-mono opacity-60">
+                Ctrl K
+              </kbd>
+            </button>
+          )}
+
+          {/* Collapsed sidebar: search + bell icon buttons */}
+          {isCollapsed && (
+            <div className="hidden lg:flex flex-col items-center gap-1 mb-2">
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-accent transition-colors"
+                title="Search (Ctrl+K)"
+                aria-label="Search"
+              >
+                <Search className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => {
+                  const context = {
+                    instituteId: selectedInstitute?.id,
+                    classId: selectedClass?.id,
+                    subjectId: selectedSubject?.id,
+                    childId: selectedChild?.id,
+                    organizationId: selectedOrganization?.id,
+                    transportId: selectedTransport?.id,
+                  };
+                  navigate(selectedInstitute?.id
+                    ? buildSidebarUrl('institute-notifications', context)
+                    : '/all-notifications'
+                  );
+                  onClose();
+                }}
+                className="relative h-9 w-9 flex items-center justify-center rounded-xl hover:bg-accent transition-colors"
+                title="Notifications"
+                aria-label="Notifications"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute top-1 right-1 h-[14px] min-w-[14px] flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold px-0.5">
+                    {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
           <div className="space-y-0.5">
-            {(() => {
-              // Shared props for all SidebarSection instances
-              const sectionProps = {
-                isCollapsed,
-                sidebarHighlightPage,
-                onItemClick: handleItemClickCb,
-                filterFn: filterItemsByPermissionCb,
-              };
-              
-              if (currentPage === 'transport-attendance') {
-                return (
-                  <SidebarSection {...sectionProps} title="Attendance" items={[
-                    {
-                      id: 'transport-attendance',
-                      label: 'Attendance',
-                      icon: UserCheck,
-                      permission: 'view-dashboard',
-                      alwaysShow: true
-                    }
-                  ]} />
-                );
-              }
-              
-              return (
-                <>
-                  {/* Show Main navigation items ONLY when institute is selected */}
-                  {selectedInstitute && (
-                    <>
-                      <SidebarSection {...sectionProps} title="Main" items={menuItemsDisplay.filter(item => !item.hasOwnProperty('section'))} />
-                      
-                      {menuItemsDisplay.some(item => (item as any).section === "Main's") && (
-                        <SidebarSection {...sectionProps} title="Main's" items={menuItemsDisplay.filter(item => (item as any).section === "Main's")} />
-                      )}
-                    </>
-                  )}
-                  
-                  {!selectedInstitute && !selectedChild && menuItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Select Institute" items={menuItemsDisplay.filter(item => !item.hasOwnProperty('section'))} />
-                  )}
-
-                  {/* Divider before grouped sections */}
-                  {selectedInstitute && <div className="my-1.5 mx-3 border-t border-border/50" />}
-                  
-                  {/* Attendance - collapsible */}
-                  {userRole === 'Teacher' && attendanceItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} sectionIcon={<UserCheck className="h-3.5 w-3.5" />} />
-                  )}
-                  {userRole === 'InstituteAdmin' && selectedInstitute && (
-                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} sectionIcon={<UserCheck className="h-3.5 w-3.5" />} />
-                  )}
-                  {userRole === 'AttendanceMarker' && selectedInstitute && (
-                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} sectionIcon={<UserCheck className="h-3.5 w-3.5" />} />
-                  )}
-                  {userRole !== 'AttendanceMarker' && userRole !== 'InstituteAdmin' && userRole !== 'Teacher' && userRole !== 'Student' && selectedInstitute && (
-                    <SidebarSection {...sectionProps} title="Attendance" items={attendanceItemsDisplay} sectionIcon={<UserCheck className="h-3.5 w-3.5" />} />
-                  )}
-                  
-                  {/* Academic - collapsible */}
-                  {userRole === 'Teacher' && systemItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} sectionIcon={<BookOpen className="h-3.5 w-3.5" />} />
-                  )}
-                  {userRole === 'InstituteAdmin' && selectedInstitute && selectedClass && selectedSubject && (
-                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} sectionIcon={<BookOpen className="h-3.5 w-3.5" />} />
-                  )}
-                  {selectedInstitute && userRole !== 'AttendanceMarker' && userRole !== 'InstituteAdmin' && userRole !== 'Teacher' && userRole !== 'Student' && (
-                    <SidebarSection {...sectionProps} title="Academic" items={systemItemsDisplay} sectionIcon={<BookOpen className="h-3.5 w-3.5" />} />
-                  )}
-                  
-                  {/* My Children & Child */}
-                  {myChildrenItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="My Children" items={myChildrenItemsDisplay} />
-                  )}
-                  {childItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Select Child Institute" items={childItemsDisplay} />
-                  )}
-
-                  {/* Divider before payments/comms */}
-                  {(systemPaymentItemsDisplay.length > 0 || paymentItemsDisplay.length > 0 || smsItemsDisplay.length > 0) && (
-                    <div className="my-1.5 mx-3 border-t border-border/50" />
-                  )}
-                  
-                  {/* Payments - collapsible */}
-                  {systemPaymentItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="System Payments" items={systemPaymentItemsDisplay} sectionIcon={<CreditCard className="h-3.5 w-3.5" />} />
-                  )}
-                  {paymentItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Payments" items={paymentItemsDisplay} sectionIcon={<CreditCard className="h-3.5 w-3.5" />} />
-                  )}
-                  
-                  {/* SMS - collapsible */}
-                  {smsItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="SMS" items={smsItemsDisplay} sectionIcon={<MessageSquare className="h-3.5 w-3.5" />} />
-                  )}
-                  
-                  {/* Notifications - collapsible */}
-                  {notificationItemsDisplay.length > 0 && (
-                    <SidebarSection {...sectionProps} title="Notifications" items={notificationItemsDisplay} sectionIcon={<Bell className="h-3.5 w-3.5" />} />
-                  )}
-
-                  {/* Divider before settings */}
-                  <div className="my-1.5 mx-3 border-t border-border/50" />
-                  
-                  {/* Settings - collapsible */}
-                  <SidebarSection {...sectionProps} title="Settings" items={settingsItemsDisplay} sectionIcon={<Settings className="h-3.5 w-3.5" />} />
-                </>
-              );
-            })()}
+            {navGroups.map((group, idx) => (
+              <React.Fragment key={group.id}>
+                {idx > 0 && !navGroups[idx - 1].alwaysFlat && !group.alwaysFlat && (
+                  <div className="my-1 mx-2 border-t border-border/40" />
+                )}
+                <NavGroupSection
+                  group={group}
+                  isCollapsed={isCollapsed}
+                  activePage={activePage}
+                  onItemClick={handleItemClick}
+                  filterFn={filterFn}
+                />
+              </React.Fragment>
+            ))}
           </div>
         </ScrollArea>
 
-        {/* Footer */}
-        <div className="px-3 py-2.5 border-t border-border">
-          {!isCollapsed && (
-            <div className="text-[11px] text-muted-foreground mb-2 space-y-0.5">
-              <div className="truncate">
-                <span className="opacity-70">Logged in:</span> 
-                <span className="font-medium ml-1">{user?.name}</span>
+        {/* ── Footer ───────────────────────────────────────────── */}
+        <div className="hidden lg:block px-3 py-2.5 border-t border-border">
+          {/* User profile row */}
+          <div className={`flex items-center mb-2 ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}>
+            <Avatar className="h-8 w-8 shrink-0 ring-1 ring-border">
+              {sidebarAvatarUrl && (
+                <AvatarImage src={sidebarAvatarUrl} alt={user?.name} className="object-cover" />
+              )}
+              <AvatarFallback className="bg-muted">
+                <User className="h-3.5 w-3.5 text-muted-foreground" />
+              </AvatarFallback>
+            </Avatar>
+            {!isCollapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-foreground truncate leading-tight">{user?.name}</p>
+                <p className="text-[10px] text-muted-foreground truncate leading-tight">{isViewingAsParent ? 'Parent' : userRole}</p>
               </div>
-              <div>
-                <span className="opacity-70">Role:</span> 
-                <span className="font-medium ml-1">{isViewingAsParent ? 'Parent' : userRole}</span>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
           <Button
-            variant="outline"
-            size="sm"
+            variant="outline" size="sm"
             onClick={handleLogout}
-            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-center gap-1.5'} text-xs hover:bg-destructive hover:text-destructive-foreground hover:border-destructive h-7 transition-colors border-border`}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-center gap-1.5'} text-xs hover:bg-destructive hover:text-destructive-foreground hover:border-destructive h-8 transition-colors`}
           >
-            <LogOut className="h-3 w-3" />
+            <LogOut className="h-3.5 w-3.5" />
             {!isCollapsed && <span>Logout</span>}
           </Button>
         </div>
       </div>
+
+      {/* Global Search Dialog */}
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </>
   );
 };
+
+// Helper: check if any item id in a list matches the active page
+function hasActiveInGroup(ids: string[], activePage: string): boolean {
+  return ids.includes(activePage);
+}
 
 export default Sidebar;

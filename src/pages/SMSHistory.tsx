@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTableData } from '@/hooks/useTableData';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -16,10 +16,27 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { useResizableColumns } from '@/hooks/useResizableColumns';
+import { useColumnConfig, type ColumnDef } from '@/hooks/useColumnConfig';
+import ColumnConfigurator from '@/components/ui/column-configurator';
+
+const SMSH_COL_DEFS: ColumnDef[] = [
+  { key: 'id', header: 'ID', defaultVisible: false, defaultWidth: 80, minWidth: 60 },
+  { key: 'messageType', header: 'Message Type', defaultWidth: 160, minWidth: 120 },
+  { key: 'recipientFilter', header: 'Recipient Filter', defaultWidth: 160, minWidth: 120 },
+  { key: 'status', header: 'Status', defaultWidth: 130, minWidth: 90 },
+  { key: 'maskId', header: 'Mask ID', defaultWidth: 160, minWidth: 120 },
+  { key: 'totalRecipients', header: 'Total', defaultWidth: 80, minWidth: 70 },
+  { key: 'successful', header: 'Sent', defaultWidth: 80, minWidth: 70 },
+  { key: 'failed', header: 'Failed', defaultWidth: 80, minWidth: 70 },
+  { key: 'slip', header: 'Slip', defaultWidth: 90, minWidth: 70 },
+  { key: 'actions', header: 'Actions', locked: true, defaultWidth: 100, minWidth: 80 },
+];
 import { format } from 'date-fns';
 import { RefreshCw, Filter, X, Eye, Plus, FileText } from 'lucide-react';
 import { apiClient } from '@/api/client';
 import { toast } from '@/hooks/use-toast';
+import PaymentSlipPreviewDialog from '@/components/PaymentSlipPreviewDialog';
 interface SMSMessage {
   id: string;
   instituteId: string;
@@ -68,6 +85,7 @@ export default function SMSHistory() {
     submissionNotes: '',
     paymentSlip: null as File | null
   });
+  const [slipPreviewUrl, setSlipPreviewUrl] = useState<string | null>(null);
   const {
     state: {
       data: messages,
@@ -121,6 +139,12 @@ export default function SMSHistory() {
         {status}
       </Badge>;
   };
+  const smshColIds = useMemo(() => SMSH_COL_DEFS.map(c => c.key), []);
+  const smshColDefaultWidths = useMemo(() => Object.fromEntries(SMSH_COL_DEFS.map(c => [c.key, c.defaultWidth!])), []);
+  const { getWidth: getSMSHColWidth, setHoveredCol: setSMSHHoveredCol, ResizeHandle: SMSHResizeHandle } = useResizableColumns(smshColIds, smshColDefaultWidths);
+  const { colState: smshColState, visibleColumns: smshVisDefs, toggleColumn: toggleSMSHCol, resetColumns: resetSMSHCols } = useColumnConfig(SMSH_COL_DEFS, 'sms-history');
+  const smshVisKeys = useMemo(() => new Set(smshVisDefs.map(c => c.key)), [smshVisDefs]);
+
   const [currentPage, setCurrentPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const handleChangePage = (event: unknown, newPage: number) => {
@@ -189,49 +213,8 @@ export default function SMSHistory() {
     // Open the slip - use configured backend URL
     const baseUrl = import.meta.env.VITE_LMS_BASE_URL || 'https://lmsapi.suraksha.lk';
     const slipUrl = `${baseUrl}/sms/payment-slip/${filename}`;
-    window.open(slipUrl, '_blank');
+    setSlipPreviewUrl(slipUrl);
   };
-  const columns = [{
-    id: 'id',
-    label: 'ID',
-    minWidth: 80
-  }, {
-    id: 'messageType',
-    label: 'Message Type',
-    minWidth: 150
-  }, {
-    id: 'recipientFilterType',
-    label: 'Recipient Filter',
-    minWidth: 150
-  }, {
-    id: 'status',
-    label: 'Status',
-    minWidth: 120
-  }, {
-    id: 'maskIdUsed',
-    label: 'Mask ID',
-    minWidth: 150
-  }, {
-    id: 'totalRecipients',
-    label: 'Total Recipients',
-    minWidth: 120
-  }, {
-    id: 'successfulSends',
-    label: 'Successful',
-    minWidth: 100
-  }, {
-    id: 'failedSends',
-    label: 'Failed',
-    minWidth: 100
-  }, {
-    id: 'slip',
-    label: 'Slip',
-    minWidth: 100
-  }, {
-    id: 'actions',
-    label: 'Actions',
-    minWidth: 100
-  }];
   if (!selectedInstitute) {
     return <div className="flex items-center justify-center h-full">
         <p className="text-gray-500">Please select an institute to view SMS history</p>
@@ -253,6 +236,7 @@ export default function SMSHistory() {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">{loading ? 'Loading...' : 'Load Data'}</span>
           </Button>
+          <ColumnConfigurator allColumns={SMSH_COL_DEFS} colState={smshColState} onToggle={toggleSMSHCol} onReset={resetSMSHCols} />
         </div>
       </div>
 
@@ -308,51 +292,35 @@ export default function SMSHistory() {
           </div>
         </div>}
 
-      <Paper sx={{
-      width: '100%',
-      overflow: 'hidden',
-      height: showFilters ? 'calc(100vh - 350px)' : 'calc(100vh - 200px)'
-    }}>
-        <TableContainer sx={{
-        height: 'calc(100% - 56px)'
-      }}>
-          <Table stickyHeader aria-label="sms messages table">
+      <Paper sx={{ width: '100%', overflow: 'hidden', height: showFilters ? 'calc(100vh - 350px)' : 'calc(100vh - 200px)', display: 'flex', flexDirection: 'column' }}>
+        <TableContainer sx={{ flex: 1, overflow: 'auto' }}>
+          <Table stickyHeader aria-label="sms messages table" sx={{ tableLayout: 'fixed', minWidth: smshVisDefs.reduce((s, c) => s + getSMSHColWidth(c.key), 0) }}>
             <TableHead>
               <TableRow>
-                {columns.map(column => <TableCell key={column.id} style={{
-                minWidth: column.minWidth
-              }}>
-                    {column.label}
-                  </TableCell>)}
+                {smshVisDefs.map((col) => (
+                  <TableCell key={col.key} sx={{ position: 'relative', width: getSMSHColWidth(col.key), fontWeight: 600, bgcolor: 'hsl(var(--muted))', color: 'hsl(var(--foreground))' }}
+                    onMouseEnter={() => setSMSHHoveredCol(col.key)} onMouseLeave={() => setSMSHHoveredCol(null)}>
+                    <div style={{ paddingRight: 12 }}>{col.header}</div>
+                    <SMSHResizeHandle colId={col.key} />
+                  </TableCell>
+                ))}
               </TableRow>
             </TableHead>
             <TableBody>
-              {messages.map(message => <TableRow hover role="checkbox" tabIndex={-1} key={message.id}>
-                  <TableCell>{message.id}</TableCell>
-                  <TableCell>{message.messageType.replace(/_/g, ' ')}</TableCell>
-                  <TableCell>{message.recipientFilterType.replace(/_/g, ' ')}</TableCell>
-                  <TableCell>{getStatusBadge(message.status)}</TableCell>
-                  <TableCell>{message.maskIdUsed || '-'}</TableCell>
-                  <TableCell>{message.totalRecipients}</TableCell>
-                  <TableCell>
-                    <span className="text-green-600 font-medium">{message.successfulSends}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-red-600 font-medium">{message.failedSends}</span>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => handleViewSlip((message as any).paymentSlipFilename)} disabled={!(message as any).paymentSlipFilename}>
-                      <FileText className="h-4 w-4 mr-1" />
-                      View
-                    </Button>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="outline" size="sm" onClick={() => handleView(message)}>
-                      <Eye className="h-4 w-4 mr-1" />
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>)}
+              {messages.map(message => (
+                <TableRow hover role="checkbox" tabIndex={-1} key={message.id}>
+                  {smshVisKeys.has('id') && <TableCell style={{ width: getSMSHColWidth('id'), maxWidth: getSMSHColWidth('id'), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{message.id}</TableCell>}
+                  {smshVisKeys.has('messageType') && <TableCell style={{ width: getSMSHColWidth('messageType'), maxWidth: getSMSHColWidth('messageType'), overflow: 'hidden' }}>{message.messageType.replace(/_/g, ' ')}</TableCell>}
+                  {smshVisKeys.has('recipientFilter') && <TableCell style={{ width: getSMSHColWidth('recipientFilter'), maxWidth: getSMSHColWidth('recipientFilter'), overflow: 'hidden' }}>{message.recipientFilterType.replace(/_/g, ' ')}</TableCell>}
+                  {smshVisKeys.has('status') && <TableCell style={{ width: getSMSHColWidth('status'), maxWidth: getSMSHColWidth('status'), overflow: 'hidden' }}>{getStatusBadge(message.status)}</TableCell>}
+                  {smshVisKeys.has('maskId') && <TableCell style={{ width: getSMSHColWidth('maskId'), maxWidth: getSMSHColWidth('maskId'), overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{message.maskIdUsed || '-'}</TableCell>}
+                  {smshVisKeys.has('totalRecipients') && <TableCell style={{ width: getSMSHColWidth('totalRecipients'), maxWidth: getSMSHColWidth('totalRecipients'), overflow: 'hidden' }}>{message.totalRecipients}</TableCell>}
+                  {smshVisKeys.has('successful') && <TableCell style={{ width: getSMSHColWidth('successful'), maxWidth: getSMSHColWidth('successful'), overflow: 'hidden' }}><span className="text-green-600 font-medium">{message.successfulSends}</span></TableCell>}
+                  {smshVisKeys.has('failed') && <TableCell style={{ width: getSMSHColWidth('failed'), maxWidth: getSMSHColWidth('failed'), overflow: 'hidden' }}><span className="text-red-600 font-medium">{message.failedSends}</span></TableCell>}
+                  {smshVisKeys.has('slip') && <TableCell style={{ width: getSMSHColWidth('slip'), maxWidth: getSMSHColWidth('slip'), overflow: 'hidden' }}><Button variant="ghost" size="sm" onClick={() => handleViewSlip((message as any).paymentSlipFilename)} disabled={!(message as any).paymentSlipFilename}><FileText className="h-4 w-4 mr-1" />View</Button></TableCell>}
+                  {smshVisKeys.has('actions') && <TableCell style={{ width: getSMSHColWidth('actions'), maxWidth: getSMSHColWidth('actions'), overflow: 'hidden' }}><Button variant="outline" size="sm" onClick={() => handleView(message)}><Eye className="h-4 w-4 mr-1" />View</Button></TableCell>}
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </TableContainer>
@@ -361,123 +329,169 @@ export default function SMSHistory() {
 
       {/* View Details Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>SMS Message Details</DialogTitle>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-primary/10">
+                <FileText className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="font-bold text-base leading-tight">SMS Message Details</p>
+                {selectedMessage && <p className="text-xs text-muted-foreground font-mono">{selectedMessage.id}</p>}
+              </div>
+            </DialogTitle>
           </DialogHeader>
-          
-          {selectedMessage && <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Message ID</label>
-                  <p className="text-base">{selectedMessage.id}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Status</label>
-                  <div className="mt-1">{getStatusBadge(selectedMessage.status)}</div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Sent By</label>
-                  <p className="text-base">{selectedMessage.sentBy}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Message Type</label>
-                  <p className="text-base">{selectedMessage.messageType.replace(/_/g, ' ')}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Recipient Filter</label>
-                  <p className="text-base">{selectedMessage.recipientFilterType.replace(/_/g, ' ')}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Total Recipients</label>
-                  <p className="text-base">{selectedMessage.totalRecipients}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Successful Sends</label>
-                  <p className="text-base text-green-600">{selectedMessage.successfulSends}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Failed Sends</label>
-                  <p className="text-base text-red-600">{selectedMessage.failedSends}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Credits Used</label>
-                  <p className="text-base">{selectedMessage.creditsUsed}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Sender Name</label>
-                  <p className="text-base">{selectedMessage.senderName || 'N/A'}</p>
-                </div>
-              </div>
 
+          {selectedMessage && (
+            <div className="space-y-4">
+              {/* Overview */}
               <div>
-                <label className="text-sm font-medium text-gray-500">Message Template</label>
-                <p className="text-base bg-gray-50 dark:bg-gray-800 p-3 rounded mt-1">
-                  {selectedMessage.messageTemplate}
-                </p>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-500">Processed Message Sample</label>
-                <p className="text-base bg-gray-50 dark:bg-gray-800 p-3 rounded mt-1">
-                  {selectedMessage.processedMessageSample}
-                </p>
-              </div>
-
-              {selectedMessage.filterCriteria && <div>
-                  <label className="text-sm font-medium text-gray-500">Filter Criteria</label>
-                  <div className="mt-2 grid grid-cols-2 gap-3">
-                    {Object.entries(selectedMessage.filterCriteria).map(([key, val]) => <div key={key}>
-                        <div className="text-xs text-gray-500">
-                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
-                        </div>
-                        <div className="text-base">
-                          {Array.isArray(val) ? (val as any[]).join(', ') : String(val)}
-                        </div>
-                      </div>)}
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Overview</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50 col-span-2 sm:col-span-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Status</span>
+                    <span className="mt-0.5">{getStatusBadge(selectedMessage.status)}</span>
                   </div>
-                </div>}
-
-              <div className="grid grid-cols-2 gap-4">
-                {selectedMessage.scheduledAt && new Date(selectedMessage.scheduledAt).toString() !== 'Invalid Date' && <div>
-                    <label className="text-sm font-medium text-gray-500">Scheduled At</label>
-                    <p className="text-base">{format(new Date(selectedMessage.scheduledAt), 'PPpp')}</p>
-                  </div>}
-                {selectedMessage.sentAt && new Date(selectedMessage.sentAt).toString() !== 'Invalid Date' && <div>
-                    <label className="text-sm font-medium text-gray-500">Sent At</label>
-                    <p className="text-base">{format(new Date(selectedMessage.sentAt), 'PPpp')}</p>
-                  </div>}
-                {selectedMessage.approvedAt && new Date(selectedMessage.approvedAt).toString() !== 'Invalid Date' && <div>
-                    <label className="text-sm font-medium text-gray-500">Approved At</label>
-                    <p className="text-base">{format(new Date(selectedMessage.approvedAt), 'PPpp')}</p>
-                  </div>}
-                {selectedMessage.completedAt && new Date(selectedMessage.completedAt).toString() !== 'Invalid Date' && <div>
-                    <label className="text-sm font-medium text-gray-500">Completed At</label>
-                    <p className="text-base">{format(new Date(selectedMessage.completedAt), 'PPpp')}</p>
-                  </div>}
-              </div>
-
-              {selectedMessage.rejectionReason && <div>
-                  <label className="text-sm font-medium text-red-500">Rejection Reason</label>
-                  <p className="text-base text-red-600">{selectedMessage.rejectionReason}</p>
-                </div>}
-
-              {selectedMessage.errorMessage && <div>
-                  <label className="text-sm font-medium text-red-500">Error Message</label>
-                  <p className="text-base text-red-600">{selectedMessage.errorMessage}</p>
-                </div>}
-
-              <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
-                <div>
-                  <label className="font-medium">Created At</label>
-                  <p>{selectedMessage.createdAt ? format(new Date(selectedMessage.createdAt), 'PPpp') : 'N/A'}</p>
-                </div>
-                <div>
-                  <label className="font-medium">Updated At</label>
-                  <p>{selectedMessage.updatedAt ? format(new Date(selectedMessage.updatedAt), 'PPpp') : 'N/A'}</p>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Message Type</span>
+                    <span className="text-xs font-medium">{selectedMessage.messageType.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Sent By</span>
+                    <span className="text-xs font-medium">{selectedMessage.sentBy}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Recipient Filter</span>
+                    <span className="text-xs font-medium">{selectedMessage.recipientFilterType.replace(/_/g, ' ')}</span>
+                  </div>
+                  {selectedMessage.senderName && (
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Sender Name</span>
+                      <span className="text-xs font-medium">{selectedMessage.senderName}</span>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>}
+
+              {/* Delivery Stats */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Delivery Stats</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-primary/5 border border-primary/15">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-primary/60">Total</span>
+                    <span className="text-lg font-bold text-primary">{selectedMessage.totalRecipients}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Successful</span>
+                    <span className="text-lg font-bold text-green-700 dark:text-green-300">{selectedMessage.successfulSends}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">Failed</span>
+                    <span className="text-lg font-bold text-red-700 dark:text-red-300">{selectedMessage.failedSends}</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Credits</span>
+                    <span className="text-lg font-bold">{selectedMessage.creditsUsed}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Message Content */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Message Content</p>
+                <div className="space-y-2">
+                  <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400 block mb-1">Template</span>
+                    <p className="text-sm text-blue-900 dark:text-blue-100">{selectedMessage.messageTemplate}</p>
+                  </div>
+                  {selectedMessage.processedMessageSample && (
+                    <div className="p-3 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground block mb-1">Processed Sample</span>
+                      <p className="text-sm">{selectedMessage.processedMessageSample}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Filter Criteria */}
+              {selectedMessage.filterCriteria && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Filter Criteria</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {Object.entries(selectedMessage.filterCriteria).map(([key, val]) => (
+                      <div key={key} className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
+                        </span>
+                        <span className="text-xs font-medium">{Array.isArray(val) ? (val as any[]).join(', ') : String(val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Timestamps */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-2">Timestamps</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {selectedMessage.scheduledAt && new Date(selectedMessage.scheduledAt).toString() !== 'Invalid Date' && (
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Scheduled</span>
+                      <span className="text-xs font-medium">{format(new Date(selectedMessage.scheduledAt), 'PPpp')}</span>
+                    </div>
+                  )}
+                  {selectedMessage.sentAt && new Date(selectedMessage.sentAt).toString() !== 'Invalid Date' && (
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Sent</span>
+                      <span className="text-xs font-medium">{format(new Date(selectedMessage.sentAt), 'PPpp')}</span>
+                    </div>
+                  )}
+                  {selectedMessage.approvedAt && new Date(selectedMessage.approvedAt).toString() !== 'Invalid Date' && (
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Approved</span>
+                      <span className="text-xs font-medium text-green-700 dark:text-green-300">{format(new Date(selectedMessage.approvedAt), 'PPpp')}</span>
+                    </div>
+                  )}
+                  {selectedMessage.completedAt && new Date(selectedMessage.completedAt).toString() !== 'Invalid Date' && (
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Completed</span>
+                      <span className="text-xs font-medium text-green-700 dark:text-green-300">{format(new Date(selectedMessage.completedAt), 'PPpp')}</span>
+                    </div>
+                  )}
+                  {selectedMessage.createdAt && (
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Created</span>
+                      <span className="text-xs font-medium">{format(new Date(selectedMessage.createdAt), 'PPpp')}</span>
+                    </div>
+                  )}
+                  {selectedMessage.updatedAt && (
+                    <div className="flex flex-col gap-0.5 p-2.5 rounded-xl bg-muted/60 border border-border/50">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Updated</span>
+                      <span className="text-xs font-medium">{format(new Date(selectedMessage.updatedAt), 'PPpp')}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Errors */}
+              {(selectedMessage.rejectionReason || selectedMessage.errorMessage) && (
+                <div className="space-y-2">
+                  {selectedMessage.rejectionReason && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 block mb-1">Rejection Reason</span>
+                      <p className="text-sm text-red-700 dark:text-red-300">{selectedMessage.rejectionReason}</p>
+                    </div>
+                  )}
+                  {selectedMessage.errorMessage && (
+                    <div className="p-3 rounded-xl bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 block mb-1">Error Message</span>
+                      <p className="text-sm text-red-700 dark:text-red-300">{selectedMessage.errorMessage}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -567,5 +581,12 @@ export default function SMSHistory() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <PaymentSlipPreviewDialog
+        open={!!slipPreviewUrl}
+        onOpenChange={(open) => { if (!open) setSlipPreviewUrl(null); }}
+        url={slipPreviewUrl || ''}
+        title="Payment Slip"
+      />
     </div>;
 }
