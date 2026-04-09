@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../lib/api';
 import heroBg from '../assets/hero-bg.jpg';
-import waveDecoration from '../assets/wave-decoration.jpg';
+
 import teacherImg from '../assets/teacher.png';
 import logoImg from '../assets/logo.png';
 import studentCrowdImg from '../assets/students-classroom.jpg';
